@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import DOMAIN
+from .camera_metadata import camera_diagnostics
 from .device_types import get_device_profile
 from .redact import redact_packet
 
@@ -42,6 +43,7 @@ async def async_get_config_entry_diagnostics(
             "registration_only": profile.registration_only,
             "uid": dev.get("uid"),
             "online": dev.get("online"),
+            **camera_diagnostics(dev),
         }
 
     # 整理当前状态

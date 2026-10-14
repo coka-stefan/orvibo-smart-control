@@ -531,14 +531,21 @@ class HttpsClient:
         注：内部解析逻辑已迁移到 protocol.py，此处为保持接口兼容的包装。
         device_status_data 是 fetch_device_status() 返回的 resp["data"]（readtable 的内层 data）。
         """
-        from .protocol import parse_readtable_devices, device_to_dict, _safe_int
+        from .protocol import (
+            parse_readtable_devices,
+            device_to_dict,
+            _safe_int,
+            parse_camera_types,
+        )
+
+        camera_types = parse_camera_types(device_status_data.get("cameraInfo"))
 
         raw_devices = device_status_data.get("device", [])
         if isinstance(raw_devices, dict):
             # dict 格式：key=deviceId, value=item
             result = []
             for device_id, item in raw_devices.items():
-                if not isinstance(item, dict):
+                if not isinstance(item, dict) or item.get("delFlag") in (1, "1"):
                     continue
                 device_type_raw = _safe_int(item.get("deviceType"))
                 result.append({
@@ -547,6 +554,7 @@ class HttpsClient:
                     # Unknown/known-only records must never inherit a light platform.
                     "device_type": self._get_device_type(item) or "unknown",
                     "device_type_raw": device_type_raw,
+                    "camera_type": camera_types.get(str(item.get("uid") or "").strip()),
                     "sub_device_type": _safe_int(item.get("subDeviceType")),
                     "class_id": _safe_int(item.get("classId")),
                     "uid": item.get("uid", ""),
@@ -702,6 +710,8 @@ class HttpsClient:
             device_type_raw = None
             class_id = None
 
+        if device_type_raw in (14, 162):
+            return DEVICE_TYPE_SENSOR
         if device_type_raw == 0:
             return DEVICE_TYPE_LIGHT
         if device_type_raw == 102:

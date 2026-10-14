@@ -68,9 +68,11 @@ DEVICE_TYPE_CLIMATE = "climate"
 DEVICE_TYPE_FAN = "fan"
 
 # HA 平台路由映射（device_type_raw → HA 平台字符串）
-# 注意：隐藏类别（114/135/136/137/143/518/14/150/511）不在本表，由
+# 注意：隐藏类别（114/135/136/137/143/518/150/511）不在本表，由
 # device_types.HIDDEN_CATEGORIES 在 coordinator 层过滤。
 DEVICE_TYPE_MAP = {
+    14: DEVICE_TYPE_SENSOR,        # WiFi 摄像机：仅 SDK 诊断
+    162: DEVICE_TYPE_SENSOR,       # Meari NVR：仅 SDK 诊断
     1: DEVICE_TYPE_LIGHT,           # SIMPLE_ZIGBEE_LIGHT
     34: DEVICE_TYPE_COVER,          # ZIGBEE_CURTAIN
     35: DEVICE_TYPE_COVER,          # ZIGBEE_ROLLING_SHUTTER

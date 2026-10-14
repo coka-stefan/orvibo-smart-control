@@ -178,6 +178,43 @@ class TransportSensorTests(unittest.TestCase):
         self.assertEqual(by_device["light-1"].native_value, "lan")
         self.assertEqual(by_device["clothes-1"].native_value, "unavailable")
 
+    def test_camera_sdk_sensor_tracks_refreshes_and_offline_metadata(self):
+        coordinator = _Coordinator(self.module)
+        device = {"device_id": "camera", "device_type_raw": 14,
+                  "camera_type": 4, "online": False}
+        coordinator.devices = {"camera": device, "nvr": {
+            "device_id": "nvr", "device_type_raw": 162, "online": False,
+        }}
+        hass = SimpleNamespace(data={"orvibo_smart_control": {"entry-1": coordinator}})
+        entry = SimpleNamespace(entry_id="entry-1", options={})
+        entities = []
+        asyncio.run(self.module.async_setup_entry(hass, entry, entities.extend))
+        sdk_entities = {entity._device_id: entity for entity in entities
+                        if isinstance(entity, self.module.OrviboCameraSdkSensor)}
+        self.assertEqual(set(sdk_entities), {"camera", "nvr"})
+        camera = sdk_entities["camera"]
+        self.assertTrue(camera.available)
+        self.assertEqual(camera.native_value, "danale")
+        self.assertEqual(sdk_entities["nvr"].native_value, "meari")
+        self.assertFalse(camera.extra_state_attributes["stream_supported"])
+        coordinator.devices["camera"] = {**device, "camera_type": 8}
+        self.assertEqual(camera.native_value, "meari")
+        self.assertEqual(camera.extra_state_attributes["camera_type"], 8)
+        coordinator.devices["camera"] = {**device, "camera_type": None}
+        self.assertEqual(camera.native_value, "unknown")
+        coordinator.devices.pop("camera")
+        self.assertFalse(camera.available)
+
+    def test_camera_sdk_sensor_respects_selection(self):
+        coordinator = _Coordinator(self.module)
+        coordinator.devices = {"camera": {"device_id": "camera", "device_type_raw": 14}}
+        hass = SimpleNamespace(data={"orvibo_smart_control": {"entry-1": coordinator}})
+        entry = SimpleNamespace(entry_id="entry-1", options={})
+        entities = []
+        with patch.object(self.module, "selected_device_ids", return_value=set()):
+            asyncio.run(self.module.async_setup_entry(hass, entry, entities.extend))
+        self.assertEqual(entities, [])
+
     def test_setup_adds_lock_sensors_for_p20_raw_type(self):
         coordinator = _Coordinator(self.module)
         coordinator.devices = {

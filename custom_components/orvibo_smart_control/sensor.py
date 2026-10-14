@@ -26,6 +26,12 @@ from .capabilities import (
     transport_path_for,
 )
 from .coordinator import OrviboSmartControlCoordinator
+from .camera_metadata import (
+    CAMERA_CATEGORIES,
+    CAMERA_SDK_OPTIONS,
+    camera_diagnostics,
+    camera_sdk_hint,
+)
 from .device_types import DeviceCategory, classify_device
 from .selection import selected_device_ids
 
@@ -49,7 +55,9 @@ async def async_setup_entry(
         if capability.platforms:
             entities.append(OrviboTransportPathSensor(coordinator, device))
         category = classify_device(device)
-        if category == DeviceCategory.MOTION_SENSOR:
+        if category in CAMERA_CATEGORIES:
+            entities.append(OrviboCameraSdkSensor(coordinator, device))
+        elif category == DeviceCategory.MOTION_SENSOR:
             entities.append(OrviboMotionBatterySensor(coordinator, device))
         elif category == DeviceCategory.TEMP_HUMIDITY_SENSOR:
             entities.append(OrviboTemperatureSensor(coordinator, device))
@@ -163,6 +171,33 @@ class OrviboTransportPathSensor(OrviboSensorBase):
         if last_transport is not None:
             attributes["last_control_transport"] = last_transport
         return attributes
+
+
+class OrviboCameraSdkSensor(OrviboSensorBase):
+    """Read-only SDK hint, independent of the camera's online state."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_options = list(CAMERA_SDK_OPTIONS)
+    _attr_translation_key = "camera_sdk"
+    _attr_icon = "mdi:camera-outline"
+
+    def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
+        super().__init__(coordinator, device)
+        self._attr_unique_id = f"orvibo_smart_control_camera_sdk_{self._device_id}"
+        self._attr_name = None
+
+    @property
+    def available(self) -> bool:
+        return self._device_id in self.coordinator.devices
+
+    @property
+    def native_value(self) -> str:
+        return camera_sdk_hint(self.coordinator.devices.get(self._device_id, {}))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return camera_diagnostics(self.coordinator.devices.get(self._device_id, {}))
 
 
 class OrviboMotionBatterySensor(OrviboSensorBase):

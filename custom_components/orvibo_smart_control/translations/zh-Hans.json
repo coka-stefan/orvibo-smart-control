@@ -244,6 +244,15 @@
                     "abnormal": "异常"
                 }
             },
+            "camera_sdk": {
+                "name": "摄像头 SDK 识别",
+                "state": {
+                    "unknown": "未知",
+                    "danale": "Danale",
+                    "meari": "Meari",
+                    "ezviz": "萤石"
+                }
+            },
             "transport_path": {
                 "name": "传输通道",
                 "state": {

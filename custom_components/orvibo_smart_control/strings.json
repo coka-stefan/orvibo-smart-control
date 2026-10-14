@@ -221,6 +221,15 @@
   },
   "entity": {
     "sensor": {
+      "camera_sdk": {
+        "name": "Camera SDK hint",
+        "state": {
+          "unknown": "Unknown",
+          "danale": "Danale",
+          "meari": "Meari",
+          "ezviz": "EZVIZ"
+        }
+      },
       "transport_path": {
         "name": "Transport path",
         "state": {

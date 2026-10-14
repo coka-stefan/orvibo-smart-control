@@ -94,6 +94,7 @@ _RAW_TYPE_GROUPS: dict[int, tuple[str, str]] = {
     137: ("switches", "开关"),
     143: ("switches", "开关"),
     150: ("other", "其他设备"),
+    162: ("cameras", "摄像头"),
     501: ("lights", "灯具"),
     502: ("lights", "灯具"),
     503: ("lights", "灯具"),
@@ -145,6 +146,11 @@ def _sub_type(device: Mapping[str, Any]) -> int | None:
 def infer_device_group(device: Mapping[str, Any]) -> tuple[str, str]:
     """Infer a group key and display label from one device record."""
 
+    # Confirmed camera types take precedence over user-defined name keywords.
+    raw_type = _raw_type(device)
+    if raw_type in (14, 162):
+        return "cameras", "摄像头"
+
     searchable = " ".join(
         _text(device.get(field))
         for field in ("device_name", "class_name", "model", "ui_model", "device_type")
@@ -153,7 +159,6 @@ def infer_device_group(device: Mapping[str, Any]) -> tuple[str, str]:
         if any(keyword in searchable for keyword in keywords):
             return key, label
 
-    raw_type = _raw_type(device)
     if raw_type == 300:
         sub_type = _sub_type(device)
         if sub_type == 481:

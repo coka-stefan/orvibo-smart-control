@@ -27,6 +27,7 @@ class DeviceCategory(Enum):
     BACH_SWITCH = "bach_switch"                        # deviceTypeId=518
     DOOR_LOCK = "door_lock"                            # deviceTypeId=107/522, classId=462/463
     WIFI_CAMERA = "wifi_camera"                        # deviceTypeId=14
+    CAMERA_NVR = "camera_nvr"                          # deviceTypeId=162
     LIGHT_VIRTUAL_GROUP = "light_virtual_group"        # deviceTypeId=10086
     DIM_COLOR_LIGHT = "dim_color_light"                # deviceTypeId=38
     LEGACY_LIGHT = "legacy_light"                      # deviceTypeId=102
@@ -144,8 +145,15 @@ _CATEGORY_INFO: Dict[DeviceCategory, CategoryInfo] = {
     DeviceCategory.WIFI_CAMERA: CategoryInfo(
         category=DeviceCategory.WIFI_CAMERA,
         label="WiFi 摄像机",
-        description="deviceTypeId=14",
-        capabilities=("camera",),
+        description="deviceTypeId=14，仅厂商 SDK 识别诊断，暂不支持实时流",
+        capabilities=(),
+    ),
+    DeviceCategory.CAMERA_NVR: CategoryInfo(
+        category=DeviceCategory.CAMERA_NVR,
+        label="摄像机 NVR",
+        description="deviceTypeId=162，Meari NVR，仅识别诊断，暂不支持通道实时流",
+        capabilities=(),
+        is_container=True,
     ),
     DeviceCategory.LIGHT_VIRTUAL_GROUP: CategoryInfo(
         category=DeviceCategory.LIGHT_VIRTUAL_GROUP,
@@ -313,6 +321,7 @@ _DEVICE_TYPE_MAP: Dict[int, DeviceCategory] = {
     522: DeviceCategory.DOOR_LOCK,
     45: DeviceCategory.MIXPAD_GATEWAY,  # Zigbee Mini Hub (Hub100)，隐藏
     14: DeviceCategory.WIFI_CAMERA,
+    162: DeviceCategory.CAMERA_NVR,
     10086: DeviceCategory.LIGHT_VIRTUAL_GROUP,
     38: DeviceCategory.DIM_COLOR_LIGHT,
     52: DeviceCategory.CLOTHES_HORSE,
@@ -362,7 +371,6 @@ HIDDEN_CATEGORIES: set = {
     DeviceCategory.MIXPAD_GATEWAY,      # deviceTypeId=114
     DeviceCategory.MIX_SWITCH,          # deviceTypeId=135/136/137/143
     DeviceCategory.BACH_SWITCH,         # deviceTypeId=518
-    DeviceCategory.WIFI_CAMERA,         # deviceTypeId=14
     DeviceCategory.SMART_REMOTE,        # deviceTypeId=150
     DeviceCategory.MIXPAD_4WAY_BASE,    # deviceTypeId=511
 }

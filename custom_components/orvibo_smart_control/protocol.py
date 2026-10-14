@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import hashlib
 import hmac
 import re
@@ -51,7 +51,7 @@ class OrviboDevice:
     class_id: int | None = None  # classId（部分设备通过 classId 识别）
     ui_model: str = ""           # ui.model
     room_name: str = ""          # 直接从设备条目读取的 roomName（备选）
-    ext_addr: str = ""           # extAddr（Zigbee 扩展地址）
+    ext_addr: str = ""           # extAddr（Zigbee 地址；旧摄像机中作为 DID）
     status_id: str = ""
     app_device_id: str = ""
     gateway_id: str = ""
@@ -59,6 +59,7 @@ class OrviboDevice:
     device_flag: int | None = None
     endpoint: int = 0
     properties: Mapping[str, Any] = field(default_factory=dict)
+    camera_type: int | None = None  # CameraInfo.type，与 Device.deviceType 不同
 
 
 def password_hash(password: str) -> str:
@@ -222,16 +223,53 @@ def parse_families(payload: Mapping[str, Any]) -> tuple[OrviboFamily, ...]:
     return tuple(families)
 
 
+def parse_camera_types(raw: Any) -> dict[str, int | None]:
+    """Read only CameraInfo.type, keyed by hardware UID; discard SDK secrets.
+
+    Accept a row list or a UID-keyed table. Never join on CameraInfo.deviceId:
+    the Android application queries this table with Device.uid.
+    """
+    if isinstance(raw, list):
+        rows = ((None, row) for row in raw)
+    elif isinstance(raw, Mapping):
+        rows = raw.items()
+    else:
+        return {}
+
+    result: dict[str, int | None] = {}
+    for key, row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        uid = row.get("uid", key)
+        if not isinstance(uid, str) or not uid.strip():
+            continue
+        uid = uid.strip()
+        if row.get("delFlag") in (1, "1"):
+            result[uid] = None
+            continue
+        value = row.get("type")
+        # int(True) and int(8.5) would silently select the wrong SDK.
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            result[uid] = None
+        elif isinstance(value, str) and not re.fullmatch(r"[+-]?[0-9]{1,10}", value.strip()):
+            result[uid] = None
+        else:
+            result[uid] = int(value)
+    return result
+
+
 def parse_readtable_devices(
     payload: Mapping[str, Any],
 ) -> tuple[OrviboDevice, ...]:
     """解析 /v2/cmd/app/readtable 响应，返回归一化的设备列表。
 
-    支持 readtable 的设备 (device[]) / 状态 (deviceStatus[]) / 房间 (room[]) 表联合查询。
+    支持设备、状态、房间表联合查询；cameraInfo[] 只按设备 uid 补充 SDK 类型。
     """
     data = payload.get("data")
     if not isinstance(data, Mapping):
         return ()
+
+    camera_types = parse_camera_types(data.get("cameraInfo"))
 
     # --- 房间映射 ---
     raw_rooms = data.get("room", [])
@@ -332,6 +370,7 @@ def parse_readtable_devices(
             ),
             online=online,
             cloud_uid=_first_text(item, ("uid",)),
+            camera_type=camera_types.get(_first_text(item, ("uid",))),
             value1=values[0],
             value2=values[1],
             value3=values[2],
@@ -365,6 +404,22 @@ def extract_devices(payloads: Any) -> tuple[OrviboDevice, ...]:
     """
     devices: dict[str, OrviboDevice] = {}
     room_names: dict[str, str] = {}
+    camera_types: dict[str, int | None] = {}
+
+    def collect_camera_types(value: Any) -> None:
+        if isinstance(value, list):
+            for child in value:
+                collect_camera_types(child)
+        elif isinstance(value, Mapping):
+            if str(value.get("tableName", "")).strip().lower().replace("_", "") == "camerainfo":
+                camera_types.update(parse_camera_types(value.get("dataList")))
+            for key, child in value.items():
+                if str(key).lower().replace("_", "") == "camerainfo":
+                    camera_types.update(parse_camera_types(child))
+                elif isinstance(child, (Mapping, list)):
+                    collect_camera_types(child)
+
+    collect_camera_types(payloads)
     id_keys = (
         "deviceId", "deviceID", "deviceUid", "deviceUUID",
         "deviceUuid", "uuid", "uid",
@@ -507,12 +562,20 @@ def extract_devices(payloads: Any) -> tuple[OrviboDevice, ...]:
                     properties=candidate.properties or previous.properties,
                 )
 
-        for child in value.values():
+        for key, child in value.items():
             if isinstance(child, (Mapping, list)):
-                visit(child, table_name)
+                child_table = (
+                    "camerainfo"
+                    if str(key).lower().replace("_", "") == "camerainfo"
+                    else table_name
+                )
+                visit(child, child_table)
 
     visit(payloads)
-    return tuple(sorted(devices.values(), key=lambda d: d.uid))
+    return tuple(
+        replace(device, camera_type=camera_types.get(device.cloud_uid))
+        for device in sorted(devices.values(), key=lambda d: d.uid)
+    )
 
 
 # --- 兼容函数：将 OrviboDevice 转换为现有 https_client 的 dict 格式 ---
@@ -528,6 +591,7 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
         "device_name": device.name,
         "device_type": _infer_ha_device_type(device),
         "device_type_raw": _safe_int(device.device_type),
+        "camera_type": device.camera_type,
         "sub_device_type": _safe_int(device.sub_device_type),
         "class_id": device.class_id,
         "uid": device.cloud_uid,
@@ -567,6 +631,7 @@ def _infer_ha_device_type(device: OrviboDevice) -> str:
     _DEVICE_TYPE_MAP_INLINE = {
         1: "light", 34: "cover", 35: "cover", 36: "climate", 38: "light",
         43: "switch",  # COCO智能插线板
+        14: "sensor", 162: "sensor",  # 摄像机/NVR：仅 SDK 诊断
         46: "sensor", 52: "clothes_horse",
         25: "sensor", 26: "sensor", 27: "sensor", 56: "sensor",
         54: "sensor", 501: "light", 502: "light",

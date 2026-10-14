@@ -76,8 +76,9 @@ _LAN_CONTROLLABLE_TYPES = frozenset(
 # type 300 按云端实测子类型定义（481 地暖可云控 / 491 温湿度只读）。
 _STATUS_ONLY_TYPES = frozenset({107})
 
-# 必须走云的设备（WiFi 直连 / 门锁 LAN 走不通；ADR-4）
-_CLOUD_ONLY_TYPES = frozenset({52, 107, 522})
+# 本集成的云专属路径（ADR-4）；摄像头仅使用云端库存元数据，
+# 不暴露 MixPad LAN 或 SDK 控制，也不据此判断视频流传输方式。
+_CLOUD_ONLY_TYPES = frozenset({14, 52, 107, 162, 522})
 
 # 只读分类（无设备控制通道，状态仍正常推送）
 _STATUS_ONLY_CATEGORIES = frozenset(
@@ -90,6 +91,8 @@ _STATUS_ONLY_CATEGORIES = frozenset(
         DeviceCategory.WATER_LEAK_SENSOR,
         DeviceCategory.GAS_SENSOR,
         DeviceCategory.DOOR_LOCK,
+        DeviceCategory.WIFI_CAMERA,
+        DeviceCategory.CAMERA_NVR,
     }
 )
 
@@ -138,6 +141,8 @@ _CATEGORY_PLATFORMS: Dict[DeviceCategory, FrozenSet[str]] = {
         {PLATFORM_SENSOR, PLATFORM_BINARY_SENSOR, PLATFORM_CAMERA}
     ),
     DeviceCategory.CLOTHES_HORSE: frozenset({PLATFORM_SENSOR}),
+    DeviceCategory.WIFI_CAMERA: frozenset({PLATFORM_SENSOR}),
+    DeviceCategory.CAMERA_NVR: frozenset({PLATFORM_SENSOR}),
     DeviceCategory.MIX_SWITCH: frozenset({PLATFORM_SWITCH}),
     DeviceCategory.BACH_SWITCH: frozenset({PLATFORM_SWITCH}),
 }

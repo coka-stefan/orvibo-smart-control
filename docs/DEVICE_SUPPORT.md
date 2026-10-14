@@ -105,6 +105,39 @@ REST 快照合并，最终仍服从状态来源优先级；纯 LAN 模式启动�
 不属于普通设备控制通道。需要门锁或晾衣机时不要选择纯 LAN，应保留默认结合模式或使用
 纯云端模式。
 
+## 摄像机与 NVR（只读诊断）
+
+普通摄像机 `deviceType=14` 和 NVR `deviceType=162` 会出现在“摄像头”设备选择分组。
+选中后只创建“传输通道”和“摄像头 SDK 识别”诊断传感器；不会创建实时摄像头实体。
+诊断在设备离线时仍可查看，SDK 类型取自最新库存快照，不代表实时连接成功。
+
+`cameraInfo` 附表按硬件 `Device.uid` 关联；HA 的 `device_id` 仍是业务 `Device.deviceId`。
+只保留附表的 `type` 为 `camera_type`，不保存其中的 token、密码或 SDK 凭据。
+应用 `Device.deviceType`、应用 `CameraInfo.type` 和商品目录 `productType` 是独立字段。
+
+| 设备类型 / 摄像头附表类型 | SDK 提示 | 证据边界 |
+| ------------------------ | -------- | -------- |
+| `14` / `3–7`             | Danale   | 静态类型分支 |
+| `14` / `8–10`            | Meari    | 静态类型分支 |
+| `14` / `-1, 1, 2`        | 萤石     | 静态类型分支 |
+| `162`                    | Meari    | NVR 页面入口 |
+| `14` / 缺失或其他值      | 未知     | 可能是旧 SEP2P 分支或型号优先分支，暂不推测 |
+
+结合模式和纯云端模式显示云端库存路径；纯 LAN 显示“当前模式不可用”，现有库存诊断
+仍可查看。这里的云端标记仅说明本集成的库存来源，不表示视频流必须走云端。
+设备不接入 MixPad LAN 状态/控制，也不开放 SDK 控制、NVR 通道播放或猜测的 RTSP URL。
+商品目录中的 `521` 尚未与主播放调用链建立对应关系，未扩展播放能力。
+
+类型分支来自 HomeMate APK `5.2.6.307` 的静态逆向：`ActivityTool.j` 和 Flutter
+`gc.b.d/c`。APK SHA-256：
+`6ea3f3eff41ad4657ca437d10c79022949a1f080af857a8800dc6b6819abac8c`。
+可复核的 REA Evidence 为
+`ev_9d0f3dbb5f213df33b5f9acc09d5baf74c11dfc30bb2d40ee7497d17d8e00acc`
+和 `ev_1ae7d7ced477d6d3bbd9ed9db22d48080df5664ecf758855ad741c7eacf73acc`。
+原生应用还有型号优先分支，因此传感器显示的是 SDK 提示，不是全部型号的运行时断言。
+本次没有真机验证、厂商 SDK 鉴权实现或已验证 HTTP/RTSP 流地址，`hardware_verified`
+和 `stream_supported` 均为 false。APK 的旧摄像机 SEP2P 路径也不能证明所有门锁猫眼协议。
+
 ## 有意不支持或隐藏
 
 | 类型             | 当前行为       | 原因                       |

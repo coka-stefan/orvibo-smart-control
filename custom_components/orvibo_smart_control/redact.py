@@ -33,6 +33,7 @@ _SECRET_KEYS: Final = frozenset(
         "sessionid",
         "sessionkey",
         "token",
+        "tokensecret",
     }
 )
 
@@ -41,6 +42,7 @@ _IDENTIFIER_KEYS: Final = frozenset(
         "account",
         "deviceid",
         "email",
+        "extaddr",
         "familyid",
         "identifier",
         "mac",
