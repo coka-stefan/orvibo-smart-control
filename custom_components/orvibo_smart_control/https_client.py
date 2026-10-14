@@ -5,7 +5,6 @@ from aiohttp import ClientSession
 from typing import Optional, Any, Dict, List
 from .packet import HomemateJsonData
 from .protocol import normalize_password_hash
-from .known_device_models import identify_known_device
 from .cloud import (
     CHINA_CLOUD,
     CloudEndpoint,
@@ -25,17 +24,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _deep_merge_dict(base: dict, patch: dict) -> dict:
-    """Return a recursive merge without mutating either protocol payload."""
-    merged = dict(base)
-    for key, value in patch.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge_dict(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
 
 
 class HttpsClient:
@@ -326,23 +314,21 @@ class HttpsClient:
     @staticmethod
     def _extract_gateway_ips(data: Dict[str, Any]) -> Dict[str, str]:
         """从 readtable 提取 MixPad 网关 uid → 局域网 IP（移植自 LAN 源实现）。"""
-        gateways = data.get("gateway")
-        devices = data.get("device")
+        from .protocol import _safe_int, _table_rows
+
         mixpad_uids = {
-            str(item.get("uid"))
-            for item in (devices if isinstance(devices, list) else [])
-            if item.get("deviceType") == 114 and item.get("uid")
+            str(item["uid"])
+            for item in _table_rows(data.get("device"), "deviceId")
+            if _safe_int(item.get("deviceType")) == 114 and item.get("uid")
+            and item.get("delFlag") not in (1, "1")
         }
         result: Dict[str, str] = {}
-        for gateway in (gateways if isinstance(gateways, list) else []):
+        for gateway in _table_rows(data.get("gateway"), "uid"):
+            if gateway.get("delFlag") in (1, "1"):
+                continue
             uid = gateway.get("uid")
             raw_ip = gateway.get("localStaticIP") or gateway.get("ip")
-            if (
-                isinstance(uid, str)
-                and uid in mixpad_uids
-                and isinstance(raw_ip, str)
-                and raw_ip
-            ):
+            if isinstance(uid, str) and uid in mixpad_uids and isinstance(raw_ip, str) and raw_ip:
                 result[uid] = raw_ip.split(":", maxsplit=1)[0]
         return result
 
@@ -531,89 +517,12 @@ class HttpsClient:
         注：内部解析逻辑已迁移到 protocol.py，此处为保持接口兼容的包装。
         device_status_data 是 fetch_device_status() 返回的 resp["data"]（readtable 的内层 data）。
         """
-        from .protocol import (
-            parse_readtable_devices,
-            device_to_dict,
-            _safe_int,
-            parse_camera_types,
-        )
+        from .protocol import parse_readtable_devices, device_to_dict
 
-        camera_types = parse_camera_types(device_status_data.get("cameraInfo"))
+        result = [device_to_dict(device) for device in parse_readtable_devices(
+            {"code": 0, "data": device_status_data}
+        )]
 
-        raw_devices = device_status_data.get("device", [])
-        if isinstance(raw_devices, dict):
-            # dict 格式：key=deviceId, value=item
-            result = []
-            for device_id, item in raw_devices.items():
-                if not isinstance(item, dict) or item.get("delFlag") in (1, "1"):
-                    continue
-                device_type_raw = _safe_int(item.get("deviceType"))
-                result.append({
-                    "device_id": device_id,
-                    "device_name": item.get("deviceName", ""),
-                    # Unknown/known-only records must never inherit a light platform.
-                    "device_type": self._get_device_type(item) or "unknown",
-                    "device_type_raw": device_type_raw,
-                    "camera_type": camera_types.get(str(item.get("uid") or "").strip()),
-                    "sub_device_type": _safe_int(item.get("subDeviceType")),
-                    "class_id": _safe_int(item.get("classId")),
-                    "uid": item.get("uid", ""),
-                    "status_id": item.get("statusId", ""),
-                    "app_device_id": item.get("appDeviceId", ""),
-                    "gateway_id": item.get("gatewayId", ""),
-                    "ext_addr": item.get("extAddr", ""),
-                    "model": item.get("model", ""),
-                    "class_name": item.get("className", ""),
-                    "ui_model": (
-                        item.get("ui", {}).get("model", "")
-                        if isinstance(item.get("ui"), dict)
-                        else ""
-                    ),
-                    "room_id": item.get("roomId", ""),
-                    "room_name": item.get("roomName", ""),
-                    "online": self._parse_online_status(item.get("online")),
-                    "properties": item.get("properties", {}),
-                    "endpoint": item.get("endpoint", 0),
-                    "status": item.get("status", {}),
-                    "value1": _safe_int(item.get("value1")),
-                    "value2": _safe_int(item.get("value2")),
-                    "value3": _safe_int(item.get("value3")),
-                    "value4": _safe_int(item.get("value4")),
-                })
-            _LOGGER.info(f"从 device_status dict 解析到 {len(result)} 个设备")
-            return result
-
-        # 列表格式 → 使用 protocol.py 解析
-        # 注意：device_status_data 已经是 resp["data"]，不能再套一层 payload.get("data")
-        # 所以直接构造一个模拟 payload 传给 parse_readtable_devices
-        wrapped = {"code": 0, "data": device_status_data}
-        devices = [device_to_dict(d) for d in parse_readtable_devices(wrapped)]
-        
-        # protocol.parse_readtable_devices 已经做了 room/status 联合查询
-        # 但仍需补充 properties（从 deviceStatus 获取额外的 properties）
-        raw_statuses = device_status_data.get("deviceStatus", [])
-        status_map: dict[str, dict] = {}
-        if isinstance(raw_statuses, list):
-            for s in raw_statuses:
-                if isinstance(s, dict):
-                    sid = s.get("deviceId", "")
-                    if sid:
-                        status_map[sid] = s
-        elif isinstance(raw_statuses, dict):
-            status_map = raw_statuses
-        
-        result = []
-        for dev in devices:
-            status_data = status_map.get(dev["device_id"], {})
-            dev["status"] = status_data
-            device_properties = dev.get("properties", {})
-            status_properties = status_data.get("properties", {})
-            if isinstance(device_properties, dict) and isinstance(status_properties, dict):
-                dev["properties"] = _deep_merge_dict(device_properties, status_properties)
-            elif isinstance(status_properties, dict):
-                dev["properties"] = dict(status_properties)
-            result.append(dev)
-        
         # 跳过父开关设备（type=135/136，properties 为空）
         filtered = []
         for dev in result:
@@ -655,47 +564,10 @@ class HttpsClient:
             return None
 
     def parse_device_list(self, homepage_data: dict) -> List[Dict[str, Any]]:
-        devices = []
-        # 尝试多个可能的字段名
-        device_data = homepage_data.get("deviceList", []) or homepage_data.get("device", []) or []
-        if not isinstance(device_data, list):
-            device_data = []
-
-        for item in device_data:
-            device_id = item.get("deviceId", "")
-            if not device_id:
-                continue
-
-            device_type = self._get_device_type(item)
-            if device_type is None and identify_known_device(item) is None:
-                _LOGGER.debug(f"未识别的设备类型: deviceType={item.get('deviceType')}, classId={item.get('classId')}")
-                continue
-            if device_type is None:
-                device_type = "unknown"
-
-            devices.append({
-                "device_id": device_id,
-                "device_name": item.get("deviceName", ""),
-                "device_type": device_type,
-                "device_type_raw": item.get("deviceType"),
-                "class_id": item.get("classId"),
-                "sub_device_type": item.get("subDeviceType"),
-                "ui_model": (
-                    item.get("ui", {}).get("model", "")
-                    if isinstance(item.get("ui"), dict)
-                    else ""
-                ),
-                "uid": item.get("uid", ""),
-                "model": item.get("model", ""),
-                "room_id": item.get("roomId", ""),
-                "room_name": item.get("roomName", ""),
-                "online": self._parse_online_status(item.get("online")),
-                "properties": item.get("properties", {}),
-                "endpoint": item.get("endpoint", 0),
-            })
-
-        _LOGGER.info(f"解析到 {len(devices)} 个设备")
-        return devices
+        """Use the inventory parser for homepage fallbacks too."""
+        data = dict(homepage_data)
+        data["device"] = data.get("deviceList") or data.get("device") or []
+        return self.parse_device_status_list(data)
 
     def _get_device_type(self, item: dict) -> Optional[str]:
         device_type_raw = item.get("deviceType")
@@ -753,66 +625,6 @@ class HttpsClient:
             return DEVICE_TYPE_MAP[device_type_raw]
 
         return None
-
-    async def fetch_homepage_data(self) -> Optional[Dict[str, Any]]:
-        try:
-            if not await self.ensure_login():
-                _LOGGER.error("HTTPS 未登录")
-                return None
-
-            ret = HomemateJsonData.get_homepage_data(
-                self.family_id,
-                self.user_id,
-                self.access_token,
-                api_host=self.api_host,
-            )
-            resp = await self._send_request(ret['url'], ret['data'])
-
-            if "message" in resp:
-                _LOGGER.error(resp["message"])
-                return None
-            if "data" not in resp:
-                _LOGGER.error("响应包中未找到[data]")
-                return None
-
-            return resp["data"]
-        except Exception as e:
-            _LOGGER.error("获取主页数据失败: %s", e)
-            return None
-
-    def parse_device_list(self, homepage_data: dict) -> List[Dict[str, Any]]:
-        devices = []
-        device_data = homepage_data.get("deviceList", []) or homepage_data.get("device", []) or []
-        if not isinstance(device_data, list):
-            device_data = []
-
-        for item in device_data:
-            device_id = item.get("deviceId", "")
-            if not device_id:
-                continue
-
-            device_type = self._get_device_type(item)
-            if device_type is None:
-                _LOGGER.debug(f"未识别的设备类型: deviceType={item.get('deviceType')}, classId={item.get('classId')}")
-                continue
-
-            devices.append({
-                "device_id": device_id,
-                "device_name": item.get("deviceName", ""),
-                "device_type": device_type,
-                "device_type_raw": item.get("deviceType"),
-                "class_id": item.get("classId"),
-                "uid": item.get("uid", ""),
-                "model": item.get("model", ""),
-                "room_id": item.get("roomId", ""),
-                "room_name": item.get("roomName", ""),
-                "online": self._parse_online_status(item.get("online")),
-                "properties": item.get("properties", {}),
-                "endpoint": item.get("endpoint", 0),
-            })
-
-        _LOGGER.info(f"从家庭主页解析到 {len(devices)} 个设备")
-        return devices
 
     def _parse_online_status(self, online_value) -> bool:
         """解析 online 状态，支持多种格式"""

@@ -27,7 +27,7 @@ def parse_light(
     elif raw_status.get("value1") is not None:
         state = int(raw_status["value1"]) == 0
     else:
-        state = current_state.get("state", False)
+        return StatePatch({})
     return StatePatch({"state": state})
 
 
@@ -97,7 +97,7 @@ def parse_dim_color_light(
         try:
             state = int(value1) == 0
         except (TypeError, ValueError):
-            state = current_state.get("state", False)
+            state = None
     else:
         onoff_obj = props.get("onoff", {})
         if isinstance(onoff_obj, dict) and onoff_obj.get("status"):
@@ -105,9 +105,9 @@ def parse_dim_color_light(
         elif brightness is not None:
             state = brightness > 0
         else:
-            state = current_state.get("state", False)
+            state = None
 
-    updates = {"state": state}
+    updates = {"state": state} if state is not None else {}
     if brightness is not None:
         updates["brightness"] = brightness
     if color_temp is not None:
@@ -220,5 +220,5 @@ def parse_switch(
         sub_device_type = _subdevice_type(raw_status)
         state = int(raw_status["value1"]) == (0 if sub_device_type == -2 else 1)
     else:
-        state = False
+        return StatePatch({})
     return StatePatch({"state": state})

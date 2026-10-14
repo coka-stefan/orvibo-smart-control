@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import copy
 import hashlib
+import json
 import hmac
 import re
 from typing import Any, Final, Mapping, Sequence
@@ -60,6 +62,8 @@ class OrviboDevice:
     endpoint: int = 0
     properties: Mapping[str, Any] = field(default_factory=dict)
     camera_type: int | None = None  # CameraInfo.type，与 Device.deviceType 不同
+    room_id: str = ""
+    status: Mapping[str, Any] = field(default_factory=dict)
 
 
 def password_hash(password: str) -> str:
@@ -258,6 +262,89 @@ def parse_camera_types(raw: Any) -> dict[str, int | None]:
     return result
 
 
+def _table_rows(raw: Any, key_field: str | None = None) -> tuple[dict[str, Any], ...]:
+    """Normalize array/keyed tables without mutating rows or inventing identifiers."""
+    if isinstance(raw, list):
+        entries = ((None, row) for row in raw)
+    elif isinstance(raw, Mapping):
+        entries = raw.items()
+    else:
+        return ()
+    rows = []
+    for key, row in entries:
+        if not isinstance(row, Mapping):
+            continue
+        row = dict(row)
+        if key_field and key is not None and not row.get(key_field):
+            # Legacy aliases take precedence over an outer table key.
+            alias = row.get(key_field[:-2] + "ID") if key_field.endswith("Id") else None
+            row[key_field] = alias or key
+        rows.append(row)
+    return tuple(rows)
+
+
+def _row_update_time(row: Mapping[str, Any]) -> int:
+    """Use numeric BaseBo millisecond/second timestamps when supplied."""
+    seconds = _safe_int(row.get("updateTimeSec"))
+    if seconds:
+        return seconds * 1000
+    return _safe_int(row.get("updateTime")) or 0
+
+
+def _merge_properties(base: Mapping[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(dict(base))
+    for key, value in patch.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
+            merged[key] = _merge_properties(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def _readtable_properties(
+    device: Mapping[str, Any], status: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Join inline and DevicePropertyStatus values on (deviceId, property).
+
+    Untimed/equal-time values follow arrival order; independent rows follow inline
+    properties. Deleted properties suppress older values in this snapshot. This
+    is a snapshot policy, not an incremental cache or an inferred control model.
+    """
+    properties: dict[str, Any] = {}
+    times: dict[str, int] = {}
+    for owner in (device, status):
+        raw = owner.get("properties")
+        if isinstance(raw, Mapping):
+            timestamp = _row_update_time(owner)
+            for key, value in raw.items():
+                if timestamp and timestamp < times.get(key, 0):
+                    continue
+                properties = _merge_properties(properties, {key: value})
+                times[key] = timestamp
+    for row in rows:
+        key = row.get("property")
+        if not isinstance(key, str) or not key.strip():
+            continue
+        deleted = row.get("delFlag") in (1, "1")
+        if not deleted and "value" not in row:
+            continue
+        timestamp = _row_update_time(row)
+        if timestamp and timestamp < times.get(key, 0):
+            continue
+        times[key] = timestamp
+        if deleted:
+            properties.pop(key, None)
+            continue
+        value = row["value"]
+        if isinstance(value, str) and value.lstrip().startswith(("{", "[")):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                pass
+        properties = _merge_properties(properties, {key: value})
+    return properties
+
+
 def parse_readtable_devices(
     payload: Mapping[str, Any],
 ) -> tuple[OrviboDevice, ...]:
@@ -271,58 +358,56 @@ def parse_readtable_devices(
 
     camera_types = parse_camera_types(data.get("cameraInfo"))
 
-    # --- 房间映射 ---
-    raw_rooms = data.get("room", [])
+    # Keyed and array tables share the same joins and deletion rules.
     room_names: dict[str, str] = {}
-    if isinstance(raw_rooms, list):
-        for item in raw_rooms:
-            if not isinstance(item, Mapping) or item.get("delFlag") in (1, "1"):
-                continue
-            room_id = _first_text(item, ("roomId", "roomID"))
-            room_name = _first_text(item, ("roomName",))
-            if room_id and room_name:
-                room_names[room_id] = room_name
+    for row in _table_rows(data.get("room"), "roomId"):
+        if row.get("delFlag") not in (1, "1"):
+            room_id = _first_text(row, ("roomId", "roomID"))
+            if room_id:
+                room_names[room_id] = _first_text(row, ("roomName",))
 
-    # --- 设备状态映射（deviceStatus[]）---
-    raw_statuses = data.get("deviceStatus", [])
-    online_by_device: dict[str, bool | None] = {}
-    values_by_device: dict[str, tuple[int | None, ...]] = {}
-    if isinstance(raw_statuses, list):
-        for item in raw_statuses:
-            if not isinstance(item, Mapping) or item.get("delFlag") in (1, "1"):
-                continue
-            device_id = _first_text(item, ("deviceId", "deviceID"))
-            if device_id:
-                online_by_device[device_id] = _parse_online(item.get("online"))
-                values: list[int | None] = []
-                for key in ("value1", "value2", "value3", "value4"):
-                    try:
-                        values.append(int(item[key]))
-                    except (KeyError, TypeError, ValueError):
-                        values.append(None)
-                values_by_device[device_id] = tuple(values)
+    statuses: dict[str, dict[str, Any]] = {}
+    for row in _table_rows(data.get("deviceStatus"), "deviceId"):
+        device_id = _first_text(row, ("deviceId", "deviceID"))
+        if not device_id:
+            continue
+        previous = statuses.get(device_id, {})
+        timestamp = _row_update_time(row)
+        if not timestamp or timestamp >= _row_update_time(previous):
+            statuses[device_id] = row
 
-    # --- 设备列表（device[]）---
-    raw_devices = data.get("device", [])
-    if not isinstance(raw_devices, list):
-        return ()
+    property_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in _table_rows(data.get("devicePropertyStatus")):
+        device_id = _first_text(row, ("deviceId", "deviceID"))
+        if device_id:
+            property_rows.setdefault(device_id, []).append(row)
 
     devices: dict[str, OrviboDevice] = {}
-    for item in raw_devices:
-        if not isinstance(item, Mapping) or item.get("delFlag") in (1, "1"):
+    for item in _table_rows(data.get("device"), "deviceId"):
+        if item.get("delFlag") in (1, "1"):
             continue
         device_id = _first_text(
-            item,
-            ("deviceId", "deviceID", "deviceUid", "deviceUUID", "uid"),
+            item, ("deviceId", "deviceID", "deviceUid", "deviceUUID", "uid")
         )
         if not device_id:
             continue
-
+        embedded = item.get("status")
+        status = dict(embedded) if isinstance(embedded, Mapping) else {}
+        table_status = statuses.get(device_id)
+        if table_status is not None:
+            if table_status.get("delFlag") in (1, "1"):
+                status = {}
+            else:
+                status.update(table_status)
+        if status.get("delFlag") in (1, "1"):
+            status = {}
         room_id = _first_text(item, ("roomId", "roomID"))
-        online = online_by_device.get(device_id)
-        if device_id not in online_by_device:
-            online = _parse_online(item.get("online"))
-        values = values_by_device.get(device_id, (None, None, None, None))
+        online = _parse_online(status.get("online", item.get("online")))
+        values = tuple(_safe_int(status.get(key, item.get(key)))
+                       for key in ("value1", "value2", "value3", "value4"))
+        properties = _readtable_properties(item, status, property_rows.get(device_id, ()))
+        if "properties" in status:
+            status["properties"] = copy.deepcopy(properties)
 
         # 提取 ui.model
         ui = item.get("ui", {})
@@ -331,7 +416,6 @@ def parse_readtable_devices(
         # 提取 classId（可能在 properties.Descriptor 里）
         class_id: int | None = _safe_int(item.get("classId"))
         if class_id is None:
-            properties = item.get("properties", {})
             if isinstance(properties, dict):
                 descriptor = properties.get("Descriptor", {})
                 if isinstance(descriptor, dict):
@@ -384,11 +468,9 @@ def parse_readtable_devices(
             class_name=_first_text(item, ("className",)),
             device_flag=_safe_int(item.get("deviceFlag")),
             endpoint=_safe_int(item.get("endpoint")) or 0,
-            properties=(
-                dict(item.get("properties", {}))
-                if isinstance(item.get("properties"), Mapping)
-                else {}
-            ),
+            properties=properties,
+            room_id=room_id,
+            status=copy.deepcopy(status),
         )
 
     return tuple(sorted(devices.values(), key=lambda d: d.uid))
@@ -601,7 +683,7 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
         "ext_addr": device.ext_addr,
         "model": device.model,
         "ui_model": device.ui_model,
-        "room_id": "",
+        "room_id": device.room_id,
         "room_name": device.room,
         "online": device.online or False,
         "state": _initial_state,
@@ -614,7 +696,7 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
         "endpoint": device.endpoint,
         "class_name": device.class_name,
         "device_flag": device.device_flag,
-        "status": {},
+        "status": copy.deepcopy(dict(device.status)),
         "value1": device.value1,
         "value2": device.value2,
         "value3": device.value3,

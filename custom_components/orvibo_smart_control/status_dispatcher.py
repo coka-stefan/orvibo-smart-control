@@ -29,6 +29,25 @@ def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+class _StateCandidate(dict):
+    """Keep the parser's current-state view, but merge only assigned fields."""
+
+    def __init__(self, state: dict[str, Any]) -> None:
+        super().__init__(state)
+        self.updated_fields: set[str] = set()
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.updated_fields.add(key)
+        super().__setitem__(key, value)
+
+    def update(self, values=(), **kwargs) -> None:
+        for key, value in dict(values, **kwargs).items():
+            self[key] = value
+
+    def patch(self) -> dict[str, Any]:
+        return {key: self[key] for key in self.updated_fields}
+
+
 class StatusUpdateDispatcher:
     """Own the synchronous portion of inbound SSL status processing."""
 
@@ -124,7 +143,7 @@ class StatusUpdateDispatcher:
             return
 
         state = self._states[device_id]
-        candidate = dict(state)
+        candidate = _StateCandidate(state)
         incoming_properties = raw_status.get("properties")
         if isinstance(incoming_properties, dict):
             candidate["properties"] = _deep_merge(
@@ -143,10 +162,7 @@ class StatusUpdateDispatcher:
             self._on_lock_message(device_id, raw_status)
             self._state_store.merge(
                 device_id,
-                {
-                    "online": candidate["online"],
-                    "properties": candidate.get("properties", {}),
-                },
+                candidate.patch(),
                 source,
             )
             return
@@ -172,7 +188,7 @@ class StatusUpdateDispatcher:
 
         self._state_store.merge(
             device_id,
-            candidate,
+            candidate.patch(),
             source,
         )
 
@@ -230,12 +246,19 @@ class StatusUpdateDispatcher:
 
     @staticmethod
     def _apply_generic(state: dict[str, Any], raw_status: dict[str, Any]) -> None:
-        props = raw_status.get("properties", {})
+        props = raw_status.get("properties")
+        props = props if isinstance(props, dict) else {}
         onoff = props.get("onoff", {})
         if isinstance(onoff, dict) and onoff.get("status"):
             state["state"] = onoff.get("status") == "on"
-        else:
-            state["state"] = raw_status.get("state", False)
-        state["brightness"] = raw_status.get("value2", props.get("brightness"))
-        state["color_temp"] = raw_status.get("value3", props.get("colortemp"))
-        state["position"] = raw_status.get("value1", props.get("percent"))
+        elif "state" in raw_status:
+            state["state"] = raw_status["state"]
+        for field, raw_key, property_key in (
+            ("brightness", "value2", "brightness"),
+            ("color_temp", "value3", "colortemp"),
+            ("position", "value1", "percent"),
+        ):
+            if raw_key in raw_status:
+                state[field] = raw_status[raw_key]
+            elif property_key in props:
+                state[field] = props[property_key]

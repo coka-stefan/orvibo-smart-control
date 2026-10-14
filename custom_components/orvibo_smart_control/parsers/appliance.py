@@ -96,19 +96,14 @@ def parse_clothes_horse(
 ) -> StatePatch:
     """Parse a clothes-horse cmd=99 status packet."""
 
-    main_switch = raw_status.get("main_switch_state", "off") == "on"
-    return StatePatch(
-        {
-            "motor_state": raw_status.get("motor_state", "stop"),
-            "position": raw_status.get("motor_position", 0),
-            "lighting_state": raw_status.get("lighting_state", "off") == "on",
-            "heat_drying_state": raw_status.get("heat_drying_state", "off")
-            == "on",
-            "wind_drying_state": raw_status.get("wind_drying_state", "off")
-            == "on",
-            "sterilizing_state": raw_status.get("sterilizing_state", "off")
-            == "on",
-            "main_switch_state": main_switch,
-            "state": main_switch,
-        }
-    )
+    updates: dict[str, Any] = {}
+    for field, raw_field in (("motor_state", "motor_state"), ("position", "motor_position")):
+        if raw_field in raw_status:
+            updates[field] = raw_status[raw_field]
+    for field in ("lighting_state", "heat_drying_state", "wind_drying_state",
+                  "sterilizing_state", "main_switch_state"):
+        if field in raw_status:
+            updates[field] = raw_status[field] == "on"
+    if "main_switch_state" in updates:
+        updates["state"] = updates["main_switch_state"]
+    return StatePatch(updates)
