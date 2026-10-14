@@ -56,6 +56,8 @@ def _load_ssl_client_module():
         SERVER_CA="server.crt",
         ID_UNSET="",
         DEFAULT_KEY="test-key",
+        DEBUG_INFO="test-debug",
+        SOFTWARE_VER="test-version",
         SSL_MAX_RECONNECT_ATTEMPTS=1,
         CMD_HELLO=1,
         CMD_LOGIN=2,

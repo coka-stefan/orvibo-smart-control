@@ -51,6 +51,13 @@ class PendingRequests:
             if self._futures.get(key) is future:
                 self._futures.pop(key, None)
 
+    def discard(self, key: str, future: asyncio.Future) -> None:
+        """Release only the caller's request, including failed writes/cancellation."""
+        if self._futures.get(key) is future:
+            self._futures.pop(key, None)
+        if not future.done():
+            future.cancel()
+
     def cancel_all(self) -> None:
         for future in self._futures.values():
             if not future.done():

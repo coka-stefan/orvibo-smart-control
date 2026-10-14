@@ -103,14 +103,16 @@ const core = {
 };
 const fakeRequire = name => {
   if (name !== 'fs') throw new Error(`Unexpected require: ${name}`);
-  return {readFileSync(path) {
+  return {existsSync() {return options.notes !== false;}, readFileSync(path) {
     if (path.endsWith('manifest.json')) return JSON.stringify({version: options.version});
+    if (path.endsWith('.md')) return 'Diagnostic release notes';
     return Buffer.from('zip data');
   }};
 };
 const fakeProcess = {env: {
   RELEASE_TAG: `v${options.version}`,
   RELEASE_SHA: options.sourceSha || options.sha,
+  RELEASE_PRERELEASE: options.version.includes('b') ? 'true' : 'false',
 }};
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 async function run(script) {
@@ -122,7 +124,10 @@ async function run(script) {
   let failure = null;
   try {
     if (input.mode !== 'publish') await run(input.scripts[0]);
-    if (input.mode === 'release') fakeProcess.env.RELEASE_SHA = outputs.sha;
+    if (input.mode === 'release') {
+      fakeProcess.env.RELEASE_SHA = outputs.sha;
+      fakeProcess.env.RELEASE_PRERELEASE = outputs.prerelease;
+    }
     if (input.mode === 'publish' || (input.mode === 'release' && outputs.publish === 'true')) {
       await run(input.scripts[1]);
     }
@@ -275,11 +280,83 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIsNone(result["error"])
         self.assertNotIn("createRef", self.methods(result))
 
+    def test_beta_tag_creates_prerelease_and_publishes_after_upload(self):
+        result = self.run_workflow("release", version="0.2.6b0")
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["outputs"]["tag"], "v0.2.6b0")
+        self.assertEqual(result["outputs"]["prerelease"], "true")
+        self.assertTrue(result["calls"][1]["args"]["prerelease"])
+        self.assertEqual(result["release"]["body"], "Diagnostic release notes")
+        self.assertTrue(result["release"]["prerelease"])
+        self.assertFalse(result["release"]["draft"])
+        self.assertEqual(self.methods(result)[-2:], ["uploadReleaseAsset", "updateRelease"])
+
+    def test_beta_without_version_notes_uses_generated_release_notes(self):
+        result = self.run_workflow("release", version="0.2.6b2", notes=False)
+        self.assertIsNone(result["error"])
+        self.assertNotIn("body", result["release"])
+        self.assertTrue(result["release"]["generate_release_notes"])
+        self.assertTrue(result["release"]["prerelease"])
+
+    def test_complete_beta_release_is_not_promoted_to_stable(self):
+        result = self.run_workflow(
+            "release", version="0.2.6b1", ref=self.commit_ref(),
+            release=self.release(prerelease=True),
+        )
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["outputs"]["publish"], "false")
+        self.assertEqual(result["calls"], [])
+        self.assertTrue(result["release"]["prerelease"])
+
+    def test_beta_incorrectly_marked_stable_is_repaired(self):
+        result = self.run_workflow(
+            "release", version="0.2.6b0", ref=self.commit_ref(), release=self.release(),
+        )
+        self.assertIsNone(result["error"])
+        self.assertEqual(self.methods(result), ["updateRelease"])
+        self.assertTrue(result["release"]["prerelease"])
+
+    def test_beta_draft_remains_prerelease_after_publication(self):
+        result = self.run_workflow(
+            "release", version="0.2.6b0", ref=self.commit_ref(),
+            release=self.release(draft=True, prerelease=True),
+        )
+        self.assertIsNone(result["error"])
+        self.assertEqual(self.methods(result), ["updateRelease"])
+        self.assertFalse(result["release"]["draft"])
+        self.assertTrue(result["release"]["prerelease"])
+
+    def test_schedule_preserves_beta_classification(self):
+        result = self.run_workflow("release", version="0.2.6b0", eventName="schedule")
+        self.assertIsNone(result["error"])
+        self.assertTrue(result["release"]["prerelease"])
+
+    def test_beta_upload_failure_can_retry_without_promotion(self):
+        failed = self.run_workflow("release", version="0.2.6b0", uploadError=503)
+        self.assertEqual(failed["error"], "HTTP 503")
+        self.assertTrue(failed["release"]["draft"])
+        retried = self.run_workflow(
+            "release", version="0.2.6b0", ref=failed["ref"], release=failed["release"],
+        )
+        self.assertIsNone(retried["error"])
+        self.assertTrue(retried["release"]["prerelease"])
+        self.assertFalse(retried["release"]["draft"])
+
+    def test_matching_beta_tag_push_uses_exact_commit(self):
+        result = self.run_workflow(
+            "release", version="0.2.6b0", eventRef="refs/tags/v0.2.6b0",
+            ref=self.commit_ref(CURRENT_SHA),
+        )
+        self.assertIsNone(result["error"])
+        self.assertNotIn("createRef", self.methods(result))
+        self.assertEqual(result["release"]["target_commitish"], CURRENT_SHA)
+        self.assertTrue(result["release"]["prerelease"])
+
     def test_invalid_manifest_versions_fail_before_writes(self):
-        for version in ("0.02.0", "0.2.00", "0.2", "0.2.0b1", "v0.2.0"):
+        for version in ("0.02.0", "0.2.00", "0.2", "0.2.0b", "0.2.0b01", "0.2.0rc1", "v0.2.0"):
             with self.subTest(version=version):
                 result = self.run_workflow(version=version)
-                self.assertIn("Invalid stable version", result["error"])
+                self.assertIn("Invalid release version", result["error"])
                 self.assertEqual(result["calls"], [])
 
     def test_non_404_api_errors_do_not_create_tags(self):

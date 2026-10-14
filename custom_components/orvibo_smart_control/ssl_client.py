@@ -9,6 +9,7 @@ from .packet import HomematePacket, HomemateJsonData
 from .protocol import normalize_password_hash
 from .ssl_transport import SSLTransport, TlsFiles
 from .pending_requests import PendingRequests
+from .meari_session import CMD_MEARI_SESSION, build_session_request
 
 from .const import (
     CLIENT_CERT, CLIENT_KEY, SERVER_CA, ID_UNSET, DEFAULT_KEY,
@@ -72,6 +73,7 @@ class SSLClient:
         self.HEARTBEAT_MAX_FAILURES = 2
 
         self._pending_requests = PendingRequests()
+        self._meari_request_identity: dict | None = None
         # 控制响应超时（秒）
         self._control_response_timeout: float = 3.0
         # 登录等待机制
@@ -746,6 +748,37 @@ class SSLClient:
         await self._send_packet(payload, self.session_key)
         return True
 
+    async def send_meari_session(
+        self, *, country_code: str = "CN", phone_code: str = "86",
+        language: str = "zh", timeout: float = 15.0,
+    ) -> Optional[dict]:
+        """Request cmd=148 on the existing cloud session, without logging credentials."""
+        if not self.connected or not self.session_key:
+            return None
+        if self.session_key == DEFAULT_KEY.encode("utf-8"):
+            return None
+        payload = build_session_request(
+            self.family_id, country_code=country_code,
+            phone_code=phone_code, language=language,
+        )
+        future = self._pending_requests.register("meari_session")
+        self._meari_request_identity = payload
+        try:
+            await self._send_packet(payload, self.session_key)
+            return await self._pending_requests.wait("meari_session", future, timeout)
+        finally:
+            self._pending_requests.discard("meari_session", future)
+            self._meari_request_identity = None
+
+    def _handle_meari_session_response(self, data: dict) -> None:
+        expected = self._meari_request_identity
+        if expected is None:
+            return
+        for field in ("serial", "uniSerial", "familyId"):
+            if field in data and str(data[field]) != str(expected[field]):
+                return
+        self._pending_requests.resolve("meari_session", data)
+
     async def send_cos_auth(
         self,
         user_id: str,
@@ -956,6 +989,8 @@ class SSLClient:
                     # 门锁事件（unlockEvent/errorUnlockEvent/picklockEvent/
                     # leaveHomeEvent/doorUnclose/doorbell ring）走同一状态通道
                     await self._handle_state_update(data)
+                elif cmd == CMD_MEARI_SESSION:
+                    self._handle_meari_session_response(data)
                 elif cmd == CMD_COS_AUTH:
                     # Skill.GetCOSAuthorization 响应（门锁媒体 COS 凭证）
                     if not self._pending_requests.resolve("cos_auth", data):

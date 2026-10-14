@@ -69,9 +69,10 @@ jobs:
           script: |
             const fs = require('fs');
             const version = JSON.parse(fs.readFileSync('custom_components/orvibo_smart_control/manifest.json')).version;
-            if (!/^0\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
-              throw new Error(`Invalid stable version: ${version}`);
+            if (!/^0\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:b(0|[1-9]\d*))?$/.test(version)) {
+              throw new Error(`Invalid release version: ${version}`);
             }
+            const prerelease = version.includes('b');
             const tag = `v${version}`;
             const tagPush = context.eventName === 'push' && context.ref.startsWith('refs/tags/');
             if (tagPush && context.ref !== `refs/tags/${tag}`) {
@@ -98,12 +99,13 @@ jobs:
               throw new Error(`Tag ${tag} must point to a commit`);
             }
             const asset = release?.data.assets.find(item => item.name === 'orvibo-smart-control.zip');
-            const complete = asset?.state === 'uploaded' && asset.size > 0 && !release.data.draft && !release.data.prerelease;
+            const complete = asset?.state === 'uploaded' && asset.size > 0 && !release.data.draft && release.data.prerelease === prerelease;
             if (target.sha !== context.sha) {
               core.notice(`${tag} already points to ${target.sha}; increase the manifest version to release newer code`);
             }
             core.setOutput('publish', complete ? 'false' : 'true');
             core.setOutput('version', version);
+            core.setOutput('prerelease', prerelease ? 'true' : 'false');
             core.setOutput('tag', tag);
             core.setOutput('sha', target.sha);
             if (complete) core.notice(`Release ${tag} and its HACS ZIP already exist`);
@@ -136,11 +138,13 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           RELEASE_SHA: ${{ steps.version.outputs.sha }}
+          RELEASE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         with:
           script: |
             const fs = require('fs');
             const tag = process.env.RELEASE_TAG;
             const sha = process.env.RELEASE_SHA;
+            const prerelease = process.env.RELEASE_PRERELEASE === 'true';
             const ref = await github.rest.git.getRef({...context.repo, ref: `tags/${tag}`});
             let target = ref.data.object;
             while (target.type === 'tag') {
@@ -152,7 +156,9 @@ jobs:
             }
             let release = await github.rest.repos.getReleaseByTag({...context.repo, tag}).catch(error => error.status === 404 ? null : Promise.reject(error));
             if (!release) {
-              release = await github.rest.repos.createRelease({...context.repo, tag_name: tag, target_commitish: sha, name: tag, generate_release_notes: true, prerelease: false, draft: true});
+              const notesPath = `release-source/docs/releases/${tag.slice(1)}.md`;
+              const body = prerelease && fs.existsSync(notesPath) ? fs.readFileSync(notesPath, 'utf8') : undefined;
+              release = await github.rest.repos.createRelease({...context.repo, tag_name: tag, target_commitish: sha, name: tag, body, generate_release_notes: true, prerelease, draft: true});
             }
             const asset = release.data.assets.find(item => item.name === 'orvibo-smart-control.zip');
             if (asset?.state !== 'uploaded' || asset.size <= 0) {
@@ -160,7 +166,7 @@ jobs:
               const data = fs.readFileSync('orvibo-smart-control.zip');
               await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name: 'orvibo-smart-control.zip', data, headers: {'content-type': 'application/zip', 'content-length': data.length}});
             }
-            if (release.data.draft || release.data.prerelease) {
-              await github.rest.repos.updateRelease({...context.repo, release_id: release.data.id, draft: false, prerelease: false});
+            if (release.data.draft || release.data.prerelease !== prerelease) {
+              await github.rest.repos.updateRelease({...context.repo, release_id: release.data.id, draft: false, prerelease});
             }
             core.notice(`Release ${tag} and its HACS ZIP are ready`);

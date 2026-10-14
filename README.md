@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.5-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b0-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control 是一个面向 Home Assistant 的独立自定义集成。它把 MixPad
 网关局域网直连与 ORVIBO 云端协议放在同一条设备、状态和控制链路中：能在 LAN
@@ -54,6 +54,12 @@ LAN > 云端实时推送（SSL）> 云端快照（REST）> 乐观状态 > 初始
 2. 添加 `https://github.com/maycode0-0/orvibo-smart-control`，类别选择“集成”。
 3. 安装 **ORVIBO Smart Control** 并重启 Home Assistant。
 4. 进入“设置 -> 设备与服务 -> 添加集成”，搜索项目名称。
+
+### 录像机诊断预发布版
+
+`0.2.6b0` 新增厂商会话检查动作；实时画面和录像机硬盘回放尚未实现。
+在 HACS 中打开本集成的“重新下载”，启用预发布版本，选择 `v0.2.6b0`，下载后重启
+Home Assistant。动作及返回字段说明见 [录像机诊断指南](docs/nvr-video-diagnostics.md)。
 
 ### 手动安装
 
