@@ -205,7 +205,7 @@ class SessionServiceTests(unittest.IsolatedAsyncioTestCase):
         registered = {}
         services = types.SimpleNamespace(async_register=lambda domain, name, fn, **kwargs: registered.setdefault(name, fn))
         first = types.SimpleNamespace(ssl_client=None)
-        hass = types.SimpleNamespace(services=services, data={handlers.DOMAIN: {"a": first, "b": first}})
+        hass = types.SimpleNamespace(bus=types.SimpleNamespace(async_listen_once=lambda *args: None), services=services, data={handlers.DOMAIN: {"a": first, "b": first}})
         await handlers.async_register_services(hass)
         fn = registered[handlers.SERVICE_INSPECT_VIDEO_SESSION]
         self.assertEqual((await fn(types.SimpleNamespace(data={})))["stage"], "select_one_entry")

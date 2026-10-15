@@ -274,3 +274,53 @@ inspect_video_channels:
           options:
             - zh
             - en
+
+probe_video_stream:
+  name: 测试指定通道的视频连接
+  description: 限时连接一个 XTS 设备通道并检查编码关键帧；完成或超时后停止进程，不保存画面。此动作不提供播放或硬盘回放。
+  fields:
+    entry_id:
+      name: 配置项 ID
+      description: 多个欧瑞博配置项时必须指定
+      example: "0123456789abcdef"
+    device_index:
+      name: 设备序号
+      description: inspect_video_devices 返回的 index；设备列表变化后请重新确认
+      required: true
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 512
+          mode: box
+    channel_id:
+      name: 通道编号
+      description: inspect_video_channels 返回的 channel_id；普通 IPC 使用 0
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 128
+          mode: box
+    timeout_seconds:
+      name: 媒体连接时限
+      description: 10 至 60 秒，默认 35 秒；获取云授权和设备列表另需时间
+      example: 35
+      selector:
+        number:
+          min: 10
+          max: 60
+          mode: box
+    country_code:
+      name: 国家代码
+      description: 与已有视频会话诊断一致，默认 CN
+      example: "CN"
+    phone_code:
+      name: 电话区号
+      description: 默认 86
+      example: "86"
+    language:
+      name: 语言
+      description: zh 或 en，默认 zh
+      example: "zh"

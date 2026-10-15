@@ -194,6 +194,7 @@ def summarize_inventory(payload: object) -> dict[str, Any]:
 async def async_inspect_device_inventory(
     session: aiohttp.ClientSession, raw: object, *, country_code: str = "CN",
     phone_code: str = "86", language: str = "zh", include_channels: bool = False,
+    probe_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         url, params, headers = build_inventory_request(raw, country_code=country_code, phone_code=phone_code, language=language)
@@ -221,7 +222,12 @@ async def async_inspect_device_inventory(
                     session, raw, payload, country_code=country_code,
                     phone_code=phone_code, language=language,
                 ))
-            return public
+        # Release the HTTP response before the longer media probe starts.
+        if probe_options is not None and public["vendor_stage"] == "vendor_devices_received":
+            from .meari_probe import async_probe_inventory
+
+            public.update(await async_probe_inventory(raw, payload, **probe_options))
+        return public
     except (aiohttp.ClientError, OSError, ValueError, RecursionError, asyncio.TimeoutError):
         # Do not include exception messages: they can contain credentials/URLs.
         return {"vendor_stage": "vendor_request_failed", "channel_query_implemented": False}

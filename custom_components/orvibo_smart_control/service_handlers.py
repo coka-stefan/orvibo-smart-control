@@ -12,6 +12,7 @@ from .const import DOMAIN
 from .device_types import DeviceCategory, classify_device
 from .video_archive import normalize_event_object_key
 from .meari_session import async_inspect_video_session
+from .meari_probe import async_probe_video_stream, async_cancel_video_probes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ SERVICE_REFRESH = "refresh_devices"
 SERVICE_INSPECT_VIDEO_SESSION = "inspect_video_session"
 SERVICE_INSPECT_VIDEO_DEVICES = "inspect_video_devices"
 SERVICE_INSPECT_VIDEO_CHANNELS = "inspect_video_channels"
+SERVICE_PROBE_VIDEO_STREAM = "probe_video_stream"
 SERVICE_SET_LOCK_USER_NAME = "set_lock_user_name"
 SERVICE_FETCH_VIDEO = "fetch_video"
 SERVICE_LIST_EVENTS = "list_events"
@@ -114,6 +116,39 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_inspect_video_channels(call: ServiceCall) -> dict[str, Any]:
         return await handle_inspect_video_session(call, inspect_channels=True)
+
+    async def handle_probe_video_stream(call: ServiceCall) -> dict[str, Any]:
+        base = {"video_playback_implemented": False, "real_device_video_verified": False}
+        targets = _targets(hass, call.data.get("entry_id"))
+        if len(targets) != 1:
+            return {**base, "probe_stage": "select_one_entry"}
+        values = {}
+        for field, minimum, maximum, default in (
+            ("device_index", 1, 512, None), ("channel_id", 0, 128, None),
+            ("timeout_seconds", 10, 60, 35),
+        ):
+            value = call.data.get(field, default)
+            if type(value) is not int or not minimum <= value <= maximum:
+                return {**base, "probe_stage": "invalid_probe_parameters"}
+            values[field] = value
+        country = str(call.data.get("country_code") or "CN").upper()
+        phone = str(call.data.get("phone_code") or "86")
+        language = str(call.data.get("language") or "zh")
+        if (not re.fullmatch(r"[A-Z]{2}", country)
+                or not re.fullmatch(r"[0-9]{1,4}", phone)
+                or language not in ("zh", "en")):
+            return {**base, "probe_stage": "invalid_region"}
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        return await async_probe_video_stream(
+            targets[0], http_session=async_get_clientsession(hass),
+            country_code=country, phone_code=phone, language=language, **values,
+        )
+
+    async def handle_stop_video_probes(_event: Any) -> None:
+        await async_cancel_video_probes()
+
+    hass.bus.async_listen_once("homeassistant_stop", handle_stop_video_probes)
 
     async def handle_refresh(call: ServiceCall) -> None:
         entry_id = str(call.data.get("entry_id") or "")
@@ -258,6 +293,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         (SERVICE_INSPECT_VIDEO_SESSION, handle_inspect_video_session),
         (SERVICE_INSPECT_VIDEO_DEVICES, handle_inspect_video_devices),
         (SERVICE_INSPECT_VIDEO_CHANNELS, handle_inspect_video_channels),
+        (SERVICE_PROBE_VIDEO_STREAM, handle_probe_video_stream),
         (SERVICE_FETCH_VIDEO, handle_fetch_video),
         (SERVICE_LIST_EVENTS, handle_list_events),
         (SERVICE_CLEANUP_HISTORY, handle_cleanup_history),

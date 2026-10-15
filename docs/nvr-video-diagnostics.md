@@ -1,6 +1,7 @@
 # 录像机视频接入诊断
 
-目前普通摄像机和 NVR 仍只有诊断传感器，没有实时取流或录像机硬盘回放实体。
+目前普通摄像机和 NVR 仍只有诊断传感器，没有实时播放或录像机硬盘回放实体。
+0.2.6b3 增加限时媒体连接和编码首帧探测，使用下文的 `probe_video_stream`。
 `inspect_video_session` 是开发诊断入口，不是播放功能修复。
 
 它复用本集成已连接的欧瑞博云端会话，按 HomeMate APK 的 `cmd=148` 请求
@@ -92,8 +93,57 @@ data: {}
 
 云端快照可能滞后，原始 `state/type` 不直接等同于已验证在线或可播放。
 `video_playback_implemented` 和 `real_device_video_verified` 仍为 false。
-请提供此动作完整的脱敏返回，以确定后续取流所需的实际通道。
+用户已提供本动作的真实成功结果：录像机容量与返回通道数均为 8；1、3 号 state=1、p2p=2，其余 state=0、p2p=0。
+此结果仅证明通道云端查询成功，媒体仍需单独测试。
 请求与静态依据见 [NVR 通道接口](meari-nvr-channel-protocol.md)。
+
+## 指定通道媒体测试（0.2.6b3）
+
+安装普通 Release `v0.2.6b3` 后重启 Home Assistant，先测试已发现的录像机 1 号通道：
+
+```yaml
+action: orvibo_smart_control.probe_video_stream
+data:
+  device_index: 2
+  channel_id: 1
+  timeout_seconds: 35
+```
+
+完成后再把 `channel_id` 改为 `3`，分别保留两次完整脱敏返回。
+`device_index` 按每次重新取得的厂商库存编号；库存变化时先重新运行设备/通道诊断。
+只接受 iotType=3、p2p=2 的 NVR（devTypeID=11）或 IPC（devTypeID=2，channel_id 必须为 0）。
+一次只连接一个明确指定的通道，同一配置项已有探测时返回 `probe_in_progress`。
+
+此动作使用新的云会话和库存，在独立进程内实际建立信令与 P2P/TURN 媒体连接，
+发送选定通道的实时开始请求。它不获取硬盘目录，不保存画面，不写入用户凭据或原始响应。
+媒体预算为 10–60 秒，默认 35 秒；云会话和库存获取另需时间，整个动作另有总时限。
+超时或取消后父进程强制结束并回收子进程，避免遗留阻塞网络线程；集成卸载与 HA 关闭也会取消探测。
+
+返回保留会话/库存字段，新增：
+
+| 字段 | 含义 |
+| --- | --- |
+| `probe_stage` | 最后结果；`probe_stage_history` 依序记录尝试过的连接阶段，阶段出现本身不证明该阶段已成功 |
+| `root_discovery` / `signaling_connect` / `signaling_registered` | 发现信令地址、尝试连接、完成注册 |
+| `device_status` / `turn_allocate` / `sdp_offer` | 查询设备状态、申请中继、发送媒体协商 |
+| `ice_connect` / `kcp_connect` / `receiving_video` | 尝试 ICE、发送 KCP/IVA 握手、发送实时开始请求并等待视频 |
+| `video_keyframe_received` | 识别到 H.264/HEVC 参数集和关键 NAL 的基本头部、长度结构；不是完整解码校验 |
+| `encoded_video_verified` | 上述编码结构探测成功；与 `decoded`、播放和历史回放分开 |
+| `video_frames` / `video_bytes` / `codec` | 识别到的候选视频帧数、编码负载字节数和编解码名称 |
+| `received_packets` | 收到的网络包总数，包含协商包，不能直接当视频帧数 |
+| `keyframe_received` / `parameter_sets_received` | 编码关键帧与必要参数集是否通过基本结构检查 |
+| `no_video_frame` / `device_unavailable` / `probe_timeout` | 开流后无合格首帧、设备状态不允许连接、达到时限；不能自动归因为密码错误 |
+| `probe_failed` / `dependency_missing` / `invalid_context` | 连接或协议处理失败、依赖不可用、输入会话/设备参数不满足要求；不回显原始错误 |
+| `last_probe_stage` / `worker_stopped` | 最近尝试的阶段、媒体子进程已结束并回收 |
+| `probe_device_index` / `probe_channel_id` | 本次明确请求的设备序号与通道号 |
+
+本版始终返回 `decoded=false`、`video_playback_implemented=false`、`real_device_video_verified=false`。
+尚未加入解码器和 HA 播放出口。不能从首帧结构探测成功推断硬盘片段可播放。
+
+身份取自外部会话的 partnerId/userID；不套用其他品牌账号。
+本轮模拟客户端版本为 `5.2.6.307a13`，发现协议版本沿用固定参考实现的 `15259`，设备兼容性仍待实测。
+鉴权只尝试 App 默认 hostKey 模式；若已明确返回独立视频密码状态，则拒绝该模式。
+App 也可能把视频密码状态存在手机本地，所以字段缺失不表示已证明没有视频密码。
 
 ## 当前证据与下一阶段
 
@@ -103,5 +153,6 @@ APK 的 Android ARM 原生视频库不能直接用于此环境。公开 MIT 项�
 提供了可参考的 Python P2P 实时协议；其当前代码没有 NVR 硬盘索引、回放和定位实现。
 该参考实现与欧瑞博账号、NVR 通道和媒体格式的兼容性尚未通过真实设备验证。
 
-下一阶段需要验证外部厂商会话、读取实际设备/通道信息，再验证一个通道的首帧、
-一个硬盘片段的检索和播放、以及定位。此诊断结果不会改变 `stream_supported=False`。
+外部会话、库存及 NVR 通道查询已获得用户环境成功返回。
+接下来由新动作验证一个通道的媒体首帧，再接入解码和播放出口；硬盘片段检索、播放及定位仍需独立实现。
+此探测结果不会改变 `stream_supported=False`。

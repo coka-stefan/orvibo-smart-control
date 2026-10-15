@@ -48,6 +48,7 @@ from .cloud import cloud_for_region
 from .coordinator import OrviboSmartControlCoordinator
 from .selection import CONF_DEVICE_AREAS, selected_device_ids
 from .service_handlers import async_register_services
+from .meari_probe import async_cancel_video_probes
 from .runtime_options import AvailabilityNotifier, IntegrationUpdateChecker
 from .registry_sync import sync_selected_device_registries
 
@@ -333,6 +334,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     if unload_ok:
         coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
         if coordinator:
+            await async_cancel_video_probes(coordinator)
             await coordinator.async_cleanup()
             _LOGGER.info("Coordinator 清理完成")
         hass_data = hass.data.get(DOMAIN, {})

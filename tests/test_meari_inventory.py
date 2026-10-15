@@ -238,7 +238,7 @@ class InventoryRequestTests(unittest.IsolatedAsyncioTestCase):
         registered = {}
         services = types.SimpleNamespace(async_register=lambda domain, name, fn, **kwargs: registered.setdefault(name, fn))
         coordinator = types.SimpleNamespace(ssl_client=None)
-        hass = types.SimpleNamespace(services=services, data={handlers.DOMAIN: {"entry": coordinator}})
+        hass = types.SimpleNamespace(bus=types.SimpleNamespace(async_listen_once=lambda *args: None), services=services, data={handlers.DOMAIN: {"entry": coordinator}})
         await handlers.async_register_services(hass)
         fake_http = types.ModuleType("homeassistant.helpers.aiohttp_client")
         fake_http.async_get_clientsession = lambda _: "HA-SESSION"
