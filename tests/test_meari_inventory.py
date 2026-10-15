@@ -197,11 +197,19 @@ class InventoryRequestTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("PRIVATE", json.dumps(public))
             self.assertNotIn("SECRET", json.dumps(public))
 
-    async def test_bad_json_and_deep_json_fail_without_body_leak(self):
-        for body in (b"TOKEN-SECRET", b"[" * 1200 + b"]" * 1200):
+    async def test_bad_json_and_deep_json_are_rejected_without_body_leak(self):
+        cases = (
+            (b"TOKEN-SECRET", {"vendor_request_failed"}),
+            # Decoder recursion limits differ across Python releases. A decoded
+            # array must still fail the vendor response structure check.
+            (b"[" * 1200 + b"]" * 1200, {"vendor_request_failed", "invalid_device_response"}),
+        )
+        for body, stages in cases:
             response = FakeResponse(body)
             public = await self.module.async_inspect_device_inventory(FakeSession(response), session_response())
-            self.assertEqual(public["vendor_stage"], "vendor_request_failed")
+            self.assertIn(public["vendor_stage"], stages)
+            self.assertNotIn("SECRET", json.dumps(public))
+            self.assertNotIn("devices", public)
             self.assertTrue(response.closed)
 
     async def test_cancellation_is_propagated(self):
