@@ -19,5 +19,5 @@
   "requirements": [
     "pycryptodome==3.23.0"
   ],
-  "version": "0.2.6b4"
+  "version": "0.2.6b5"
 }

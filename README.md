@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.6b4-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b5-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control 是一个面向 Home Assistant 的独立自定义集成。它把 MixPad
 网关局域网直连与 ORVIBO 云端协议放在同一条设备、状态和控制链路中：能在 LAN
@@ -57,14 +57,16 @@ LAN > 云端实时推送（SSL）> 云端快照（REST）> 乐观状态 > 初始
 
 ### 摄像机与录像机实时画面
 
-`0.2.6b4` 为匹配成功的 Meari XTS/p2p=2 摄像机及录像机在线通道创建 `camera` 实体。
-在 HACS 更新到 `v0.2.6b4` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
+`0.2.6b5` 为匹配成功的 Meari XTS/p2p=2 摄像机及录像机在线通道创建 `camera` 实体。
+在 HACS 更新到 `v0.2.6b5` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
 “通道 3”等摄像头实体；也可把实体加入图片概览卡片并设置 `camera_view: live`。
 HAOS 使用自带 FFmpeg，无需单独安装视频服务。首次连接需要获取授权和建立设备连接，
 可能需要数十秒；首次缩略图超时后再次打开即可复用正在建立的连接。
 
 已收到用户真实 1 号通道 HEVC 关键帧；本地合成 HEVC 到 H.264 转码、解码测试通过。
-**真实设备连续播放仍待用户验证；声音与录像机硬盘历史回放尚未提供。**
+用户已确认实时通道1可看，通道3等待加载后可恢复。新增“欧瑞博硬盘录像”仪表盘卡片，
+可按录像机日期查询硬盘录像片段并播放；**硬盘查询与回放尚待真实设备验证**。当前无声音。
+添加手动卡片：`type: custom:orvibo-smart-control-nvr-card`，操作步骤见 [硬盘回放说明](docs/meari-hdd-playback.md)。
 在线通道列表变化后请重新加载集成。仅本地 LAN 模式无法取得必要的云授权。
 `bN` 后缀用于区分开发版本，GitHub 按普通 Release 发布，不标记为 Pre-release。
 详细说明与故障诊断见 [实时视频](docs/meari-live-video.md) 和

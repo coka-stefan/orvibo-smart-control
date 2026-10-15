@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 import secrets
 import sys
+import time
 from typing import Any
 
 from aiohttp import web
@@ -28,10 +29,29 @@ MEDIA_TIMEOUT = 30.0
 WRITE_TIMEOUT = 10.0
 SESSION_TIMEOUT = 3600.0
 PREPARED_TIMEOUT = 20.0
+RECOVERY_TIMEOUT = 120.0
+RECOVERY_BACKOFF = 1.0
+RECOVERY_ATTEMPTS = 3
+WORKER_STAGES = frozenset({
+    "worker_started", "root_discovery", "signaling_connect", "signaling_registered",
+    "device_status", "turn_allocate", "sdp_offer", "ice_connect", "kcp_connect",
+    "receiving_video", "video_keyframe_received", "no_video_frame", "device_unavailable",
+    "probe_failed", "probe_timeout", "dependency_missing", "invalid_context",
+    "stream_complete", "stream_idle_timeout", "hdd_playback_start",
+    "hdd_playback_acknowledged", "hdd_playback_ended",
+})
 
 
-class _StreamError(Exception):
+class _StreamError(RuntimeError):
     """Fixed error with no transport, media, or credential contents."""
+
+    def __init__(self, *, reported: bool = False) -> None:
+        super().__init__("video_unavailable")
+        self.reported = reported
+
+
+class _ClientDisconnected(Exception):
+    """A closed HA reader is not a camera/source failure."""
 
 
 async def _finish_uninterrupted(coroutine: Awaitable[Any]) -> Any:
@@ -145,8 +165,12 @@ class MeariVideoBridge:
     def __init__(
         self, ffmpeg_binary: str,
         context_factory: Callable[[], Awaitable[Mapping[str, Any]]], *,
+        source_mode: str = "live",
         _worker_path: Path | None = None,
     ) -> None:
+        if source_mode not in ("live", "playback"):
+            raise ValueError("invalid_source_mode")
+        self._source_mode = source_mode
         self._ffmpeg_binary = ffmpeg_binary
         self._context_factory = context_factory
         self._worker_path = _worker_path or WORKER
@@ -159,7 +183,71 @@ class MeariVideoBridge:
         self._warming: asyncio.Task | None = None
         self._prepared: _Prepared | None = None
         self._expiry: asyncio.Task | None = None
+        self._recovery: asyncio.Task | None = None
+        self._ever_streamed = False
+        self._playback_consumed = False
+        self._worker_stage: str | None = None
+        self._source_codec: str | None = None
+        self._last_frame_at: float | None = None
+        self._attempts = 0
+        self._failures = 0
+        self._timeouts = 0
+        self._frames = 0
+        self._video_bytes = 0
+        self._output_bytes = 0
+        self._last_error_stage: str | None = None
+        self._last_error_reason: str | None = None
         self.last_stage = "idle"
+
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        """Return only fixed stages, counters and elapsed time, never IDs/URLs."""
+        now = time.monotonic()
+        return {
+            "stage": self.last_stage, "worker_stage": self._worker_stage,
+            "source_mode": self._source_mode, "source_codec": self._source_codec,
+            "playback_consumed": self._playback_consumed,
+            "output_codec": "h264", "connection_attempts": self._attempts,
+            "reconnect_count": max(0, self._attempts - 1), "failure_count": self._failures,
+            "timeout_count": self._timeouts, "video_frames": self._frames,
+            "video_bytes": self._video_bytes, "output_bytes": self._output_bytes,
+            "last_frame_age_seconds": None if self._last_frame_at is None else round(max(0, now - self._last_frame_at), 1),
+            "last_error_stage": self._last_error_stage,
+            "last_error_reason": self._last_error_reason,
+            "recovery_in_progress": self._recovery is not None and not self._recovery.done(),
+        }
+
+    def _observe(self, event: dict[str, Any]) -> None:
+        if isinstance(event.get("probe_stage"), str) and event["probe_stage"] in WORKER_STAGES:
+            self._worker_stage = event["probe_stage"]
+        if event.get("codec") in ("h264", "hevc"):
+            self._source_codec = event["codec"]
+
+    def _video(self, payload: bytes) -> None:
+        self._frames += 1
+        self._video_bytes += len(payload)
+        self._last_frame_at = time.monotonic()
+
+    def _report(self, error: Exception) -> None:
+        if isinstance(error, _StreamError) and error.reported:
+            return
+        self._failures += 1
+        self._last_error_stage = self._worker_stage if self.last_stage == "connecting" else self.last_stage
+        self._last_error_reason = "timeout" if isinstance(error, TimeoutError) else "source_error"
+        if isinstance(error, TimeoutError):
+            self._timeouts += 1
+            self.last_stage = "stream_timeout"
+        else:
+            self.last_stage = "stream_failed"
+
+    def _ensure_warm(self) -> asyncio.Task:
+        if self._warming is None:
+            self._warming = asyncio.create_task(self._warm())
+            # A cancelled waiter may leave no one to retrieve a later failure.
+            self._warming.add_done_callback(
+                lambda task: None if task.cancelled() else task.exception()
+            )
+        return self._warming
 
     async def async_prepare(self) -> None:
         """Warm a shared pipeline before HA's short source-open timeout starts.
@@ -169,15 +257,16 @@ class MeariVideoBridge:
         """
         if self._closed:
             raise RuntimeError("video_bridge_closed")
-        if self._active is not None or self._prepared is not None:
+        if self._active is not None:
             return
-        if self._warming is None:
-            self._warming = asyncio.create_task(self._warm())
-            # A cancelled waiter may leave no one to retrieve a later failure.
-            self._warming.add_done_callback(
-                lambda task: None if task.cancelled() else task.exception()
-            )
-        await asyncio.shield(self._warming)
+        if self._source_mode == "playback" and self._playback_consumed:
+            raise RuntimeError("playback_selection_required")
+        ready = await self._take_ready()
+        if ready is not None:
+            self._prepared = ready
+            self._expiry = asyncio.create_task(self._expire(ready))
+            return
+        await asyncio.shield(self._ensure_warm())
 
     async def _warm(self) -> None:
         session = _Session()
@@ -192,9 +281,9 @@ class MeariVideoBridge:
             self._expiry = asyncio.create_task(self._expire(ready))
         except asyncio.CancelledError:
             raise
-        except Exception:
-            self.last_stage = "stream_failed"
-            raise RuntimeError("video_unavailable") from None
+        except Exception as error:
+            self._report(error)
+            raise _StreamError(reported=True) from None
         finally:
             try:
                 if not handed_off:
@@ -203,10 +292,22 @@ class MeariVideoBridge:
                 self._warming = None
 
     async def _expire(self, ready: _Prepared) -> None:
+        timer = asyncio.create_task(asyncio.sleep(PREPARED_TIMEOUT))
         try:
-            await asyncio.sleep(PREPARED_TIMEOUT)
+            if not ready.feed.done():
+                await asyncio.wait((ready.feed, timer), return_when=asyncio.FIRST_COMPLETED)
+            if ready.feed.done() and not ready.feed.cancelled() and ready.feed.exception() is not None:
+                if self._prepared is ready:
+                    self._prepared = None
+                    self._report(ready.feed.exception())
+                    await _finish_uninterrupted(ready.session.close())
+                return
+            await timer
         except asyncio.CancelledError:
             return
+        finally:
+            timer.cancel()
+            await asyncio.gather(timer, return_exceptions=True)
         if self._prepared is ready:
             self._prepared = None
             await _finish_uninterrupted(ready.session.close())
@@ -218,6 +319,50 @@ class MeariVideoBridge:
         if ready is not None and self._expiry is not None:
             self._expiry.cancel()
         return ready
+
+    async def _take_ready(self) -> _Prepared | None:
+        ready = self._claim()
+        if ready is None:
+            return None
+        failure = ready.feed.cancelled() or (
+            ready.feed.done() and ready.feed.exception() is not None
+        ) or ready.ffmpeg.returncode not in (None, 0)
+        if failure:
+            error = None if ready.feed.cancelled() or not ready.feed.done() else ready.feed.exception()
+            self._report(error or _StreamError())
+            await _finish_uninterrupted(ready.session.close())
+            return None
+        return ready
+
+    def _schedule_recovery(self) -> None:
+        if (self._closed or self._source_mode != "live" or not self._ever_streamed
+                or self._recovery is not None and not self._recovery.done()):
+            return
+        self._recovery = asyncio.create_task(self._recover())
+        self._recovery.add_done_callback(
+            lambda task: None if task.cancelled() else task.exception()
+        )
+
+    async def _recover(self) -> None:
+        """Warm a replacement for HA's next HTTP retry, with finite backoff."""
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
+        for attempt in range(RECOVERY_ATTEMPTS):
+            delay = min(8.0, RECOVERY_BACKOFF * 2 ** attempt)
+            if time.monotonic() + delay + FIRST_FRAME_TIMEOUT > deadline:
+                return
+            await asyncio.sleep(delay)
+            if self._closed or self._prepared is not None:
+                return
+            # An active retry already obtains the same shared warm-up below.
+            if self._active is not None:
+                return
+            try:
+                await asyncio.shield(self._ensure_warm())
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                continue
 
     async def async_start(self) -> str:
         """Bind lazily without opening a device connection until the first GET."""
@@ -248,6 +393,10 @@ class MeariVideoBridge:
 
         async def close() -> None:
             async with self._start_lock:
+                recovery, self._recovery = self._recovery, None
+                if recovery is not None:
+                    recovery.cancel()
+                    await asyncio.gather(recovery, return_exceptions=True)
                 warming = self._warming
                 if warming is not None:
                     warming.cancel()
@@ -279,31 +428,42 @@ class MeariVideoBridge:
             await asyncio.sleep(0.25)
 
     async def _handle(self, request: web.Request) -> web.StreamResponse:
-        if self._closed or self._active is not None:
+        if (self._closed or self._active is not None
+                or self._source_mode == "playback" and self._playback_consumed):
             return web.Response(status=503, text="Video unavailable")
         self._active = asyncio.current_task()
         session = _Session()
+        recover = False
         try:
             self.last_stage = "starting"
             run = session.task(self._run(request, session))
             disconnected = session.task(self._watch_disconnect(request))
             done, _ = await asyncio.wait((run, disconnected), return_when=asyncio.FIRST_COMPLETED)
             if run in done:
-                return await run
+                response = await run
+                transport = request.transport
+                recover = transport is not None and not transport.is_closing()
+                return response
             # Client disconnect must also interrupt a silent source/bootstrap.
             self.last_stage = "source_closed"
         except asyncio.CancelledError:
             raise
-        except TimeoutError:
-            self.last_stage = "stream_timeout"
-        except Exception:
+        except _ClientDisconnected:
+            self.last_stage = "source_closed"
+        except TimeoutError as error:
+            self._report(error)
+            recover = True
+        except Exception as error:
             # Never expose subprocess errors, private factory failures or media.
-            self.last_stage = "stream_failed"
+            self._report(error)
+            recover = True
         finally:
             try:
                 await _finish_uninterrupted(session.close())
             finally:
                 self._active = None
+                if recover:
+                    self._schedule_recovery()
         if session.response is not None:
             session.response.force_close()
             return session.response
@@ -311,6 +471,8 @@ class MeariVideoBridge:
 
     async def _prepare(self, session: _Session) -> _Prepared:
         async with asyncio.timeout(FIRST_FRAME_TIMEOUT):
+            self._attempts += 1
+            self._worker_stage = None
             context = await self._context_factory()
             try:
                 body = json.dumps(context, separators=(",", ":"), allow_nan=False).encode()
@@ -338,6 +500,7 @@ class MeariVideoBridge:
                         raise _StreamError()
                     break
                 event = _status(payload)
+                self._observe(event)
                 if event.get("final") is True:
                     raise _StreamError()
                 if event.get("probe_stage") == "video_keyframe_received":
@@ -350,6 +513,7 @@ class MeariVideoBridge:
                 raise _StreamError()
             ffmpeg = await session.spawn(*_ffmpeg_args(self._ffmpeg_binary, codec))
             self.last_stage = "transcoding"
+            self._video(payload)
             ffmpeg.stdin.write(payload)
             await ffmpeg.stdin.drain()
             feed = session.task(self._feed(worker.stdout, ffmpeg.stdin, codec))
@@ -358,7 +522,7 @@ class MeariVideoBridge:
             session.tasks.append(output)
             done, _ = await asyncio.wait((feed, output), return_when=asyncio.FIRST_COMPLETED)
             if feed in done and feed.exception() is not None:
-                raise _StreamError()
+                await feed
             first = await output
             if not first:
                 raise _StreamError()
@@ -368,9 +532,18 @@ class MeariVideoBridge:
         async with asyncio.timeout(SESSION_TIMEOUT):
             if self._warming is not None:
                 await asyncio.shield(self._warming)
-            ready = self._claim()
+            ready = await self._take_ready()
             if ready is None:
-                ready = await self._prepare(session)
+                if self._ever_streamed and self._source_mode == "live":
+                    # HA retries the saved URL without calling camera.prepare.
+                    # Keep a slow retry warm-up alive across its 30s open limit.
+                    await asyncio.shield(self._ensure_warm())
+                    ready = await self._take_ready()
+                    if ready is None:
+                        raise _StreamError()
+                    session.children.append(ready.session)
+                else:
+                    ready = await self._prepare(session)
             else:
                 session.children.append(ready.session)
             ffmpeg, feed = ready.ffmpeg, ready.feed
@@ -380,9 +553,16 @@ class MeariVideoBridge:
                 "Content-Type": "video/mp2t", "Cache-Control": "no-store",
             })
             session.response = response
-            await response.prepare(request)
-            async with asyncio.timeout(WRITE_TIMEOUT):
-                await response.write(ready.first)
+            try:
+                await response.prepare(request)
+                async with asyncio.timeout(WRITE_TIMEOUT):
+                    await response.write(ready.first)
+            except OSError:
+                raise _ClientDisconnected() from None
+            self._output_bytes += len(ready.first)
+            self._ever_streamed = True
+            if self._source_mode == "playback":
+                self._playback_consumed = True
             self.last_stage = "streaming"
             copy = session.task(self._copy(ffmpeg.stdout, response))
             done, _ = await asyncio.wait((feed, copy), return_when=asyncio.FIRST_COMPLETED)
@@ -392,6 +572,10 @@ class MeariVideoBridge:
                 await copy
             else:
                 await copy
+                if not feed.done():
+                    raise _StreamError()
+            if ffmpeg.returncode not in (None, 0):
+                raise _StreamError()
             self.last_stage = "source_closed"
             return response
 
@@ -413,6 +597,7 @@ class MeariVideoBridge:
                     if statuses > 4096:
                         raise _StreamError()
                     event = _status(payload)
+                    self._observe(event)
                     if event.get("final") is True:
                         if event.get("probe_stage") == "stream_complete":
                             return
@@ -423,6 +608,7 @@ class MeariVideoBridge:
                         raise _StreamError()
                     continue
                 last_video = asyncio.get_running_loop().time()
+                self._video(payload)
                 writer.write(payload)
                 async with asyncio.timeout(WRITE_TIMEOUT):
                     await writer.drain()
@@ -437,4 +623,8 @@ class MeariVideoBridge:
             if not payload:
                 return
             async with asyncio.timeout(WRITE_TIMEOUT):
-                await response.write(payload)
+                try:
+                    await response.write(payload)
+                except OSError:
+                    raise _ClientDisconnected() from None
+            self._output_bytes += len(payload)

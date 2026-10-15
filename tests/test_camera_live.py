@@ -1,5 +1,6 @@
 """Camera platform selection, shared stills and unload/HA-stop lifecycle."""
 import importlib
+import asyncio
 from pathlib import Path
 import sys
 import types
@@ -36,6 +37,9 @@ def load_camera_module():
 
         def async_on_remove(self, callback):
             self.removers.append(callback)
+
+        def async_write_ha_state(self):
+            pass
 
     modules = {}
     for name, attrs in (
@@ -80,8 +84,8 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         entities = []
         with patch.object(self.module, "LiveCameraBootstrap", return_value=bootstrap):
             await self.module.async_setup_entry(hass, entry, entities.extend)
-        self.assertEqual([e._description.channel_id for e in entities], [1, 3])
-        self.assertEqual([e._attr_name for e in entities], ["录像机 通道 1", "录像机 通道 3"])
+        self.assertEqual([e._description.channel_id for e in entities], [1, 1, 3, 3])
+        self.assertEqual([e._attr_name for e in entities], ["录像机 通道 1", "录像机 通道 1 硬盘回放", "录像机 通道 3", "录像机 通道 3 硬盘回放"])
         self.assertEqual(entities[0].device_info["identifiers"], {("orvibo_smart_control", "nvr")})
         self.assertNotEqual(entities[0]._attr_unique_id, entities[1]._attr_unique_id)
         self.assertEqual(list(bootstrap.discover.call_args.args[0]), ["nvr"])
@@ -108,7 +112,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         description = self.module.LiveCameraDescription("nvr", "private-vendor", 1, True)
         bootstrap = types.SimpleNamespace(context=AsyncMock(return_value={"secret": "TOKEN"}))
         entity = self.module.OrviboLiveCamera(object(), {"device_name": "NVR"}, description, bootstrap, "ffmpeg")
-        entity._bridge = types.SimpleNamespace(async_start=AsyncMock(return_value="http://127.0.0.1/private.ts"), async_prepare=AsyncMock(), async_close=AsyncMock(), last_stage="idle")
+        entity._bridge = types.SimpleNamespace(async_start=AsyncMock(return_value="http://127.0.0.1/private.ts"), async_prepare=AsyncMock(), async_close=AsyncMock(), last_stage="idle", diagnostics={})
         return entity
 
     async def test_stream_is_demand_driven_and_stills_share_ha_stream(self):
@@ -121,7 +125,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await entity.async_camera_image(640, 360), b"jpeg")
         stream.async_get_image.assert_awaited_once_with(width=640, height=360)
         self.assertNotIn("private", repr(entity.extra_state_attributes))
-        self.assertFalse(entity.extra_state_attributes["hdd_playback_supported"])
+        self.assertTrue(entity.extra_state_attributes["hdd_playback_supported"])
 
     async def test_remove_or_ha_stop_stops_stream_then_bridge_even_if_stream_fails(self):
         for error in (None, RuntimeError("stop failed")):

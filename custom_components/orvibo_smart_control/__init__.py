@@ -105,19 +105,19 @@ async def async_setup(hass: HomeAssistant, config: dict):
                     hass.http.register_static_path("/orvibo_smart_control/www", str(www_dir))
             except (AttributeError, TypeError):
                 hass.http.register_static_path("/orvibo_smart_control/www", str(www_dir))
-            try:
-                _js_ver = str(int((www_dir / "orvibo-smart-control-door-lock-card.js").stat().st_mtime))
-            except OSError:
-                _js_ver = "0"
-            js_url = f"/orvibo_smart_control/www/orvibo-smart-control-door-lock-card.js?v={_js_ver}"
-            try:
-                if add_extra_js_url is not None:
-                    add_extra_js_url(hass, js_url)
-                else:
+            for filename in ("orvibo-smart-control-door-lock-card.js", "orvibo-smart-control-nvr-card.js"):
+                try:
+                    _js_ver = str(int((www_dir / filename).stat().st_mtime))
+                except OSError:
+                    _js_ver = "0"
+                js_url = f"/orvibo_smart_control/www/{filename}?v={_js_ver}"
+                try:
+                    if add_extra_js_url is not None:
+                        add_extra_js_url(hass, js_url)
+                    else:
+                        hass.components.frontend.add_extra_js_url(hass, js_url)
+                except (AttributeError, TypeError):
                     hass.components.frontend.add_extra_js_url(hass, js_url)
-            except (AttributeError, TypeError):
-                # 旧版 HA：hass.components 方式
-                hass.components.frontend.add_extra_js_url(hass, js_url)
             _LOGGER.info("门锁卡片资源已注册")
     except Exception:  # noqa: BLE001 - 卡片注册失败不影响核心功能
         _LOGGER.warning("门锁卡片资源注册失败（不影响其他功能）", exc_info=True)

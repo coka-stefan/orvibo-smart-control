@@ -366,6 +366,141 @@ time.sleep(60)
         self.assertEqual(bridge.last_stage, "bridge_closed")
         await self.wait_stopped(bridge)
 
+    async def test_failed_unclaimed_warm_is_removed_before_normal_expiry_and_recreated(self):
+        self.worker.write_text(WORKER_PREAMBLE + f'''
+emit(b'J',json.dumps({EVENT!r}).encode())
+emit(b'V',b'first-frame')
+time.sleep(0.1)
+emit(b'J',json.dumps({{'probe_stage':'probe_failed','final':True}}).encode())
+time.sleep(60)
+''', encoding="utf-8")
+        bridge, url = await self.bridge()
+        with patch.object(self.module.asyncio, "create_subprocess_exec", side_effect=self.spawn), patch.object(self.module, "_ffmpeg_args", side_effect=self.ffmpeg):
+            await bridge.async_prepare()
+            expiry = bridge._expiry
+            await asyncio.wait_for(expiry, 2)
+            self.assertIsNone(bridge._prepared)
+            self.assertEqual(bridge.diagnostics["failure_count"], 1)
+            self.assertEqual(bridge.diagnostics["worker_stage"], "probe_failed")
+            self.assertTrue(all(process.returncode is not None for process in self.processes))
+            self.worker.write_text(WORKER_VIDEO, encoding="utf-8")
+            await bridge.async_prepare()
+            async with ClientSession() as client:
+                response = await client.get(url)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(self.calls, 2)
+                response.close()
+                await self.wait_stopped(bridge)
+
+    async def test_ha_retry_after_slow_reconnection_reuses_shared_warmup(self):
+        self.worker.write_text(WORKER_PREAMBLE + f'''
+emit(b'J',json.dumps({EVENT!r}).encode())
+emit(b'V',b'first-frame')
+time.sleep(60)
+''', encoding="utf-8")
+        reconnecting = asyncio.Event()
+
+        async def factory():
+            self.calls += 1
+            if self.calls == 2:
+                reconnecting.set()
+                await asyncio.sleep(0.6)
+            return {"secret": "CLOUD-SECRET"}
+
+        bridge, url = await self.bridge(factory)
+        with patch.object(self.module.asyncio, "create_subprocess_exec", side_effect=self.spawn), patch.object(self.module, "_ffmpeg_args", side_effect=self.ffmpeg), patch.object(self.module, "MEDIA_TIMEOUT", 0.15), patch.object(self.module, "RECOVERY_BACKOFF", 10):
+            async with ClientSession() as client:
+                response = await client.get(url)
+                self.assertEqual(response.status, 200)
+                await self.wait_stopped(bridge)
+                response.close()
+                self.worker.write_text(WORKER_VIDEO, encoding="utf-8")
+                retry = asyncio.create_task(client.get(url))
+                await reconnecting.wait()
+                # Model HA's fixed source-open deadline expiring during P2P.
+                retry.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await retry
+                for _ in range(200):
+                    if bridge._active is None:
+                        break
+                    await asyncio.sleep(0.01)
+                self.assertIsNotNone(bridge._warming)
+                response = await client.get(url)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(self.calls, 2)
+                self.assertEqual(len(self.processes), 4)
+                response.close()
+                await self.wait_stopped(bridge)
+        self.assertEqual(bridge.diagnostics["reconnect_count"], 1)
+        self.assertEqual(bridge.diagnostics["timeout_count"], 1)
+        self.assertNotIn("SECRET", json.dumps(bridge.diagnostics))
+
+    async def test_live_failure_warms_replacement_with_backoff_for_http_retry(self):
+        self.worker.write_text(WORKER_PREAMBLE + f'''
+emit(b'J',json.dumps({EVENT!r}).encode())
+emit(b'V',b'first-frame')
+time.sleep(0.1)
+emit(b'J',json.dumps({{'probe_stage':'probe_failed','final':True}}).encode())
+time.sleep(60)
+''', encoding="utf-8")
+
+        async def factory():
+            self.calls += 1
+            if self.calls == 2:
+                self.worker.write_text(WORKER_VIDEO, encoding="utf-8")
+            return {"secret": "CLOUD-SECRET"}
+
+        bridge, url = await self.bridge(factory)
+        with patch.object(self.module.asyncio, "create_subprocess_exec", side_effect=self.spawn), patch.object(self.module, "_ffmpeg_args", side_effect=self.ffmpeg), patch.object(self.module, "RECOVERY_BACKOFF", 0.01):
+            async with ClientSession() as client:
+                response = await client.get(url)
+                self.assertEqual(response.status, 200)
+                for _ in range(300):
+                    if bridge._prepared is not None:
+                        break
+                    await asyncio.sleep(0.01)
+                self.assertIsNotNone(bridge._prepared)
+                response.close()
+                retry = await client.get(url)
+                self.assertEqual(retry.status, 200)
+                self.assertEqual(self.calls, 2)
+                retry.close()
+                await self.wait_stopped(bridge)
+        diagnostic = bridge.diagnostics
+        self.assertEqual(diagnostic["connection_attempts"], 2)
+        self.assertEqual(diagnostic["failure_count"], 1)
+        self.assertEqual(diagnostic["source_codec"], "hevc")
+        self.assertGreaterEqual(diagnostic["video_frames"], 2)
+        self.assertGreater(diagnostic["output_bytes"], 0)
+
+    async def test_playback_finite_end_does_not_restart_recording(self):
+        self.worker.write_text(WORKER_PREAMBLE + f'''
+emit(b'J',json.dumps({EVENT!r}).encode())
+emit(b'V',b'first-frame')
+emit(b'J',json.dumps({{'probe_stage':'stream_complete','final':True}}).encode())
+''', encoding="utf-8")
+        bridge = self.module.MeariVideoBridge(
+            "trusted-ffmpeg", self.factory, source_mode="playback", _worker_path=self.worker,
+        )
+        self.bridges.append(bridge)
+        url = await bridge.async_start()
+        with patch.object(self.module.asyncio, "create_subprocess_exec", side_effect=self.spawn), patch.object(self.module, "_ffmpeg_args", side_effect=self.ffmpeg), patch.object(self.module, "RECOVERY_BACKOFF", 0.01):
+            async with ClientSession() as client:
+                async with client.get(url) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(await response.read(), b"MPEGTS:first-frame")
+                await self.wait_stopped(bridge)
+                await asyncio.sleep(0.1)
+                async with client.get(url) as retry:
+                    self.assertEqual(retry.status, 503)
+                with self.assertRaisesRegex(RuntimeError, "playback_selection_required"):
+                    await bridge.async_prepare()
+        self.assertEqual(self.calls, 1)
+        self.assertFalse(bridge.diagnostics["recovery_in_progress"])
+        self.assertEqual(bridge.diagnostics["source_mode"], "playback")
+        self.assertTrue(bridge.diagnostics["playback_consumed"])
+
     def test_transcoder_arguments_reencode_hevc_without_shell_network_or_disk_outputs(self):
         args = self.module._ffmpeg_args("/usr/bin/ffmpeg", "hevc")
         self.assertEqual(args[0], "/usr/bin/ffmpeg")

@@ -10,6 +10,7 @@ Meari XTS 摄像机和录像机通过私有视频桥接输出 H.264，供 HA Str
 from __future__ import annotations
 
 import logging
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from .const import DOMAIN
 from .camera_metadata import camera_sdk_hint
 from .meari_live import LiveCameraBootstrap, LiveCameraDescription
 from .meari_stream import MeariVideoBridge, _finish_uninterrupted
+from .meari_hdd import DATA_KEY, async_query_hdd, validate_request
 from .coordinator import OrviboSmartControlCoordinator
 from .device_types import DeviceCategory, classify_device
 from .selection import selected_device_ids
@@ -67,10 +69,18 @@ async def async_setup_entry(
             raise PlatformNotReady("录像机设备或通道清单暂时不可用，将自动重试") from None
         binary = get_ffmpeg_manager(hass).binary
         for description in descriptions:
-            entities.append(OrviboLiveCamera(
+            live = OrviboLiveCamera(
                 coordinator, video_devices[description.device_id], description,
                 bootstrap, binary,
-            ))
+            )
+            entities.append(live)
+            if description.is_nvr:
+                playback = OrviboHddCamera(
+                    coordinator, video_devices[description.device_id], description,
+                    bootstrap, binary,
+                )
+                live._playback = playback
+                entities.append(playback)
     if entities:
         async_add_entities(entities)
 
@@ -142,6 +152,7 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             ffmpeg_binary, lambda: bootstrap.context(description),
         )
         self._closed = False
+        self._playback = None
 
     @property
     def use_stream_for_stills(self) -> bool:
@@ -208,7 +219,10 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             "video_stage": self._bridge.last_stage,
             "output_codec": "h264",
             "audio_supported": False,
-            "hdd_playback_supported": False,
+            "video_mode": "live",
+            "hdd_playback_supported": self._description.is_nvr,
+            "hdd_playback_entity_id": getattr(self._playback, "entity_id", None),
+            "video_diagnostics": self._bridge.diagnostics,
         }
 
     @property
@@ -218,4 +232,141 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             "name": self._device.get("device_name") or "ORVIBO Camera",
             "manufacturer": "ORVIBO",
             "model": "NVR" if self._description.is_nvr else "Camera",
+        }
+
+
+class OrviboHddCamera(OrviboLiveCamera):
+    """Demand driven HDD player; choosing a timestamp creates a fresh session."""
+
+    _attr_icon = "mdi:filmstrip"
+
+    def __init__(self, coordinator, device, description, bootstrap, ffmpeg_binary):
+        super().__init__(coordinator, device, description, bootstrap, ffmpeg_binary)
+        self._attr_unique_id = f"orvibo_smart_control_hdd_{description.device_id}_{description.channel_id}"
+        self._attr_name = f"{device.get('device_name') or '录像机'} 通道 {description.channel_id} 硬盘回放"
+        self._bootstrap = bootstrap
+        self._ffmpeg_binary = ffmpeg_binary
+        self._position = None
+        self._selection_lock = asyncio.Lock()
+        self._query_task = None
+        self._hdd_stage = "select_recording"
+        self._bridge = self._new_bridge()
+
+    def _new_bridge(self):
+        async def context():
+            if self._position is None:
+                raise ValueError("hdd_selection_required")
+            position = self._position
+            result = await self._bootstrap.context(self._description)
+            result["hdd"] = {"operation": "playback", "date": position}
+            return result
+        return MeariVideoBridge(self._ffmpeg_binary, context, source_mode="playback")
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.hass.data.setdefault(DATA_KEY, {})[self.entity_id] = self
+
+    async def _release_player(self):
+        try:
+            await self._bridge.async_close()
+        finally:
+            if self.stream is not None:
+                settings = getattr(self.stream, "dynamic_stream_settings", None)
+                if settings is not None:
+                    settings.preload_stream = False
+                elif hasattr(self.stream, "keepalive"):
+                    self.stream.keepalive = False
+                await self.stream.stop()
+                self.stream = None
+
+    async def async_select_recording(self, date):
+        request = validate_request({"operation": "playback", "date": date})
+        async with self._selection_lock:
+            if self._closed:
+                raise ValueError("hdd_entity_unavailable")
+            # Finish the entire transition if the service caller disconnects.
+            async def select():
+                await self._release_player()
+                self._position = request["date"]
+                self._bridge = self._new_bridge()
+                self._hdd_stage = "playback_selected"
+                self.async_write_ha_state()
+            await _finish_uninterrupted(select())
+
+    async def async_stop_recording(self):
+        async with self._selection_lock:
+            async def stop():
+                self._position = None
+                await self._release_player()
+                self._hdd_stage = "select_recording"
+                self.async_write_ha_state()
+            await _finish_uninterrupted(stop())
+
+    async def async_search_recordings(self, operation, date):
+        request = validate_request({"operation": operation, "date": date})
+        if operation not in ("month", "day"):
+            raise ValueError("hdd_query_required")
+        if self._closed:
+            raise ValueError("hdd_entity_unavailable")
+        if self._query_task is not None:
+            return {"stage": "hdd_query_in_progress"}
+        task = asyncio.current_task()
+        self._query_task = task
+        try:
+            async with asyncio.timeout(110):
+                context = await self._bootstrap.context(self._description)
+                context["hdd"] = request
+                return await async_query_hdd(context)
+        except TimeoutError:
+            return {"stage": "hdd_query_timeout"}
+        finally:
+            if self._query_task is task:
+                self._query_task = None
+
+    async def async_create_stream(self):
+        if self._closed or self._position is None:
+            return None
+        bridge = self._bridge
+        try:
+            await bridge.async_prepare()
+        except (ValueError, OSError, RuntimeError, TimeoutError):
+            raise HomeAssistantError("硬盘回放暂时无法连接，请重新选择录像片段") from None
+        async with self._selection_lock:
+            if self._closed or self._position is None or self._bridge is not bridge:
+                return None
+            return await Camera.async_create_stream(self)
+
+    async def stream_source(self):
+        if self._closed or self._position is None:
+            return None
+        return await self._bridge.async_start()
+
+    async def async_camera_image(self, width=None, height=None):
+        # Dashboard thumbnails must not consume a selected HDD session.
+        return _PLACEHOLDER_IMAGE
+
+    async def _async_stop(self, _event=None):
+        self._closed = True
+        registry = self.hass.data.get(DATA_KEY, {}) if getattr(self, "hass", None) else {}
+        if registry.get(getattr(self, "entity_id", None)) is self:
+            registry.pop(self.entity_id, None)
+        async def stop():
+            if self._query_task is not None and self._query_task is not asyncio.current_task():
+                task = self._query_task
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            async with self._selection_lock:
+                self._position = None
+                await self._release_player()
+        await _finish_uninterrupted(stop())
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "channel_id": self._description.channel_id,
+            "video_mode": "hdd_playback", "video_transport": "meari_xts",
+            "hdd_playback_supported": True, "audio_supported": False,
+            "device_calendar_time": True, "recording_start": self._position,
+            "video_stage": self._bridge.last_stage if self._position else self._hdd_stage,
+            "video_diagnostics": self._bridge.diagnostics,
         }

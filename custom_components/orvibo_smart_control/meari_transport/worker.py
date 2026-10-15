@@ -44,6 +44,9 @@ STAGES = frozenset({
     "no_video_frame", "device_unavailable", "probe_failed", "probe_timeout",
     "dependency_missing", "invalid_context", "stream_complete",
     "stream_idle_timeout",
+    "hdd_search_start", "hdd_search_received", "hdd_search_failed",
+    "hdd_search_timeout", "hdd_playback_start", "hdd_playback_acknowledged",
+    "hdd_playback_timeout", "hdd_playback_ended",
 })
 
 
@@ -95,6 +98,14 @@ def _endpoint(value: object, *, optional: bool = False) -> str | None:
     return text
 
 
+def _hdd_protocol():
+    root = str(Path(__file__).resolve().parent)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import hdd
+    return hdd
+
+
 def validate_context(value: object) -> dict:
     if not isinstance(value, dict):
         raise ValueError("invalid_context")
@@ -132,7 +143,12 @@ def validate_context(value: object) -> dict:
     if type(value.get("camera_tags", 0)) is not int or value.get("camera_tags", 0) != 0:
         # Only the ordinary single-preview path is currently ported.
         raise ValueError("invalid_context")
-    return {**value, "timeout_seconds": float(timeout)}
+    result = {**value, "timeout_seconds": float(timeout)}
+    if "hdd" in value:
+        result["hdd"] = _hdd_protocol().validate_request(value["hdd"])
+        if device["devTypeID"] != 11:
+            raise ValueError("invalid_context")
+    return result
 
 
 def load_protocol() -> SimpleNamespace:
@@ -171,14 +187,24 @@ class Observation:
         self.parameters = library.codecs.CodecParameterCache()
         self.sequence = library.codec.FrameSequenceTracker()
         self.last_frame_at: float | None = None
+        self.hdd_result: dict | None = None
+        self.playback_requested = False
+        self.playback_acknowledged = False
+        self.playback_end_received = False
 
     def summary(self) -> dict:
-        return {
+        result = {
             "video_frames": self.video_frames, "video_bytes": self.video_bytes,
             "received_packets": self.received_packets, "codec": self.codec,
             "keyframe_received": self.keyframe_received,
             "parameter_sets_received": self.parameter_sets_received, "decoded": False,
         }
+        if self.hdd_result is not None:
+            result.update(self.hdd_result)
+        if self.playback_requested:
+            result.update(playback_requested=True, playback_acknowledged=self.playback_acknowledged,
+                          playback_end_received=self.playback_end_received)
+        return result
 
     def plausible_nals(self, payload: bytes) -> bytes:
         # This is a bounded header/length check, never a full bitstream decoder.
@@ -210,8 +236,28 @@ class Observation:
             if not iva or iva[0] == 0x7012:
                 return False
             data = iva[3]
-        for chunk in lib.codec.split_stream_frames(data):
-            if len(chunk) > frame_limit or len(chunk) < 4 or chunk[3] not in (0xFC, 0xFD):
+        # The ordinary video splitter recognizes FC/FD/FA but not native FE
+        # alternate frames. Accept an FE message only for its playback end
+        # notification below; it never becomes encoded video output.
+        chunks = [data] if data.startswith(b"\x00\x00\x01\xfe") else lib.codec.split_stream_frames(data)
+        for chunk in chunks:
+            if len(chunk) > frame_limit or len(chunk) < 4:
+                continue
+            if self.playback_requested and chunk[3] in (0xFC, 0xFD, 0xFA, 0xFE):
+                type_offset, format_offset = (23, 28) if chunk[3] in (0xFC, 0xFE) else (15, 20)
+                header_size = 60 if chunk[3] in (0xFC, 0xFE) else 52
+                # Native checks 0xffb before validating live/playback mode.
+                # End notifications may leave mode unspecified; require an
+                # acknowledged request and the complete p2p2 extended header.
+                if (self.playback_acknowledged and len(chunk) >= header_size
+                        and struct.unpack_from("<I", chunk, format_offset)[0] == 0xFFB):
+                    self.playback_end_received = True
+                    return False
+                if len(chunk) <= type_offset or chunk[type_offset] != 2:
+                    # Ordinary media must still be playback type2, before
+                    # DES3 decryption, so delayed live frames cannot pass.
+                    continue
+            if chunk[3] not in (0xFC, 0xFD):
                 continue
             options = []
             for candidate in (chunk, bytes(lib.codec.decrypt_stream_frame(bytearray(chunk)))):
@@ -377,6 +423,13 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
 
     kcp = lib.KcpTunnel(send_udp)
     sequence = 0
+    hdd = _hdd_protocol() if context.get("hdd") else None
+    operation = context.get("hdd", {}).get("operation")
+    search = operation in ("month", "day")
+    playback = operation == "playback"
+    observation.playback_requested = playback
+    reply = None
+    request_deadline = None
 
     def send_vvp(command: int) -> None:
         nonlocal sequence
@@ -387,8 +440,17 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
     started = False
     try:
         kcp.send_handshake()
-        # Native sends live-start immediately after its IVA handshake.
-        send_vvp(lib.protocol.VVP_CMD_START_LIVE)
+        # Native sends ordinary commands on the established IVA connection.
+        # A HDD connection must not also open a live-preview stream.
+        if hdd is not None:
+            emit("hdd_search_start" if search else "hdd_playback_start")
+            reply = hdd.ReplyBuffer(sequence)
+            command = hdd.search_packet(context, sequence) if search else hdd.playback_packet(context, sequence)
+            kcp.send_iva_data(command)
+            sequence += 1
+            request_deadline = time.monotonic() + 10
+        else:
+            send_vvp(lib.protocol.VVP_CMD_START_LIVE)
         started = True
         emit("receiving_video")
         now = time.monotonic()
@@ -400,6 +462,8 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
         continuous_started = False
         while True:
             now = time.monotonic()
+            if request_deadline is not None and now >= request_deadline:
+                return "hdd_search_timeout" if search else "hdd_playback_timeout"
             if stream_deadline is not None and continuous_started:
                 if now >= stream_deadline:
                     return "stream_complete"
@@ -413,7 +477,8 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                 next_ice = now + (0.25 if peer is None else 10)
             if now >= next_heartbeat:
                 kcp.send_handshake()
-                send_vvp(lib.protocol.VVP_CMD_HEARTBEAT)
+                if request_deadline is None:
+                    send_vvp(lib.protocol.VVP_CMD_HEARTBEAT)
                 next_heartbeat = now + 5
             if now >= next_signal:
                 sig.send_heartbeat(read_response=False)
@@ -466,8 +531,30 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                         break
                     payloads.append(queued)
                 for payload in payloads:
+                    if hdd is not None:
+                        if payload.startswith(b"\xff\x01"):
+                            iva = lib.parse_iva_frame(payload)
+                            if not iva or iva[0] == 0x7012:
+                                continue
+                            payload = iva[3]
+                        is_media = payload.startswith(b"\x00\x00\x01")
+                        if reply is not None and not is_media:
+                            body = reply.feed(payload)
+                            if body is not None:
+                                if search:
+                                    observation.hdd_result = hdd.parse_search_reply(body, context["hdd"])
+                                    return "hdd_search_received"
+                                observation.playback_acknowledged = True
+                                emit("hdd_playback_acknowledged")
+                                reply, request_deadline = None, None
+                            continue
+                        if search or not observation.playback_acknowledged:
+                            continue
                     if observation.feed(payload):
                         return "video_keyframe_received"
+                    if playback and observation.playback_end_received:
+                        emit("hdd_playback_ended")
+                        return "stream_complete"
                     if stream_deadline is not None and observation.last_frame_at is not None and not continuous_started:
                         continuous_started = True
                         # Discovery and first-keyframe remain under the short
@@ -477,6 +564,8 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                     kcp.flush_acks()
             kcp.flush_acks()
     except TimeoutError:
+        if request_deadline is not None:
+            return "hdd_search_timeout" if search else "hdd_playback_timeout"
         if stream_deadline is not None and observation.last_frame_at is not None:
             return "stream_complete" if time.monotonic() >= stream_deadline else "probe_timeout"
         return "no_video_frame" if started else "probe_timeout"
@@ -484,7 +573,10 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
         if started:
             # Same-thread best effort; no wait for a device acknowledgement.
             try:
-                send_vvp(lib.protocol.VVP_CMD_STOP)
+                if playback:
+                    kcp.send_iva_data(hdd.playback_packet(context, sequence, stop=True))
+                elif not search:
+                    send_vvp(lib.protocol.VVP_CMD_STOP)
             except (OSError, ValueError, RuntimeError):
                 pass
 
@@ -535,6 +627,8 @@ def run_probe(context: dict, emit, *, library=None, frame_output=None) -> tuple[
                 raise
             except (OSError, ValueError, RuntimeError, KeyError, TypeError, struct.error):
                 lib.budget.remaining()
+                if context.get("hdd"):
+                    return "hdd_search_failed" if context["hdd"]["operation"] in ("month", "day") else "probe_failed", observation.summary()
                 if observation.last_frame_at is not None:
                     # An active bitstream must not silently restart and emit
                     # another codec or timestamp epoch into its consumer.
@@ -587,6 +681,13 @@ def main() -> int:
                 record["codec"] = summary.get("codec") if summary.get("codec") in ("h264", "hevc") else "unknown"
                 for key in ("keyframe_received", "parameter_sets_received"):
                     record[key] = summary.get(key) is True
+                for key in ("playback_requested", "playback_acknowledged", "playback_end_received"):
+                    if key in summary:
+                        record[key] = summary[key] is True
+                if stage == "hdd_search_received":
+                    for key in ("hdd_operation", "calendar_date", "recording_days", "fragments", "recording_count", "fragments_truncated", "invalid_fragment_count"):
+                        if key in summary:
+                            record[key] = summary[key]
             body = json.dumps(record, separators=(",", ":")).encode("ascii")
             if binary_output is not None:
                 binary_output.write(b"J", body)
@@ -619,6 +720,10 @@ def main() -> int:
                 if len(body) > MAX_INPUT_BYTES:
                     raise ValueError("invalid_context")
                 context = validate_context(json.loads(body))
+                if options.stream and context.get("hdd", {}).get("operation") in ("month", "day"):
+                    raise ValueError("invalid_context")
+                if not options.stream and context.get("hdd", {}).get("operation") == "playback":
+                    raise ValueError("invalid_context")
             except (ValueError, TypeError, RecursionError, UnicodeError, OverflowError):
                 emit("invalid_context", final=True)
                 return 0

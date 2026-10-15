@@ -13,6 +13,7 @@ from .device_types import DeviceCategory, classify_device
 from .video_archive import normalize_event_object_key
 from .meari_session import async_inspect_video_session
 from .meari_probe import async_probe_video_stream, async_cancel_video_probes
+from .meari_hdd import playback_entity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,6 +150,35 @@ async def async_register_services(hass: HomeAssistant) -> None:
         await async_cancel_video_probes()
 
     hass.bus.async_listen_once("homeassistant_stop", handle_stop_video_probes)
+
+    async def handle_search_hdd(call: ServiceCall) -> dict[str, Any]:
+        try:
+            entity = playback_entity(hass, call.data.get("entity_id"))
+            result = await entity.async_search_recordings(
+                call.data.get("operation", "day"), call.data.get("date"),
+            )
+            return {**result, "entity_id": entity.entity_id}
+        except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
+            return {"stage": "hdd_query_failed",
+                    "error": "查询失败，请选择硬盘回放实体并检查日期；连接失败时稍后重试"}
+
+    async def handle_start_hdd(call: ServiceCall) -> dict[str, Any]:
+        try:
+            entity = playback_entity(hass, call.data.get("entity_id"))
+            await entity.async_select_recording(call.data.get("date"))
+            return {"stage": "playback_selected", "entity_id": entity.entity_id,
+                    "date": call.data["date"], "device_calendar_time": True}
+        except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
+            return {"stage": "hdd_playback_failed",
+                    "error": "回放未启动，请选择硬盘回放实体和有效的录像时间"}
+
+    async def handle_stop_hdd(call: ServiceCall) -> dict[str, Any]:
+        try:
+            entity = playback_entity(hass, call.data.get("entity_id"))
+            await entity.async_stop_recording()
+            return {"stage": "playback_stopped", "entity_id": entity.entity_id}
+        except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
+            return {"stage": "hdd_playback_failed", "error": "未找到可用的硬盘回放实体"}
 
     async def handle_refresh(call: ServiceCall) -> None:
         entry_id = str(call.data.get("entry_id") or "")
@@ -290,6 +320,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_SET_LOCK_USER_NAME, handle_set_lock_user_name
     )
     for service, handler in (
+        ("search_hdd_recordings", handle_search_hdd),
+        ("start_hdd_playback", handle_start_hdd),
+        ("stop_hdd_playback", handle_stop_hdd),
         (SERVICE_INSPECT_VIDEO_SESSION, handle_inspect_video_session),
         (SERVICE_INSPECT_VIDEO_DEVICES, handle_inspect_video_devices),
         (SERVICE_INSPECT_VIDEO_CHANNELS, handle_inspect_video_channels),
