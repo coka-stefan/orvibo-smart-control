@@ -66,7 +66,7 @@ async def async_setup_entry(
             descriptions = await bootstrap.discover(video_devices)
         except (ValueError, OSError, TimeoutError):
             # Raise before adding entities so a platform retry cannot duplicate locks.
-            raise PlatformNotReady("录像机设备或通道清单暂时不可用，将自动重试") from None
+            raise PlatformNotReady("摄像机设备或录像机通道清单暂时不可用，将自动重试") from None
         binary = get_ffmpeg_manager(hass).binary
         for description in descriptions:
             live = OrviboLiveCamera(
@@ -74,13 +74,12 @@ async def async_setup_entry(
                 bootstrap, binary,
             )
             entities.append(live)
-            if description.is_nvr:
-                playback = OrviboHddCamera(
-                    coordinator, video_devices[description.device_id], description,
-                    bootstrap, binary,
-                )
-                live._playback = playback
-                entities.append(playback)
+            playback = OrviboHddCamera(
+                coordinator, video_devices[description.device_id], description,
+                bootstrap, binary,
+            )
+            live._playback = playback
+            entities.append(playback)
     if entities:
         async_add_entities(entities)
 
@@ -175,7 +174,7 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             # Establish slow P2P signaling before either of those clocks starts.
             await self._bridge.async_prepare()
         except (ValueError, OSError, RuntimeError, TimeoutError):
-            raise HomeAssistantError("录像机暂时无法建立视频连接，请稍后重试") from None
+            raise HomeAssistantError("摄像机暂时无法建立视频连接，请稍后重试") from None
         return await super().async_create_stream()
 
     async def stream_source(self) -> str | None:
@@ -221,7 +220,12 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             "audio_supported": False,
             "video_mode": "live",
             "hdd_playback_supported": self._description.is_nvr,
-            "hdd_playback_entity_id": getattr(self._playback, "entity_id", None),
+            "hdd_playback_entity_id": (
+                getattr(self._playback, "entity_id", None) if self._description.is_nvr else None
+            ),
+            "playback_supported": True,
+            "playback_entity_id": getattr(self._playback, "entity_id", None),
+            "recording_storage": "hdd" if self._description.is_nvr else "sd_card",
             "video_diagnostics": self._bridge.diagnostics,
         }
 
@@ -236,14 +240,18 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
 
 
 class OrviboHddCamera(OrviboLiveCamera):
-    """Demand driven HDD player; choosing a timestamp creates a fresh session."""
+    """Demand driven HDD/SD player; choosing a timestamp creates a fresh session."""
 
     _attr_icon = "mdi:filmstrip"
 
     def __init__(self, coordinator, device, description, bootstrap, ffmpeg_binary):
         super().__init__(coordinator, device, description, bootstrap, ffmpeg_binary)
-        self._attr_unique_id = f"orvibo_smart_control_hdd_{description.device_id}_{description.channel_id}"
-        self._attr_name = f"{device.get('device_name') or '录像机'} 通道 {description.channel_id} 硬盘回放"
+        storage = "hdd" if description.is_nvr else "sd"
+        self._attr_unique_id = f"orvibo_smart_control_{storage}_{description.device_id}_{description.channel_id}"
+        self._attr_name = (
+            f"{device.get('device_name') or '录像机'} 通道 {description.channel_id} 硬盘回放"
+            if description.is_nvr else f"{device.get('device_name') or '摄像机'} 存储卡回放"
+        )
         self._bootstrap = bootstrap
         self._ffmpeg_binary = ffmpeg_binary
         self._position = None
@@ -330,7 +338,7 @@ class OrviboHddCamera(OrviboLiveCamera):
         try:
             await bridge.async_prepare()
         except (ValueError, OSError, RuntimeError, TimeoutError):
-            raise HomeAssistantError("硬盘回放暂时无法连接，请重新选择录像片段") from None
+            raise HomeAssistantError("录像回放暂时无法连接，请重新选择录像片段") from None
         async with self._selection_lock:
             if self._closed or self._position is None or self._bridge is not bridge:
                 return None
@@ -342,7 +350,7 @@ class OrviboHddCamera(OrviboLiveCamera):
         return await self._bridge.async_start()
 
     async def async_camera_image(self, width=None, height=None):
-        # Dashboard thumbnails must not consume a selected HDD session.
+        # Dashboard thumbnails must not consume a selected playback session.
         return _PLACEHOLDER_IMAGE
 
     async def _async_stop(self, _event=None):
@@ -364,8 +372,12 @@ class OrviboHddCamera(OrviboLiveCamera):
     def extra_state_attributes(self):
         return {
             "channel_id": self._description.channel_id,
-            "video_mode": "hdd_playback", "video_transport": "meari_xts",
-            "hdd_playback_supported": True, "audio_supported": False,
+            "video_mode": "hdd_playback" if self._description.is_nvr else "sd_playback",
+            "video_transport": "meari_xts",
+            "hdd_playback_supported": self._description.is_nvr,
+            "playback_supported": True,
+            "recording_storage": "hdd" if self._description.is_nvr else "sd_card",
+            "audio_supported": False,
             "device_calendar_time": True, "recording_start": self._position,
             "video_stage": self._bridge.last_stage if self._position else self._hdd_stage,
             "video_diagnostics": self._bridge.diagnostics,

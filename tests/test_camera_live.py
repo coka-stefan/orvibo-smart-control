@@ -90,6 +90,34 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(entities[0]._attr_unique_id, entities[1]._attr_unique_id)
         self.assertEqual(list(bootstrap.discover.call_args.args[0]), ["nvr"])
 
+    async def test_selected_s1_gets_live_and_storage_card_playback_without_changing_nvr_ids(self):
+        coordinator, hass, entry = self.platform({"selected_device_ids": ["s1"]})
+        coordinator.devices["s1"] = {"device_id": "s1", "uid": "vendor-s1",
+            "device_type_raw": 14, "camera_type": 9, "device_name": "巨目2K智能摄像机S1"}
+        description = self.module.LiveCameraDescription("s1", "vendor-s1", 0, False)
+        bootstrap = types.SimpleNamespace(discover=AsyncMock(return_value=[description]))
+        entities = []
+        with patch.object(self.module, "LiveCameraBootstrap", return_value=bootstrap):
+            await self.module.async_setup_entry(hass, entry, entities.extend)
+        self.assertEqual(len(entities), 2)
+        live, playback = entities
+        playback.entity_id = "camera.s1_sd"
+        self.assertEqual(live._attr_unique_id, "orvibo_smart_control_live_s1_0")
+        self.assertEqual(playback._attr_unique_id, "orvibo_smart_control_sd_s1_0")
+        self.assertEqual(playback._attr_name, "巨目2K智能摄像机S1 存储卡回放")
+        self.assertEqual(playback.device_info["identifiers"], {("orvibo_smart_control", "s1")})
+        self.assertEqual(playback.extra_state_attributes["video_mode"], "sd_playback")
+        self.assertEqual(playback.extra_state_attributes["recording_storage"], "sd_card")
+        self.assertEqual(live.extra_state_attributes["playback_entity_id"], "camera.s1_sd")
+        self.assertTrue(live.extra_state_attributes["playback_supported"])
+        self.assertFalse(live.extra_state_attributes["hdd_playback_supported"])
+        self.assertIsNone(live.extra_state_attributes["hdd_playback_entity_id"])
+        self.assertEqual(list(bootstrap.discover.call_args.args[0]), ["s1"])
+        nvr = self.module.LiveCameraDescription("nvr", "vendor-nvr", 3, True)
+        old = self.module.OrviboHddCamera(coordinator, {}, nvr, bootstrap, "ffmpeg")
+        self.assertEqual(old._attr_unique_id, "orvibo_smart_control_hdd_nvr_3")
+        self.assertEqual(old.extra_state_attributes["video_mode"], "hdd_playback")
+
     async def test_deselected_nvr_and_other_sdk_do_not_start_cloud_discovery(self):
         _, hass, entry = self.platform({"selected_device_ids": ["other"]})
         entities = []

@@ -63,6 +63,22 @@ callWS:async(request)=>{calls.push(request);if(failure)throw Error('PRIVATE');re
  failure=true;await card._search('day');
  assert(!card._ui('status').textContent.includes('PRIVATE'));assert.equal(card._busy,false);
  assert.equal(card._ui('search').disabled,false);
+ const hdd=card._hass.states['camera.hdd3'];
+ card.hass={...card._hass,states:{'camera.hdd3':hdd,'camera.s1_sd':{attributes:{
+   video_mode:'sd_playback',recording_storage:'sd_card',friendly_name:'S1 存储卡回放'}}}};
+ assert.equal(card._ui('channel').children.length,2);
+ card._ui('channel').value='camera.s1_sd';card._ui('channel').events.change();
+ assert.equal(card._entity,'camera.s1_sd');
+ assert.equal(calls.at(-1).service_data.entity_id,'camera.hdd3');
+ assert.equal(card._ui('player').children.length,0);
+ failure=false;response={stage:'hdd_search_received',recording_count:1,fragments:[{start:'20261015090000',end:'20261015100000'}]};
+ await card._search('day');assert.equal(calls.at(-1).service_data.entity_id,'camera.s1_sd');
+ response={stage:'playback_selected'};await card._play('20261015090000');
+ assert.equal(configs.at(-1).entity,'camera.s1_sd');
+ response={stage:'playback_stopped'};await card._stop();
+ assert.equal(calls.at(-1).service_data.entity_id,'camera.s1_sd');
+ card._config={entity:'camera.s1_sd'};card._sync();
+ assert.equal(card._ui('channel').children.length,1);assert.equal(card._entity,'camera.s1_sd');
  card._config={entity:'camera.missing'};card._sync();assert.equal(card._entity,undefined);
  assert.equal(card._ui('search').disabled,true);
  console.log('NVR card query, playback, stop, retry, selection and text safety passed');

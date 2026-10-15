@@ -50,6 +50,32 @@ class HddCameraTests(unittest.IsolatedAsyncioTestCase):
             await self.entity.async_select_recording("20260230010101")
         self.assertEqual(self.entity._position, "20261015092301")
 
+    async def test_sd_search_and_playback_use_same_zero_channel_descriptor_and_registry(self):
+        description = self.module.LiveCameraDescription("s1", "vendor-s1", 0, False)
+        private = {"channel_id": 0, "device": {"devTypeID": 2}, "secret": "PRIVATE"}
+        bootstrap = types.SimpleNamespace(context=AsyncMock(side_effect=lambda _: dict(private)))
+        entity = self.module.OrviboHddCamera(object(), {"device_name": "S1"}, description, bootstrap, "ffmpeg")
+        entity.entity_id, entity.hass = "camera.s1_sd", self.entity.hass
+        await entity.async_added_to_hass()
+        self.assertIs(entity.hass.data[self.module.DATA_KEY][entity.entity_id], entity)
+        with patch.object(self.module, "async_query_hdd", new=AsyncMock(return_value={"stage": "hdd_search_received"})) as query:
+            for operation, date in (("month", "202610"), ("day", "20261015")):
+                await entity.async_search_recordings(operation, date)
+                sent = query.call_args.args[0]
+                self.assertEqual(sent["channel_id"], 0)
+                self.assertEqual(sent["hdd"], {"operation": operation, "date": date})
+        await entity.async_select_recording("20261015090000")
+        current = entity._bridge
+        sent = await current.factory()
+        self.assertEqual(sent["channel_id"], 0)
+        self.assertEqual(sent["hdd"], {"operation": "playback", "date": "20261015090000"})
+        self.assertNotIn("PRIVATE", repr(entity.extra_state_attributes))
+        self.assertEqual(entity.extra_state_attributes["video_mode"], "sd_playback")
+        await entity.async_will_remove_from_hass()
+        current.async_close.assert_awaited_once()
+        self.assertNotIn(entity.entity_id, entity.hass.data[self.module.DATA_KEY])
+        self.assertIsNone(await entity.stream_source())
+
     async def test_reselect_closes_old_bridge_and_stream_before_creating_fresh_source(self):
         await self.entity.async_select_recording("20261015090000")
         previous = self.entity._bridge

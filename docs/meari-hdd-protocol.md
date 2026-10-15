@@ -68,3 +68,24 @@ Offline tests assert the byte vectors, sequence correlation, tunnel framing,
 malformed/large replies, media selection and end markers. Device recording
 lists, playback, positioning and multiple simultaneous sessions remain runtime
 validation items.
+
+## S1 / IPC storage-card playback (0.2.6b8)
+
+The same APK's `MeariSDCardVideoPlayBackFragment.c8` selects a calendar time
+and calls `MeariDeviceController.startPlaybackSDCard`. The fragment labels
+positive NVR channels as HDD and the IPC path as card recordings. Its date
+presenter `device/meari/video/t` calls both month/day APIs with videoid 0.
+`getPlaybackVideoDaysInMonth` and `getPlaybackVideoTimesInDayImpl` preserve
+that value unless a positive NVR/base channel replaces it. Ordinary S1 IPC
+uses channel 0; no base-station or record-ID branch is enabled.
+
+The single-surface playback overload forwards the selected stream ID and
+substitutes positive NVR/base channels. `MeariDeviceUtil.getVideoStreamId`
+returns [0, 1] when bps is absent/zero; the existing ordinary IPC path uses 0.
+Nonzero-only stream profiles are not established by this change.
+
+REA method evidence: `ev_df85a80722300d7da46e1640379eadcc5aa70a83c5488171b6827b2e006b6976`.
+This is static decompiler evidence from the APK identified above; it does not
+observe S1 execution. Tests cover channel-0 month/day requests, exact
+start/stop payloads, historical media gating, and shared entity/card flows.
+Real SD recording lists, playback and positioning still require the device.

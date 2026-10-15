@@ -146,7 +146,9 @@ def validate_context(value: object) -> dict:
     result = {**value, "timeout_seconds": float(timeout)}
     if "hdd" in value:
         result["hdd"] = _hdd_protocol().validate_request(value["hdd"])
-        if device["devTypeID"] != 11:
+        # Ordinary XTS IPC recordings use channel 0; NVRs retain their channel.
+        # Do not enable unverified base-station/other device playback modes.
+        if not (device["devTypeID"] == 11 or device["devTypeID"] == 2 and channel == 0):
             raise ValueError("invalid_context")
     return result
 

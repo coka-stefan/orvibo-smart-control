@@ -326,12 +326,12 @@ probe_video_stream:
       example: "zh"
 
 search_hdd_recordings:
-  name: 查询录像机硬盘录像
-  description: 按录像机日历查询当月有录像的日期或当天片段；首次 P2P 连接可能需要约一分钟
+  name: 查询硬盘或存储卡录像
+  description: 按设备日历查询硬盘或存储卡当月有录像的日期或当天片段；首次 P2P 连接可能需要约一分钟
   fields:
     entity_id:
-      name: 硬盘回放实体
-      description: 选择名称含“硬盘回放”的摄像头实体
+      name: 录像回放实体
+      description: 选择名称含“硬盘回放”或“存储卡回放”的摄像头实体
       required: true
       selector:
         entity:
@@ -346,7 +346,7 @@ search_hdd_recordings:
             - month
             - day
     date:
-      name: 录像机日历日期
+      name: 设备日历日期
       description: 月查询用 YYYYMM，日查询用 YYYYMMDD，不转换 HA 时区
       required: true
       example: "20261015"
@@ -354,30 +354,30 @@ search_hdd_recordings:
         text:
 
 start_hdd_playback:
-  name: 选择录像机硬盘回放时间
-  description: 选择起始时间后打开对应硬盘回放 camera 播放；重新选时会关闭上一段连接
+  name: 选择硬盘或存储卡回放时间
+  description: 选择起始时间后打开对应录像回放 camera 播放；重新选时会关闭上一段连接
   fields:
     entity_id:
-      name: 硬盘回放实体
+      name: 录像回放实体
       required: true
       selector:
         entity:
           integration: orvibo_smart_control
           domain: camera
     date:
-      name: 录像机回放时间
-      description: 录像机日历时间 YYYYMMDDHHmmss；不会转换 HA 时区
+      name: 设备回放时间
+      description: 设备日历时间 YYYYMMDDHHmmss；不会转换 HA 时区
       required: true
       example: "20261015090000"
       selector:
         text:
 
 stop_hdd_playback:
-  name: 停止录像机硬盘回放
-  description: 关闭指定通道硬盘回放和转码进程；实时画面使用独立实体
+  name: 停止硬盘或存储卡回放
+  description: 关闭指定实体的录像回放和转码进程；实时画面使用独立实体
   fields:
     entity_id:
-      name: 硬盘回放实体
+      name: 录像回放实体
       required: true
       selector:
         entity:

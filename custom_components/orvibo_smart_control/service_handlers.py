@@ -160,7 +160,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             return {**result, "entity_id": entity.entity_id}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
             return {"stage": "hdd_query_failed",
-                    "error": "查询失败，请选择硬盘回放实体并检查日期；连接失败时稍后重试"}
+                    "error": "查询失败，请选择硬盘或存储卡回放实体并检查日期；连接失败时稍后重试"}
 
     async def handle_start_hdd(call: ServiceCall) -> dict[str, Any]:
         try:
@@ -170,7 +170,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                     "date": call.data["date"], "device_calendar_time": True}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
             return {"stage": "hdd_playback_failed",
-                    "error": "回放未启动，请选择硬盘回放实体和有效的录像时间"}
+                    "error": "回放未启动，请选择硬盘或存储卡回放实体和有效的录像时间"}
 
     async def handle_stop_hdd(call: ServiceCall) -> dict[str, Any]:
         try:
@@ -178,7 +178,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             await entity.async_stop_recording()
             return {"stage": "playback_stopped", "entity_id": entity.entity_id}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
-            return {"stage": "hdd_playback_failed", "error": "未找到可用的硬盘回放实体"}
+            return {"stage": "hdd_playback_failed", "error": "未找到可用的硬盘或存储卡回放实体"}
 
     async def handle_refresh(call: ServiceCall) -> None:
         entry_id = str(call.data.get("entry_id") or "")

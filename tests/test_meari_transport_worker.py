@@ -73,6 +73,22 @@ class ContextAndOutputTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 WORKER.validate_context(raw)
 
+    def test_storage_card_context_accepts_only_supported_ipc_channel_zero(self):
+        for operation, date in (("month", "202610"), ("day", "20261015"),
+                                ("playback", "20261015090000")):
+            raw = context()
+            raw["device"].update(devTypeID=2, nvrChannelId=0)
+            raw["channel_id"] = 0
+            raw["hdd"] = {"operation": operation, "date": date}
+            with self.subTest(operation=operation):
+                self.assertEqual(WORKER.validate_context(raw)["hdd"], raw["hdd"])
+            for device_type, channel in ((2, 1), (17, 0), (21, 0)):
+                raw["device"].update(devTypeID=device_type, nvrChannelId=channel)
+                raw["channel_id"] = channel
+                with self.subTest(operation=operation, device_type=device_type, channel=channel):
+                    with self.assertRaises(ValueError):
+                        WORKER.validate_context(raw)
+
     def test_isolated_script_rejects_input_without_leaking_secrets(self):
         result = subprocess.run([sys.executable, "-I", "-B", "-u", str(WORKER_PATH)], input=b'{"SECRET":"PRIVATE-HOSTKEY"}', capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0)

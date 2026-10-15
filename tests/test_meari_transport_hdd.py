@@ -77,6 +77,24 @@ class WireTests(unittest.TestCase):
         self.assertEqual(stop[52:], bytes.fromhex("070000000100000000000000000000000000000000000000"))
         self.assertNotEqual(start[16:48], stop[16:48])
 
+    def test_storage_card_month_day_and_playback_packets_use_zero_channel(self):
+        for operation, date in (("month", "202610"), ("day", "20261015")):
+            raw = hdd_context(operation, date)
+            raw["device"].update(devTypeID=2, nvrChannelId=0)
+            raw["channel_id"] = 0
+            packet = HDD.search_packet(WORKER.validate_context(raw), 0)
+            body = json.loads(packet[52:].split(b"\r\n\r\n", 1)[1])
+            self.assertEqual((body["videoid"], body["rec_type"]), (0, 0))
+            self.assertEqual(body[operation], date)
+            if operation == "day":
+                self.assertEqual(body["version"], 0)
+        raw = hdd_context("playback", "20261015091234")
+        raw["device"].update(devTypeID=2, nvrChannelId=0)
+        raw["channel_id"] = 0
+        raw = WORKER.validate_context(raw)
+        self.assertEqual(HDD.playback_packet(raw, 0)[52:], bytes.fromhex("000000001000000000000000ea070a0f00090c2201020000"))
+        self.assertEqual(HDD.playback_packet(raw, 1, stop=True)[52:], bytes.fromhex("000000000100000000000000000000000000000000000000"))
+
     def test_reply_reassembly_discards_old_sequence_and_rejects_newer(self):
         raw = hdd_context()
         parser = HDD.ReplyBuffer(7)
@@ -130,7 +148,9 @@ class ConnectedHddTests(unittest.TestCase):
 
     def connect(self, raw, payloads):
         from vendor.kcp_tunnel import build_iva_data_frame
-        fake, clock, instances, sent = continuous.ContinuousTransportTests().transport(frames=0)
+        transport = continuous.ContinuousTransportTests()
+        transport.lib = self.lib
+        fake, clock, instances, sent = transport.transport(frames=0)
         index = [0]
 
         def receive(*args, **kwargs):
@@ -181,6 +201,31 @@ class ConnectedHddTests(unittest.TestCase):
         self.assertIn("hdd_playback_acknowledged",stages)
         self.assertEqual([struct.unpack_from(">I",packet,12)[0] for packet in commands],[0x131A,0x131A])
         self.assertEqual(struct.unpack_from("<I",commands[-1],56)[0],1)
+
+    def test_storage_card_connected_queries_and_history_stream(self):
+        for operation, date, body in (("month", "202610", [1, 0, 1]),
+                                      ("day", "20261015", ["091234-092015"])):
+            raw = hdd_context(operation, date)
+            raw["device"].update(devTypeID=2, nvrChannelId=0)
+            raw["channel_id"] = 0
+            raw = WORKER.validate_context(raw)
+            (stage, summary), commands, output, _ = self.connect(raw, [HDD.packet(raw, 0x8000, 0, reply(body))])
+            self.assertEqual(stage, "hdd_search_received")
+            self.assertGreater(summary["recording_count"], 0)
+            self.assertEqual(output, [])
+            query = json.loads(commands[0][52:].split(b"\r\n\r\n", 1)[1])
+            self.assertEqual(query["videoid"], 0)
+        raw = hdd_context("playback", "20261015091234")
+        raw["device"].update(devTypeID=2, nvrChannelId=0)
+        raw["channel_id"] = 0
+        raw = WORKER.validate_context(raw)
+        for video, expected_frames in ((continuous.frame(H264), 0), (playback_frame(H264), 1)):
+            (stage, summary), commands, output, _ = self.connect(raw, [HDD.packet(raw, 0x131A, 0, b""), video, end_frame(stream_type=0)])
+            self.assertEqual(len(output), expected_frames)
+            self.assertEqual(summary["keyframe_received"], bool(expected_frames))
+            for packet in commands:
+                self.assertEqual(struct.unpack_from("<I", packet, 52)[0], 0)
+            self.assertEqual(struct.unpack_from("<I", commands[-1], 56)[0], 1)
 
     def test_ack_without_video_cannot_confirm_playback(self):
         raw=hdd_context("playback","20261015091234")

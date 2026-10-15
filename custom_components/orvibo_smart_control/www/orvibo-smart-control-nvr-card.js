@@ -1,10 +1,10 @@
-/* NVR hard-disk recordings. Calendar values belong to the recorder. */
+/* NVR HDD and IPC SD recordings. Calendar values belong to the device. */
 (() => {
 class OrviboNvrCard extends HTMLElement {
   static getStubConfig() { return {}; }
   setConfig(config) {
     if (config.entity && !String(config.entity).startsWith("camera.")) {
-      throw new Error("entity 必须是欧瑞博硬盘回放 camera 实体");
+      throw new Error("entity 必须是欧瑞博硬盘或存储卡回放 camera 实体");
     }
     this._config = config;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -52,7 +52,7 @@ class OrviboNvrCard extends HTMLElement {
       <ha-card>
         <h2></h2>
         <div class="fields">
-          <div><label for="channel">通道</label><select id="channel"></select></div>
+          <div><label for="channel">设备 / 通道</label><select id="channel"></select></div>
           <div><label for="day">日期</label><input id="day" type="date"></div>
         </div>
         <div class="row"><button id="search">查询录像</button>
@@ -67,7 +67,7 @@ class OrviboNvrCard extends HTMLElement {
           <label for="position">指定回放时间</label><div class="seek">
             <input id="position" type="datetime-local" step="1"><button id="play">播放</button>
           </div>
-          <div class="note">以录像机显示的时间为准。首次连接可能需要约一分钟。</div>
+          <div class="note">以设备显示的时间为准。首次连接可能需要约一分钟。</div>
         </div></details>
       </ha-card>`;
     this._ui = (id) => this.shadowRoot.getElementById(id);
@@ -103,10 +103,10 @@ class OrviboNvrCard extends HTMLElement {
   }
   _sync() {
     if (!this._ui || !this._hass) return;
-    this.shadowRoot.querySelector("h2").textContent = this._config?.title || "欧瑞博硬盘录像";
+    this.shadowRoot.querySelector("h2").textContent = this._config?.title || "欧瑞博录像回放";
     const states = this._hass.states || {};
     const ids = Object.keys(states).filter((id) => id.startsWith("camera.") &&
-      states[id].attributes?.video_mode === "hdd_playback" &&
+      ["hdd_playback", "sd_playback"].includes(states[id].attributes?.video_mode) &&
       (!this._config.entity || id === this._config.entity)).sort();
     const select = this._ui("channel");
     const signature = ids.map((id) => `${id}:${states[id].attributes.friendly_name}`).join("|");
@@ -118,7 +118,7 @@ class OrviboNvrCard extends HTMLElement {
       }));
       this._entity = ids.includes(this._entity) ? this._entity : ids[0];
       select.value = this._entity || "";
-      if (!ids.length) this._status("未找到硬盘回放实体，请更新集成、重启 HA 并选择录像机设备");
+      if (!ids.length) this._status("未找到录像回放实体，请更新集成、重启 HA 并选择摄像机或录像机设备");
     }
     this._busyButtons();
   }
@@ -147,7 +147,7 @@ class OrviboNvrCard extends HTMLElement {
     const date = this._ui("day").value.replace(/-/g, "");
     if (!/^\d{8}$/.test(date)) { this._status("请选择录像日期"); return; }
     const generation = this._generation;
-    this._busy = true; this._busyButtons(); this._status("正在连接录像机并查询，请稍候…");
+    this._busy = true; this._busyButtons(); this._status("正在连接设备并查询，请稍候…");
     try {
       const response = await this._service("search_hdd_recordings", { operation,
         date: operation === "month" ? date.slice(0, 6) : date });
@@ -201,7 +201,7 @@ class OrviboNvrCard extends HTMLElement {
       this._ui("clips").open = false;
       this._ui("advanced").open = false;
       this._status(`${date.slice(4, 6)}-${date.slice(6, 8)} ${this._time(date)} · 回放已选择，正在连接`);
-    } catch (_) { this._status("回放未能启动，请重新选择片段；也可指定录像机时间重试"); }
+    } catch (_) { this._status("回放未能启动，请重新选择片段；也可指定设备时间重试"); }
     finally { this._busy = false; this._busyButtons(); }
   }
   async _stop() {
@@ -217,7 +217,7 @@ if (!customElements.get("orvibo-smart-control-nvr-card")) {
 }
 window.customCards = window.customCards || [];
 if (!window.customCards.some((card) => card.type === "orvibo-smart-control-nvr-card")) {
-  window.customCards.push({ type: "orvibo-smart-control-nvr-card", name: "欧瑞博硬盘录像",
-    description: "按日期查询录像机硬盘片段并回放", preview: false });
+  window.customCards.push({ type: "orvibo-smart-control-nvr-card", name: "欧瑞博录像回放",
+    description: "按日期查询摄像机存储卡或录像机硬盘片段并回放", preview: false });
 }
 })();
