@@ -108,7 +108,7 @@ def summarize_session_response(response: object) -> dict[str, Any]:
 
 async def async_inspect_video_session(
     coordinator: Any, *, country_code: str = "CN", phone_code: str = "86",
-    language: str = "zh", http_session: Any = None,
+    language: str = "zh", http_session: Any = None, include_channels: bool = False,
 ) -> dict[str, Any]:
     client = coordinator.ssl_client
     if client is None or not client.connected:
@@ -127,6 +127,6 @@ async def async_inspect_video_session(
 
         public.update(await async_inspect_device_inventory(
             http_session, response, country_code=country_code,
-            phone_code=phone_code, language=language,
+            phone_code=phone_code, language=language, include_channels=include_channels,
         ))
     return public

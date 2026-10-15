@@ -64,6 +64,37 @@ NVR 通道来自 App 后续的设备参数查询，不是简单的设备库存�
 `channel_query_implemented: false`。`nct` 等能力码不能直接解释为实际在线通道数，
 这一步也不能证明首帧或硬盘回放可用。请提供完整动作返回的脱敏 JSON 继续排查。
 
+## NVR 通道诊断（0.2.6b2）
+
+用户在 `0.2.6b1` 的真实返回中已确认厂商接受授权并返回 1 台 IPC 与 1 台
+`nvr-neutral` 录像机，两者 `iotType=3`。SDK 对这类设备使用 XTS 认证，并从序列号
+生成连接 UUID，因而 `uuid_present=false` 本身不阻止该路径。此结论没有验证媒体连接。
+
+安装 `v0.2.6b2`（普通 GitHub Release，无需启用预发布），重启后运行：
+
+```yaml
+action: orvibo_smart_control.inspect_video_channels
+data: {}
+```
+
+此动作一次获取会话和设备列表，然后调用厂商 HTTPS 批量接口读取 NVR 的
+`213,1015,67` 属性。它只读取通道云端快照，不连接 P2P、启动实时流或查询/删除硬盘片段。
+使用原有 `entry_id` 和地区参数。返回保留已有的会话、设备列表诊断字段，并新增：
+
+- `channel_query_implemented`：此动作已包含通道查询代码，不表示视频已实现。
+- `channel_stage: nvr_channels_received`：厂商返回成功码及结果对象；逐项查看 `nvrs`，不能由顶层成功推断每台录像机都有通道数据。
+- `nvr_count`、`queried_nvr_count`：识别出的录像机数量与实际查询的数量；最多查询 32 台，缺少序列号的设备不发送请求。
+- `nvrs[].index`：对应本次 `devices` 的序号，避免输出设备标识。
+- `maximum_channel_count`：213 的容量值，与返回的实际通道条目数量分开。
+- `channel_count`、`channels[].channel_id`、可选 `state/type/capability_codes`：1015 的实际通道条目及有限能力码；未知值省略，最多输出 128 条通道。
+- 每台录像机的 `channel_stage` 可为 `channel_state_received`、`channel_state_missing`、`invalid_channel_state` 或 `nvr_result_missing`，用于区分空列表、缺失和无效数据。
+- `channel_request_rejected`、`channel_http_error`、`channel_request_failed` 等顶层阶段表示请求失败；只返回有限结果码/HTTP 状态，不输出错误原文。
+
+云端快照可能滞后，原始 `state/type` 不直接等同于已验证在线或可播放。
+`video_playback_implemented` 和 `real_device_video_verified` 仍为 false。
+请提供此动作完整的脱敏返回，以确定后续取流所需的实际通道。
+请求与静态依据见 [NVR 通道接口](meari-nvr-channel-protocol.md)。
+
 ## 当前证据与下一阶段
 
 用户目标是 HAOS 虚拟机/x86 Linux 宿主上的实时画面和录像机硬盘历史。

@@ -37,7 +37,7 @@ def _hmac_sha1(text: str, key: str) -> str:
     return base64.b64encode(hmac.new(key.encode(), text.encode(), hashlib.sha1).digest()).decode("ascii")
 
 
-def _api_url(value: object) -> str:
+def _api_url(value: object, path: str = DEVICE_LIST_PATH) -> str:
     """Accept a clean HTTPS base from the authenticated Orvibo response only."""
     if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() for c in value):
         raise ValueError("invalid_endpoint")
@@ -57,11 +57,14 @@ def _api_url(value: object) -> str:
         pass
     else:
         raise ValueError("ip_endpoint")
-    return value.rstrip("/") + DEVICE_LIST_PATH
+    if path not in (DEVICE_LIST_PATH, "/v1/app/nvr/iot/model/get/batch"):
+        raise ValueError("unsupported_api_path")
+    return value.rstrip("/") + path
 
 
-def build_inventory_request(
-    raw: object, *, country_code: str = "CN", phone_code: str = "86", language: str = "zh",
+def build_vendor_request(
+    raw: object, path: str, extra_params: Mapping[str, str], *,
+    country_code: str = "CN", phone_code: str = "86", language: str = "zh",
 ) -> tuple[str, dict[str, str], dict[str, str]]:
     """Match i.e(5).b(), l$S2o.subscribe and SdkUtils.getOKHttpHeader."""
     raw = _object(raw)
@@ -85,7 +88,7 @@ def build_inventory_request(
         or language not in ("zh", "en")
     ):
         raise ValueError("invalid_region")
-    url = _api_url(config.get("apiServer"))
+    url = _api_url(config.get("apiServer"), path)
     now_ms = int(time.time() * 1000)
     timestamp = datetime.fromtimestamp(now_ms / 1000, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     params = {
@@ -93,17 +96,35 @@ def build_inventory_request(
         "lngType": language, "t": str(now_ms), "sourceApp": partner,
         "userID": uid, "countryCode": country, "phoneCode": phone,
         "signatureMethod": "HMAC-SHA1", "signatureVersion": "1.0",
-        "timestamp": timestamp, "signatureNonce": str(now_ms), "funSwitch": "1",
+        "timestamp": timestamp, "signatureNonce": str(now_ms),
     }
+    expected_keys = {"funSwitch"} if path == DEVICE_LIST_PATH else {"snIdentifier"}
+    if set(extra_params) != expected_keys or any(
+        not isinstance(key, str) or key in params or key == "signature"
+        or not isinstance(value, str) or len(value) > 16384
+        for key, value in extra_params.items()
+    ):
+        raise ValueError("invalid_api_parameters")
+    params.update(extra_params)
     params["signature"] = _hmac_sha1("&".join(f"{k}={params[k]}" for k in sorted(params)), token)
     nonce = str(secrets.randbelow(899999) + 100000)
     headers = {
         "X-Ca-Key": token, "X-Ca-Timestamp": str(now_ms), "X-Ca-Nonce": nonce,
         "X-Ca-Sign": _hmac_sha1(
-            f"api=/ppstrongs/{DEVICE_LIST_PATH}|X-Ca-Key={token}|X-Ca-Timestamp={now_ms}|X-Ca-Nonce={nonce}", token,
+            f"api=/ppstrongs/{path}|X-Ca-Key={token}|X-Ca-Timestamp={now_ms}|X-Ca-Nonce={nonce}", token,
         ),
     }
     return url, params, headers
+
+
+def build_inventory_request(
+    raw: object, *, country_code: str = "CN", phone_code: str = "86", language: str = "zh",
+) -> tuple[str, dict[str, str], dict[str, str]]:
+    """Build the existing inventory request without changing its wire shape."""
+    return build_vendor_request(
+        raw, DEVICE_LIST_PATH, {"funSwitch": "1"}, country_code=country_code,
+        phone_code=phone_code, language=language,
+    )
 
 
 def _code(value: object) -> int | None:
@@ -172,7 +193,7 @@ def summarize_inventory(payload: object) -> dict[str, Any]:
 
 async def async_inspect_device_inventory(
     session: aiohttp.ClientSession, raw: object, *, country_code: str = "CN",
-    phone_code: str = "86", language: str = "zh",
+    phone_code: str = "86", language: str = "zh", include_channels: bool = False,
 ) -> dict[str, Any]:
     try:
         url, params, headers = build_inventory_request(raw, country_code=country_code, phone_code=phone_code, language=language)
@@ -192,7 +213,15 @@ async def async_inspect_device_inventory(
                 if len(body) > MAX_BODY_BYTES:
                     return {"vendor_stage": "vendor_response_too_large", "channel_query_implemented": False}
             payload = json.loads(body)
-            return {**summarize_inventory(payload), "vendor_http_status": status}
+            public = {**summarize_inventory(payload), "vendor_http_status": status}
+            if include_channels and public["vendor_stage"] == "vendor_devices_received":
+                from .meari_channels import async_inspect_nvr_channels
+
+                public.update(await async_inspect_nvr_channels(
+                    session, raw, payload, country_code=country_code,
+                    phone_code=phone_code, language=language,
+                ))
+            return public
     except (aiohttp.ClientError, OSError, ValueError, RecursionError, asyncio.TimeoutError):
         # Do not include exception messages: they can contain credentials/URLs.
         return {"vendor_stage": "vendor_request_failed", "channel_query_implemented": False}
