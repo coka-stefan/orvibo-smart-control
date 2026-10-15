@@ -1,14 +1,6 @@
 import logging
 import asyncio
 from datetime import timedelta
-try:
-    from homeassistant.components.frontend import add_extra_js_url
-except ImportError:  # 旧版 HA 兼容
-    add_extra_js_url = None  # type: ignore[assignment]
-try:
-    from homeassistant.components.http import StaticPathConfig
-except ImportError:  # 旧版 HA 兼容
-    StaticPathConfig = None  # type: ignore[assignment]
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_USERNAME
@@ -51,6 +43,7 @@ from .service_handlers import async_register_services
 from .meari_probe import async_cancel_video_probes
 from .runtime_options import AvailabilityNotifier, IntegrationUpdateChecker
 from .registry_sync import sync_selected_device_registries
+from .frontend_resources import async_register_card_resources
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,47 +74,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """设置服务"""
-    # 注册内嵌门锁卡片资源（纯原生 JS，无需第三方插件）
-    try:
-        from pathlib import Path
-
-        www_dir = Path(__file__).parent / "www"
-        _LOGGER.info(
-            "门锁卡片资源注册检查: www_dir=%s exists=%s",
-            www_dir,
-            www_dir.is_dir(),
-        )
-        if www_dir.is_dir():
-            try:
-                if StaticPathConfig is not None:
-                    await hass.http.async_register_static_paths(
-                        [StaticPathConfig(
-                            url_path="/orvibo_smart_control/www",
-                            path=str(www_dir),
-                            cache_headers=True,
-                        )]
-                    )
-                else:
-                    hass.http.register_static_path("/orvibo_smart_control/www", str(www_dir))
-            except (AttributeError, TypeError):
-                hass.http.register_static_path("/orvibo_smart_control/www", str(www_dir))
-            for filename in ("orvibo-smart-control-door-lock-card.js", "orvibo-smart-control-nvr-card.js"):
-                try:
-                    _js_ver = str(int((www_dir / filename).stat().st_mtime))
-                except OSError:
-                    _js_ver = "0"
-                js_url = f"/orvibo_smart_control/www/{filename}?v={_js_ver}"
-                try:
-                    if add_extra_js_url is not None:
-                        add_extra_js_url(hass, js_url)
-                    else:
-                        hass.components.frontend.add_extra_js_url(hass, js_url)
-                except (AttributeError, TypeError):
-                    hass.components.frontend.add_extra_js_url(hass, js_url)
-            _LOGGER.info("门锁卡片资源已注册")
-    except Exception:  # noqa: BLE001 - 卡片注册失败不影响核心功能
-        _LOGGER.warning("门锁卡片资源注册失败（不影响其他功能）", exc_info=True)
-
+    await async_register_card_resources(hass)
     await async_register_services(hass)
     return True
 

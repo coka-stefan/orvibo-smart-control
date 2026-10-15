@@ -1,6 +1,9 @@
 {
   "domain": "orvibo_smart_control",
   "name": "ORVIBO Smart Control",
+  "after_dependencies": [
+    "lovelace"
+  ],
   "codeowners": [
     "@maycode0-0"
   ],
@@ -19,5 +22,5 @@
   "requirements": [
     "pycryptodome==3.23.0"
   ],
-  "version": "0.2.6b5"
+  "version": "0.2.6b6"
 }

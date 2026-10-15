@@ -5,7 +5,7 @@
 
 ## 打开回放
 
-1. 在 HACS 更新到 `v0.2.6b5`，重启 Home Assistant，刷新浏览器。
+1. 在 HACS 更新到 `v0.2.6b6`，重启 Home Assistant，强制刷新浏览器。
 2. 编辑仪表盘 → 添加卡片 → 搜索“欧瑞博硬盘录像”。也可添加手动卡片：
 
    ```yaml
@@ -19,8 +19,20 @@
    连接可能需要约一分钟。点击“停止回放”释放连接。
 
 卡片可通过 `entity: camera.your_nvr_channel_1_hdd` 固定为一个硬盘回放实体。
-若卡片列表没有更新，先强制刷新；需要手动资源时，资源地址为
-`/orvibo_smart_control/www/orvibo-smart-control-nvr-card.js`，类型 JavaScript 模块。
+`0.2.6b6` 会自动在存储模式的仪表盘资源列表中注册卡片，更新已有旧地址，并使用脚本
+内容校验值刷新缓存。YAML 模式不修改用户配置，继续通过全局前端模块加载。
+
+若出现 `Custom element doesn't exist: orvibo-smart-control-nvr-card`，这是卡片脚本
+尚未注册。可在“设置 → 仪表盘 → 右上角菜单 → 资源”（需开启高级模式）添加：
+
+```text
+/orvibo_smart_control/www/orvibo-smart-control-nvr-card.js?v=0.2.6b6
+```
+
+类型选“JavaScript 模块”，保存后强制刷新。YAML 资源模式则在 `lovelace.resources`
+配置中使用同一 URL 和 `type: module`。若仍无法加载，在同一个 HA 地址下直接打开
+上述路径：应返回 JavaScript 源码；若为404，请检查实际安装版本及 HA 日志中
+“欧瑞博卡片静态资源注册失败”的记录。
 若没有回放实体，请检查集成设备选择中已勾选录像机；实体随在线通道创建。
 
 日期和时间采用**录像机本身的日历时间**，不自动按 HA 时区换算。日列表最多展示

@@ -26,7 +26,7 @@ const definitions=new Map();
 global.customElements={get:k=>definitions.get(k),define:(k,v)=>definitions.set(k,v)};
 const calls=[];const configs=[];
 global.window={customCards:[],loadCardHelpers:async()=>({createCardElement(config){configs.push(config);return new Element();}})};
-const source=fs.readFileSync(process.argv[1],'utf8');vm.runInThisContext(source);vm.runInThisContext(source.replace('class OrviboNvrCard','class DuplicateNvrCard').replaceAll('OrviboNvrCard);','DuplicateNvrCard);'));
+const source=fs.readFileSync(process.argv[1],'utf8');vm.runInThisContext(source);vm.runInThisContext(source);
 assert.equal(window.customCards.length,1);
 const Card=definitions.get('orvibo-smart-control-nvr-card');
 const card=new Card();card.setConfig({});

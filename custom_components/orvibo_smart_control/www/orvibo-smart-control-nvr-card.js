@@ -1,4 +1,5 @@
 /* NVR hard-disk recordings. Calendar values belong to the recorder. */
+(() => {
 class OrviboNvrCard extends HTMLElement {
   static getStubConfig() { return {}; }
   setConfig(config) {
@@ -184,3 +185,4 @@ if (!window.customCards.some((card) => card.type === "orvibo-smart-control-nvr-c
   window.customCards.push({ type: "orvibo-smart-control-nvr-card", name: "欧瑞博硬盘录像",
     description: "按日期查询录像机硬盘片段并回放", preview: false });
 }
+})();
