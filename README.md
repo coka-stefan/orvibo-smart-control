@@ -70,7 +70,9 @@ S1 等匹配的 Meari XTS/p2p=2 摄像机新增“存储卡回放”实体；更
 **硬盘和存储卡查询与回放尚待真实设备验证**。当前无声音。
 添加手动卡片：`type: custom:orvibo-smart-control-nvr-card`，操作步骤见 [录像回放说明](docs/meari-hdd-playback.md)。
 在线通道列表变化后请重新加载集成。仅本地 LAN 模式无法取得必要的云授权。
-`bN` 后缀用于区分开发版本，GitHub 按普通 Release 发布，不标记为 Pre-release。
+版本发布规则：默认使用 `v0.x.ybN` 临时诊断版本；只有明确要求“发布正式版”时才使用
+`v0.x.y` 这类正式版本。两种版本都按 GitHub 普通 Release / Latest 发布，不标记为
+Pre-release，以确保 HACS 能识别更新。
 详细说明与故障诊断见 [实时视频](docs/meari-live-video.md) 和
 [录像机诊断指南](docs/nvr-video-diagnostics.md)。
 

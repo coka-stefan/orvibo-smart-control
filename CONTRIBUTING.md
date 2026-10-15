@@ -265,15 +265,16 @@ hassfest。测试 fixture 必须最小化、稳定且不可逆脱敏。
 项目名、域名、仓库 owner 和卡片名必须在 manifest、HACS 元数据、代码和文档中保持一致。
 
 每次推送到 `main`，`.github/workflows/hacs-release.yml` 都会在单元测试、HACS validation、
-hassfest 全部通过后，根据 `manifest.json` 中的稳定 `0.x.y` 版本检查并补建 `v<version>`
-标签，然后构建 `orvibo-smart-control.zip` 并发布 GitHub Release。发布不再依赖与上一个提交
-比较版本，因此上次失败后，同版本的后续推送也能补齐缺失的标签、Release 或 ZIP。
+hassfest 全部通过后，根据 `manifest.json` 中的版本检查并补建 `v<version>` 标签，然后构建
+`orvibo-smart-control.zip` 并发布 GitHub Release。发布不再依赖与上一个提交比较版本，因此
+上次失败后，同版本的后续推送也能补齐缺失的标签、Release 或 ZIP。
 
-已有标签保持原来的提交，缺失 ZIP 时从标签对应的代码打包；已有完整正式 Release 时直接
-跳过。新 Release 先保存为草稿，ZIP 上传成功后才公开，上传失败可安全重试。要发布标签
-之后的新代码，必须先递增 manifest 版本号。手动推送版本标签和在 `main` 运行
-`workflow_dispatch` 也使用同一发布流程；每周二、五的定时任务检查并修复当前稳定版本，
-不再自动生成 beta 版本。其他分支推送和 PR 仅运行验证，不发布。
+版本发布遵循仓库根目录 `AGENTS.md` 的约定：默认使用 `0.x.ybN` 临时诊断版本；只有用户
+明确要求“发布正式版”时，才使用 `0.x.y` 稳定版本。两种版本都发布为普通 GitHub
+Release / Latest，不能设置 `Pre-release`，以保证 HACS 识别更新。已有标签保持原来的提交，
+缺失 ZIP 时从标签对应的代码打包；新 Release 先保存为草稿，ZIP 上传成功后才公开。要发布
+标签之后的新代码，必须先递增 manifest 版本号。手动推送版本标签、在 `main` 运行
+`workflow_dispatch` 以及定时检查都使用同一发布流程；其他分支推送和 PR 仅运行验证，不发布。
 
 ## 脱敏清单
 
