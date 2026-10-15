@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from typing import Any, Optional
 
@@ -54,6 +55,30 @@ def _normalize_state(value: Any) -> Optional[bool]:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def normalize_unlock_method(value: Any) -> Optional[str]:
+    """Normalize named ThingModel methods; numeric legacy codes are separate."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    return {
+        "fingerprint": "fingerprint", "password": "password",
+        "card": "card", "key": "key", "face": "face",
+        "temporary_password": "temporary_password",
+        "temp password": "temporary_password",
+        "temp_password": "temporary_password",
+        "temppassword": "temporary_password",
+        "emergency fingerprint": "fingerprint",
+        "emergency password": "password", "emergency card": "card",
+    }.get(value)
+
+
+def unlock_direction(method: Optional[str]) -> str:
+    """Credential readers are outside; absence of credentials proves nothing."""
+    if method in {"fingerprint", "password", "card", "key", "face", "temporary_password"}:
+        return "outside"
+    return "unknown"
 
 
 def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
@@ -143,6 +168,25 @@ def normalize_lock_event(payload: Any) -> Optional[dict[str, Any]]:
     """Normalize cmd=352 doorbell/unlock events for the HA event bus."""
     if not isinstance(payload, Mapping):
         return None
+    # Legacy StatusRecord: value2=65535 marks a standalone alarm code.
+    # Do not apply this numeric enum to ThingModel event.value.type.
+    if (
+        not isinstance(payload.get("event"), Mapping)
+        and payload.get("cmd") == 42
+        and str(payload.get("value2")) == "65535"
+    ):
+        code = str(payload.get("value4"))
+        method = {
+            "1": "fingerprint", "2": "password", "3": "card",
+            "4": "temporary_password", "5": "key",
+        }.get(code)
+        if code == "20" or method is not None:
+            return {
+                "kind": "unlock", "unlock_type": method or "inside",
+                "unlock_method": method,
+                "open_direction": "inside" if code == "20" else "outside",
+                "unlock_user_id": None, "time": payload.get("time"),
+            }
     event = payload.get("event")
     if not isinstance(event, Mapping):
         return None
@@ -153,34 +197,50 @@ def normalize_lock_event(payload: Any) -> Optional[dict[str, Any]]:
     if event_time is None:
         event_time = _mapping(payload.get("raw_data")).get("time")
 
-    if server == "doorLock" and name == "unlockEvent":
+    if (server == "doorLock" and name == "unlockEvent") or (
+        server in (None, "doorLock") and name == "unlock"
+    ):
+        method = normalize_unlock_method(value.get("type"))
+        primary_id = "userId" if name == "unlockEvent" else "userID"
+        alternate_id = "userID" if primary_id == "userId" else "userId"
+        user_id = value.get(primary_id, value.get(alternate_id))
+        if isinstance(user_id, bool) or not isinstance(user_id, (str, int)):
+            user_id = None
         return {
             "kind": "unlock",
             "unlock_type": value.get("type"),
-            "unlock_user_id": value.get("userId"),
+            "unlock_method": method,
+            "open_direction": unlock_direction(method),
+            "unlock_user_id": user_id,
+            "pic_url": value.get("picture_url") or value.get("url"),
             "time": event_time,
         }
-    if server == "doorLock" and name == "errorUnlockEvent":
+    if server in ("doorLock", "security") and name == "errorUnlockEvent":
         return {
             "kind": "error_unlock",
             "unlock_type": value.get("type"),
             "time": event_time,
         }
-    if server == "doorLock" and name == "doorUnclose":
+    if server in ("doorLock", "security") and name in ("doorUnclose", "doorUnclosed"):
         return {"kind": "door_unclose", "time": event_time}
-    if server == "doorLock" and name == "picklockEvent":
+    if server in ("doorLock", "security") and name == "picklockEvent":
         return {
             "kind": "picklock",
             "video_url": value.get("videoUrl"),
             "pic_url": value.get("url"),
             "time": event_time,
         }
-    if server == "doorLock" and name == "leaveHomeEvent":
+    if server in ("doorLock", "security") and name == "leaveHomeEvent":
         return {
             "kind": "leave_home",
             "video_url": value.get("videoUrl"),
             "pic_url": value.get("url"),
             "time": event_time,
+        }
+    if server == "security" and name == "staying":
+        return {
+            "kind": "loiter", "pic_url": value.get("url") or value.get("picture_url"),
+            "video_url": value.get("videoUrl"), "time": event_time,
         }
     if (server == "doorbell" and name == "ring") or (
         server in (None, "doorbell") and name == "doorbell_ring"
@@ -237,7 +297,11 @@ def resolve_opened_by(
     """把一次开门事件归属到窗口内最近一次开锁（返回 user_id + 开锁方式）。"""
     if not isinstance(last_unlock, Mapping):
         return None
-    if not isinstance(elapsed, (int, float)) or elapsed < 0 or elapsed > window:
+    if (
+        not isinstance(elapsed, (int, float))
+        or not math.isfinite(elapsed)
+        or elapsed < 0 or elapsed > window
+    ):
         return None
     user_id = last_unlock.get("user_id")
     if user_id is None:
@@ -271,8 +335,26 @@ def derive_lock_status(
     return None
 
 
-def format_unlock_label(user_id: Any, name: Optional[str]) -> str:
+def format_unlock_label(
+    user_id: Any, name: Optional[str], direction: Optional[str] = None,
+    method: Optional[str] = None,
+) -> str:
     """生成"xxx开门"显示文本（未配置名称时回退为 用户{id}）。"""
+    if direction is not None:
+        if unlock_direction(method) == "outside":
+            direction = "outside"
+        if direction == "inside":
+            return "内开（人员未知）"
+        who = str(name).strip() if name else ""
+        if not who and user_id not in (None, ""):
+            who = f"用户{user_id}"
+        label = {"outside": "外开", "unknown": "开门（方向未知）"}.get(direction, "开门（方向未知）")
+        method_label = {
+            "fingerprint": "指纹", "password": "密码", "card": "卡片",
+            "key": "钥匙", "face": "人脸", "temporary_password": "临时密码",
+        }.get(method)
+        details = "，".join(item for item in (method_label, "人员未知" if not who else None) if item)
+        return f"{who}{label}" + (f"（{details}）" if details else "")
     if name and str(name).strip():
         return f"{name}开门"
     if user_id not in (None, ""):

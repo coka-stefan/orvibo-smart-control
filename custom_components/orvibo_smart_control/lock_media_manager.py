@@ -12,13 +12,30 @@ import urllib.error
 import urllib.request
 
 from .cos_media import CosMediaManager
+from .const import DEFAULT_LOCK_SNAPSHOT_LIMIT, MAX_LOCK_SNAPSHOT_LIMIT
 from .device_types import DeviceCategory, classify_device
-from .history import history_dir, save_snapshot
+from .history import history_dir, latest_snapshot, save_snapshot, trim_snapshots
 from .redact import fingerprint
 from .video_archive import VideoArchiver, normalize_event_object_key
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _event_object_key(value: Any) -> str | None:
+    """Accept COS object keys only; events cannot select arbitrary URLs."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if (
+        not value or len(value) > 1024
+        or any(character in value for character in (":", "\\", "?", "#"))
+        or any(ord(character) < 32 for character in value)
+        or value.startswith("//")
+        or any(part in {"", ".", ".."} for part in value.lstrip("/").split("/"))
+    ):
+        return None
+    return value
 
 
 def _download_bytes(url: str, timeout: int = 30) -> Optional[bytes]:
@@ -31,11 +48,10 @@ def _download_bytes(url: str, timeout: int = 30) -> Optional[bytes]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read()
     except urllib.error.HTTPError as error:
-        body = error.read(600).decode("utf-8", "replace")
-        _LOGGER.warning("下载失败 HTTP %s: %s", error.code, body[:500])
+        _LOGGER.warning("截图下载失败 HTTP %s", error.code)
         return None
     except Exception as error:  # noqa: BLE001
-        _LOGGER.warning("下载失败: %r", error)
+        _LOGGER.warning("截图下载失败: %s", type(error).__name__)
         return None
 
 
@@ -49,6 +65,7 @@ class LockMediaManager:
         hass: Any,
         devices: MutableMapping[str, dict[str, Any]],
         redaction_salt: bytes,
+        snapshot_limit: int = DEFAULT_LOCK_SNAPSHOT_LIMIT,
     ) -> None:
         self.hass = hass
         self.devices = devices
@@ -57,12 +74,42 @@ class LockMediaManager:
         self.archiver: Optional[VideoArchiver] = None
         self._cameras: Dict[str, Any] = {}
         self._snapshot_pending: set[tuple[str, str]] = set()
+        try:
+            self.snapshot_limit = min(MAX_LOCK_SNAPSHOT_LIMIT, max(1, int(snapshot_limit)))
+        except (TypeError, ValueError, OverflowError):
+            self.snapshot_limit = DEFAULT_LOCK_SNAPSHOT_LIMIT
+        self._snapshot_locks: dict[str, asyncio.Lock] = {}
+        self._latest_snapshot: dict[str, tuple[int, int]] = {}
+        self._sequence = 0
+        self._tasks: set[asyncio.Task] = set()
+        self._stopped = False
         self._history_cleanup_unsub = None
+
+    def _create_task(self, coroutine: Any) -> None:
+        task = self.hass.async_create_task(coroutine)
+        if isinstance(task, asyncio.Task):
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
+    async def _finish_local_job(self, function: Any, *args: Any) -> Any:
+        """Finish disk writes/deletions before releasing a per-device lock."""
+        job = asyncio.ensure_future(self.hass.async_add_executor_job(function, *args))
+        cancelled = False
+        while not job.done():
+            try:
+                await asyncio.shield(job)
+            except asyncio.CancelledError:
+                cancelled = True
+        result = job.result()
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
 
     def configure(self, ssl_client: Any, user_id: str, family_id: str) -> None:
         """Configure media helpers after the SSL client has been created."""
 
         self.cos = CosMediaManager(ssl_client, user_id, family_id)
+        self._stopped = False
         self.archiver = VideoArchiver(
             media_root=self.hass.config.path("media"),
         )
@@ -76,7 +123,7 @@ class LockMediaManager:
         """Attach cached signed URLs and schedule background media work."""
 
         cos = self.cos
-        if cos is None or not event:
+        if cos is None or not event or self._stopped:
             return {}
         uid = raw_status.get("uid") or event.get("uid") or ""
         if not uid:
@@ -89,32 +136,56 @@ class LockMediaManager:
             ("pic_url", "pic_media_url"),
             ("doorbell_url", "doorbell_media_url"),
         ):
-            object_key = event.get(field)
+            object_key = _event_object_key(event.get(field))
             if not object_key:
                 continue
             url = cos.try_signed_url(device_id, uid, object_key)
             if url:
                 out[target] = url
             elif cos.cached_credentials(device_id) is None:
-                self.hass.async_create_task(cos.get_credentials(device_id, uid))
+                self._create_task(cos.get_credentials(device_id, uid))
             if field == "video_url":
                 self._schedule_video_archive(
                     device_id, object_key, url, out, kind, event_ts
                 )
 
-        snapshot_key = event.get("pic_url") or event.get("doorbell_url")
+        snapshot_key = _event_object_key(event.get("pic_url")) or _event_object_key(event.get("doorbell_url"))
         if snapshot_key:
-            self.hass.async_create_task(
+            self._create_task(
                 self._update_snapshot(device_id, uid, snapshot_key, kind, event_ts)
             )
         return out
 
     def register_camera(self, device_id: str, camera: Any) -> None:
         self._cameras[device_id] = camera
+        if not self._stopped:
+            self._create_task(self._restore_snapshot(device_id, camera))
         _LOGGER.debug(
             "门锁截图实体已注册 device=%s",
             fingerprint(device_id, self._redaction_salt),
         )
+
+    def unregister_camera(self, device_id: str, camera: Any) -> None:
+        if self._cameras.get(device_id) is camera:
+            self._cameras.pop(device_id, None)
+
+    async def _restore_snapshot(self, device_id: str, camera: Any) -> None:
+        try:
+            async with self._snapshot_locks.setdefault(device_id, asyncio.Lock()):
+                result = await self.hass.async_add_executor_job(
+                    latest_snapshot, self.hass.config.path("media"), device_id,
+                )
+                if not result or self._stopped or self._cameras.get(device_id) is not camera:
+                    return
+                timestamp, image = result
+                if timestamp < self._latest_snapshot.get(device_id, (-1, -1))[0]:
+                    return
+                self._latest_snapshot[device_id] = max(
+                    self._latest_snapshot.get(device_id, (-1, -1)), (timestamp, -1),
+                )
+                await camera.async_set_image(image)
+        except OSError as error:
+            _LOGGER.warning("门锁截图恢复失败: %s", type(error).__name__)
 
     async def _update_snapshot(
         self,
@@ -124,11 +195,19 @@ class LockMediaManager:
         kind: str,
         ts: int | str,
     ) -> None:
-        dedup_key = (device_id, object_key)
+        object_key = _event_object_key(object_key)
+        if object_key is None or self._stopped:
+            return
+        dedup_key = (device_id, object_key.lstrip("/"))
         if dedup_key in self._snapshot_pending:
             return
         self._snapshot_pending.add(dedup_key)
-        camera = self._cameras.get(device_id)
+        self._sequence += 1
+        try:
+            timestamp = max(0, int(ts))
+        except (TypeError, ValueError, OverflowError):
+            timestamp = int(time.time())
+        order = (timestamp, self._sequence)
         cos = self.cos
         # History persistence must not depend on the camera entity being loaded.
         # A device can be deselected from the camera platform while media events
@@ -136,19 +215,18 @@ class LockMediaManager:
         if cos is None:
             self._snapshot_pending.discard(dedup_key)
             return
-        image: Optional[bytes] = None
         try:
-            url = await cos.signed_url(device_id, device_uid, object_key)
-            if not url:
-                _LOGGER.warning(
-                    "门锁截图签名 URL 获取失败 device=%s",
-                    fingerprint(device_id, self._redaction_salt),
-                )
-                return
-            for attempt, delay in enumerate((8, 10, 20, 25)):
+            image: Optional[bytes] = None
+            for attempt, delay in enumerate((0, 8, 10, 20)):
                 if delay:
                     await asyncio.sleep(delay)
-                image = await self.hass.async_add_executor_job(_download_bytes, url)
+                # Re-sign each attempt: credentials/URL can expire during upload.
+                try:
+                    url = await cos.signed_url(device_id, device_uid, object_key)
+                    if url:
+                        image = await self.hass.async_add_executor_job(_download_bytes, url)
+                except Exception as error:  # noqa: BLE001 - retry transient media failures
+                    _LOGGER.debug("截图下载尝试失败: %s", type(error).__name__)
                 if image:
                     break
                 _LOGGER.debug(
@@ -156,35 +234,42 @@ class LockMediaManager:
                     attempt + 1,
                     fingerprint(device_id, self._redaction_salt),
                 )
+            if not image:
+                _LOGGER.warning(
+                    "门锁截图下载为空 device=%s",
+                    fingerprint(device_id, self._redaction_salt),
+                )
+                return
+            async with self._snapshot_locks.setdefault(device_id, asyncio.Lock()):
+                def persist() -> None:
+                    directory = history_dir(self.hass.config.path("media"), device_id)
+                    save_snapshot(directory, kind, timestamp, image, object_key)
+                    trim_snapshots(directory, self.snapshot_limit)
+
+                # Executor writes must finish before unloading/releasing dedup.
+                await self._finish_local_job(persist)
+                if self._stopped:
+                    return
+                previous = self._latest_snapshot.get(device_id)
+                if previous is None:
+                    # Existing disk history can be newer than a replayed event.
+                    result = await self.hass.async_add_executor_job(
+                        latest_snapshot, self.hass.config.path("media"), device_id,
+                    )
+                    previous = (result[0], -1) if result else (-1, -1)
+                if order >= previous:
+                    self._latest_snapshot[device_id] = order
+                    camera = self._cameras.get(device_id)
+                    if camera is not None:
+                        await camera.async_set_image(image)
         except Exception:  # noqa: BLE001
-            _LOGGER.exception(
-                "门锁截图更新异常 device=%s",
+            _LOGGER.warning(
+                "门锁截图更新失败 device=%s",
                 fingerprint(device_id, self._redaction_salt),
             )
             return
         finally:
             self._snapshot_pending.discard(dedup_key)
-
-        if not image:
-            _LOGGER.warning(
-                "门锁截图下载为空 device=%s key=%s",
-                fingerprint(device_id, self._redaction_salt),
-                object_key,
-            )
-            return
-        try:
-            await self.hass.async_add_executor_job(
-                lambda: save_snapshot(
-                    history_dir(self.hass.config.path("media"), device_id),
-                    kind,
-                    ts,
-                    image,
-                )
-            )
-        except OSError as error:
-            _LOGGER.warning("截图落盘失败: %s", error)
-        if camera is not None:
-            await camera.async_set_image(image)
 
     def _schedule_video_archive(
         self,
@@ -205,7 +290,7 @@ class LockMediaManager:
             return
         out["video_file"] = str(mp4_path)
         if signed_url:
-            self.hass.async_create_task(
+            self._create_task(
                 self._archive_video(device_id, kind, ts, signed_url)
             )
 
@@ -257,7 +342,7 @@ class LockMediaManager:
         return result or {"error": "录像下载失败"}
 
     async def list_events(
-        self, device_id: str = "", limit: int = 100
+        self, device_id: str = "", limit: int = 100, media_type: str | None = None,
     ) -> list[dict[str, str]]:
         from .history import list_history
 
@@ -266,6 +351,7 @@ class LockMediaManager:
             self.hass.config.path("media"),
             device_id or None,
             limit,
+            media_type,
         )
 
     async def prewarm(self) -> None:
@@ -292,25 +378,49 @@ class LockMediaManager:
 
         async def run(_now=None) -> None:
             try:
-                removed = await self.hass.async_add_executor_job(
-                    cleanup,
-                    self.hass.config.path("media"),
-                    self.HISTORY_KEEP_DAYS,
-                )
+                removed = 0
+                for device_id, device in list(self.devices.items()):
+                    if classify_device(device) != DeviceCategory.DOOR_LOCK:
+                        continue
+                    async with self._snapshot_locks.setdefault(device_id, asyncio.Lock()):
+                        removed += await self._finish_local_job(
+                            cleanup,
+                            self.hass.config.path("media"),
+                            self.HISTORY_KEEP_DAYS,
+                            device_id,
+                            None,
+                            self.snapshot_limit,
+                        )
                 if removed:
                     _LOGGER.info("历史清理完成，删除 %s 个过期文件", removed)
             except Exception:  # noqa: BLE001
                 _LOGGER.warning("历史清理异常", exc_info=True)
 
-        self.hass.async_create_task(run())
+        def schedule(_now=None) -> None:
+            if not self._stopped:
+                self._create_task(run())
+
+        schedule()
         self._history_cleanup_unsub = async_track_time_interval(
-            self.hass, run, timedelta(days=7)
+            self.hass, schedule, timedelta(days=7)
         )
 
     def stop_cleanup(self) -> None:
+        self._stopped = True
         if self._history_cleanup_unsub is not None:
             self._history_cleanup_unsub()
             self._history_cleanup_unsub = None
+        for task in tuple(self._tasks):
+            if not task.cancelling():
+                task.cancel()
+
+    async def async_shutdown(self) -> None:
+        """Cancel delayed downloads and finish any in-flight local persistence."""
+        self.stop_cleanup()
+        tasks = tuple(self._tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._cameras.clear()
 
     async def cleanup_history(
         self,

@@ -98,6 +98,7 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
         self._attr_name = "门锁截图"
         self._attr_device_class = None
         self._image: bytes | None = None
+        self._snapshot_revision = 0
         coordinator.register_lock_camera(self._device_id, self)
 
     def camera_image(
@@ -109,7 +110,21 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
     async def async_set_image(self, image: bytes | None) -> None:
         """事件到达时由 coordinator 推送最新截图。"""
         self._image = image
-        self.async_write_ha_state()
+        self._snapshot_revision += 1
+        if getattr(self, "hass", None) is not None:
+            self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        manager = getattr(self.coordinator, "lock_media", None)
+        if manager is not None:
+            manager.unregister_camera(self._device_id, self)
+        await super().async_will_remove_from_hass()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        # Camera state remains "idle" for stills. Changing an attribute also
+        # refreshes last_updated, so dashboards reload newly persisted history.
+        return {"snapshot_revision": self._snapshot_revision}
 
     @property
     def device_info(self) -> dict[str, Any]:

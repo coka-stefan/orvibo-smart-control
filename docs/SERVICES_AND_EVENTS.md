@@ -51,6 +51,12 @@ data:
 
 映射只改变 Home Assistant 中的显示和事件字段，不会修改门锁内部用户。
 
+长期保存姓名请在集成选项“门锁用户映射”填写，每行一项：`用户ID=姓名`。
+多把锁可以使用 `设备ID/用户ID=姓名`；不同开锁方式可能复用编号，可使用
+`设备ID/fingerprint/用户ID=姓名`、`设备ID/password/用户ID=姓名` 等更精确的映射。
+匹配顺序为设备及方式、方式、设备、通用用户编号；编号 `0` 有效。服务修改仅对当前运行期
+生效且按设备隔离；重载后以集成选项为准。名字缺失时显示用户编号，内开未上报身份时显示人员未知。
+
 ## 媒体归档
 
 ### `fetch_video`
@@ -83,6 +89,7 @@ media_id: media-source://media_source/local/orvibo_smart_control/...
 | `entry_id`  | 全部匹配配置项 | 可选                       |
 | `device_id` | 全部门锁       | 必须属于目标配置项且为门锁 |
 | `limit`     | `100`          | `1..500`                   |
+| `media_type` | 全部          | 可选 `image` / `video`，先筛选再限制条数 |
 
 响应中的每条记录只可能包含 `device_id`、`kind`、`time`、`type` 和 `media_id`。
 
@@ -111,7 +118,9 @@ data:
 response_variable: cleanup_result
 ```
 
-集成启动时会执行一次默认清理，之后每 7 天运行一次；默认删除超过 7 天的门锁媒体。
+集成启动时会执行一次默认清理，之后每 7 天运行一次。录像默认保留 7 天，抓拍按每把锁的
+数量保留，默认最近 30 次；集成选项“门锁抓拍保留数量”支持 `1..500`。自动按天清理
+不会删除保留范围内的抓拍。手动调用 `cleanup_history` 仍可显式删除抓拍。
 
 ## 临时密码
 
@@ -193,9 +202,18 @@ response_variable: authorizations
 | 字段                                                    | 说明                                        |
 | ------------------------------------------------------- | ------------------------------------------- |
 | `unlock_type`                                           | `fingerprint`、`password`、`face` 或 `card` |
+| `unlock_method`                                         | 规范化方式：`fingerprint/password/card/key/face/temporary_password`，未知为 null |
+| `open_direction`                                        | `inside`（内开）/ `outside`（外开）/ `unknown` |
 | `unlock_user_id`                                        | 门锁用户编号                                |
 | `unlock_user_name`                                      | 配置映射后的名称                            |
 | `opened_by_user_id`、`opened_by_type`、`opened_by_name` | 最近一次开锁与随后开门的关联结果            |
+
+新版 `doorLock/unlockEvent` 的 `userId` 与旧版 `unlock` 的 `userID` 均可读取，表示锁侧
+授权编号。密码、指纹、钥匙、卡片（含临时密码、胁迫凭据）均判外开；旧状态记录
+`value2=65535,value4=20` 明确表示内开，不沿用外开用户。反锁状态不用于判断方向。
+只有门磁打开而没有可信开锁事件时，方向为未知，不能据此断言内开。开锁与开门的关联
+窗口为 30 秒，一次开锁仅归属一次开门，关闭后再次打开不会复用上一个人。
+较旧的开锁事件迟到时带 `historical: true`，其抓拍仍归档，但不更新最近开门状态和人员。
 
 带媒体的事件可能附带短期签名 URL：`media_url`、`pic_media_url`、
 `doorbell_media_url`。URL 中包含临时访问凭据，不应持久化或提交到 Issue。媒体在后台归档
@@ -248,12 +266,13 @@ device_id: w-example-door-lock-id
 history_limit: 24
 ```
 
-`history_limit` 可选，用于设置卡片展示的历史截图数量（`1..100`，默认 `12`）。
+`history_limit` 可选，用于设置卡片展示的历史截图数量（`1..500`，默认 `30`）。
 
 门锁事件截图会自动保存到 Home Assistant 的 `config/media/orvibo_smart_control/<设备>/` 目录，
-默认保留 7 天。卡片中的“历史截图（自动保存）”区域可刷新列表并点击缩略图查看大图；
-需要更长保留时间时，可调用 `cleanup_history` 服务前先在自动化中按需管理文件，或调整该服务
-的 `keep_days` 参数。也可以直接调用 `list_events` 获取每张截图的 `media_id`。
+默认保留最近 30 次，可在集成选项调整。卡片中的“历史截图（自动保存）”区域可刷新列表
+并点击缩略图查看大图；只查询抓拍，录像不会占用图片名额。抓拍保存成功后才淘汰旧图，
+同秒不同图片分别保存，重载后从本地恢复最近画面。也可以直接调用 `list_events`
+并传 `media_type: image` 获取每张截图的 `media_id`。
 
 不填写 `device_id` 时卡片会尝试选择实体最完整的一把门锁；多配置项或多门锁环境应明确
 配置。卡片调用的仍是上文服务，权限取决于当前 Home Assistant 用户。授权列表不会返回

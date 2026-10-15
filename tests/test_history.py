@@ -43,6 +43,24 @@ class SaveSnapshotTests(unittest.TestCase):
             self.assertEqual(p1, p2)
             self.assertEqual(p1.read_bytes(), b"jpg-data")
 
+    def test_object_identity_preserves_distinct_captures_in_same_second(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            directory = history.history_dir(Path(td), "lock")
+            first = history.save_snapshot(directory, "ring", 100, b"one", "/uid/one.jpg")
+            second = history.save_snapshot(directory, "ring", 100, b"two", "/uid/two.jpg")
+            duplicate = history.save_snapshot(directory, "ring", 100, b"changed", "uid/one.jpg")
+            self.assertNotEqual(first, second)
+            self.assertEqual(first, duplicate)
+            self.assertEqual(first.read_bytes(), b"one")
+            self.assertEqual(second.read_bytes(), b"two")
+            self.assertEqual(len(history.list_history(Path(td), "lock")), 2)
+            self.assertFalse(list(directory.glob("*.part")))
+
+    def test_timestamp_cannot_escape_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(ValueError):
+                history.snapshot_path(Path(td), "ring", "../../outside")
+
 
 class ListHistoryTests(unittest.TestCase):
     def test_sorted_and_parsed(self) -> None:
@@ -76,6 +94,31 @@ class ListHistoryTests(unittest.TestCase):
             self.assertEqual(len(only_1), 1)
             self.assertEqual(only_1[0]["device_id"], "w-lock1")
 
+    def test_image_filter_applies_before_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            directory = history.history_dir(root, "lock")
+            history.save_snapshot(directory, "ring", 100, b"image", "picture.jpg")
+            (directory / "ring_200.mp4").write_bytes(b"video")
+            (directory / "ring_201.h264").write_bytes(b"video")
+            self.assertEqual(history.list_history(root, "lock", 1)[0]["type"], "video")
+            images = history.list_history(root, "lock", 1, "image")
+            self.assertEqual(len(images), 1)
+            self.assertEqual(images[0]["type"], "image")
+            self.assertEqual(images[0]["time"], "100")
+
+    def test_latest_snapshot_reads_legacy_and_identity_names_and_skips_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            directory = history.history_dir(root, "lock")
+            history.save_snapshot(directory, "ring", 100, b"legacy")
+            history.save_snapshot(directory, "ring", 200, b"current", "picture.jpg")
+            (directory / "ring_300.jpg").write_bytes(b"")
+            (directory / "ring_400.mp4").write_bytes(b"video")
+            (directory / "ring_500.jpg.part").write_bytes(b"incomplete")
+            self.assertEqual(history.latest_snapshot(root, "lock"), (200, b"current"))
+            self.assertIsNone(history.latest_snapshot(root, "missing"))
+
 
 class MediaSourceIdTests(unittest.TestCase):
     def test_media_id(self) -> None:
@@ -90,6 +133,31 @@ class MediaSourceIdTests(unittest.TestCase):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_snapshot_limit_is_per_device_and_independent_of_video_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for device in ("one", "two"):
+                directory = history.history_dir(root, device)
+                for timestamp in range(35):
+                    history.save_snapshot(directory, "ring", timestamp, b"jpg", str(timestamp))
+                (directory / "ring_100.mp4").write_bytes(b"video")
+                self.assertEqual(history.trim_snapshots(directory, 30), 5)
+                self.assertEqual(len(list(directory.glob("*.jpg"))), 30)
+                self.assertTrue((directory / "ring_100.mp4").exists())
+
+    def test_automatic_cleanup_protects_retained_old_captures(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            directory = history.history_dir(root, "lock")
+            for timestamp in range(35):
+                history.save_snapshot(directory, "ring", timestamp, b"jpg", str(timestamp))
+            (directory / "ring_100.mp4").write_bytes(b"video")
+            removed = history.cleanup(root, keep_days=7, snapshot_limit=30)
+            self.assertEqual(removed, 6)
+            images = history.list_history(root, "lock", 100, "image")
+            self.assertEqual(len(images), 30)
+            self.assertEqual(images[-1]["time"], "5")
+
     def test_removes_expired_keeps_recent(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

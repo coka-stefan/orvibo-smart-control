@@ -61,6 +61,15 @@ list_events:
   description: 按时间倒序列出已归档的截图和录像，并返回媒体浏览器引用
   target: {}
   fields:
+    media_type:
+      name: 媒体类型
+      description: 可选 image（抓拍）或 video（录像），筛选后再应用返回条数
+      required: false
+      selector:
+        select:
+          options:
+            - image
+            - video
     entry_id:
       name: 配置项 ID
       description: 集成配置项 ID（可选；有多个配置项时建议提供）

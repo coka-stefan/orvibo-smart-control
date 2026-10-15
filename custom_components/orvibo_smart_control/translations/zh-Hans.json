@@ -92,7 +92,8 @@
                     "polling": "配置轮询间隔时间",
                     "availability_notifications": "配置设备上下线通知",
                     "update_check": "配置集成更新检查",
-                    "lock_users": "锁用户映射"
+                    "lock_users": "锁用户映射",
+                    "lock_snapshots": "门锁抓拍保留数量"
                 }
             },
             "transport_mode": {
@@ -161,7 +162,7 @@
             },
             "lock_users": {
                 "title": "锁用户映射",
-                "description": "每行一个：用户ID=名称（例如 1=张三，2=李四）。用于开锁事件显示\"谁开的门\"。",
+                "description": "每行一项：用户ID=姓名。可按设备和方式区分，例如 w-lock/fingerprint/7=张三；编号 0 有效。",
                 "data": {
                     "lock_user_names": "用户映射"
                 }
@@ -206,6 +207,13 @@
                 "data": {
                     "area_id": "区域"
                 }
+            },
+            "lock_snapshots": {
+                "title": "门锁抓拍保留数量",
+                "description": "每把锁保留最近的抓拍，默认 30 次，可设为 1–500 次。新抓拍保存成功后才淘汰旧图；自动按天清理不删除保留的抓拍。",
+                "data": {
+                    "lock_snapshot_limit": "每把锁保留的抓拍数量"
+                }
             }
         },
         "error": {
@@ -216,7 +224,8 @@
             "no_devices": "该家庭中没有发现设备",
             "no_visible_devices": "发现的设备已全部被名称规则隐藏",
             "lan_credentials_required": "请输入独立的 MixPad 用户名和密码",
-            "invalid_service": "通知服务必须使用 domain.service 格式"
+            "invalid_service": "通知服务必须使用 domain.service 格式",
+            "invalid_snapshot_limit": "请输入 1–500 之间的整数。"
         },
         "abort": {
             "reauth_successful": "重新登录成功，现有设备和实体设置已保留",

@@ -21,6 +21,9 @@ from .const import (
     CONF_LAN_PASSWORD_HASH,
     CONF_LAN_USERNAME,
     CONF_LOCK_USER_NAMES,
+    CONF_LOCK_SNAPSHOT_LIMIT,
+    DEFAULT_LOCK_SNAPSHOT_LIMIT,
+    MAX_LOCK_SNAPSHOT_LIMIT,
     CONF_NOTIFY_OFFLINE,
     CONF_NOTIFY_ONLINE,
     CONF_NOTIFY_SERVICE,
@@ -645,6 +648,7 @@ class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
                 "availability_notifications",
                 "update_check",
                 "lock_users",
+                "lock_snapshots",
             ],
         )
 
@@ -991,6 +995,36 @@ class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
             errors=errors,
             description_placeholders={"username": username},
+        )
+
+    async def async_step_lock_snapshots(self, user_input=None):
+        """Keep the newest configured number of snapshots for each lock."""
+        options = dict(self._config_entry.options)
+        errors = {}
+        if user_input is not None:
+            try:
+                raw_limit = user_input.get(CONF_LOCK_SNAPSHOT_LIMIT, DEFAULT_LOCK_SNAPSHOT_LIMIT)
+                limit = int(raw_limit)
+                if isinstance(raw_limit, bool) or (isinstance(raw_limit, float) and raw_limit != limit):
+                    raise ValueError
+                if not 1 <= limit <= MAX_LOCK_SNAPSHOT_LIMIT:
+                    raise ValueError
+            except (ValueError, TypeError, OverflowError):
+                errors["base"] = "invalid_snapshot_limit"
+            else:
+                options[CONF_LOCK_SNAPSHOT_LIMIT] = limit
+                return self.async_create_entry(title="", data=options)
+        return self.async_show_form(
+            step_id="lock_snapshots",
+            data_schema=vol.Schema({
+                vol.Required(CONF_LOCK_SNAPSHOT_LIMIT, default=options.get(
+                    CONF_LOCK_SNAPSHOT_LIMIT, DEFAULT_LOCK_SNAPSHOT_LIMIT
+                )): selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=1, max=MAX_LOCK_SNAPSHOT_LIMIT, step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )),
+            }),
+            errors=errors,
         )
 
     async def async_step_lock_users(self, user_input=None):

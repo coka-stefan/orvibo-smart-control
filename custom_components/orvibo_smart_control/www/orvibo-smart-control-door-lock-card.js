@@ -9,7 +9,7 @@
  * 用法（Lovelace 卡片）：
  *   type: custom:orvibo-smart-control-door-lock-card
  *   device_id: "<your-door-lock-device-id>"   # 可选，留空自动选第一把门锁
- *   history_limit: 12                         # 可选，卡片显示的历史截图数量
+ *   history_limit: 30                         # 可选，卡片显示的历史截图数量
  *
  * 仅显示临时密码管理：
  *   type: custom:orvibo-smart-control-temp-password-card
@@ -50,7 +50,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     this._eventsLoaded = false;
     this._eventsLoading = false;
     this._eventsError = "";
-    this._historyLimit = 12;
+    this._historyLimit = 30;
     this._eventsLastCam = "";
     this._lastReloadAt = 0;
     this._lightboxUrl = null;
@@ -77,8 +77,8 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     this._eventsError = "";
     const requestedHistoryLimit = Number(this._config.history_limit);
     this._historyLimit = Number.isInteger(requestedHistoryLimit)
-      ? Math.min(100, Math.max(1, requestedHistoryLimit))
-      : 12;
+      ? Math.min(500, Math.max(1, requestedHistoryLimit))
+      : 30;
     this._loadEntities();
   }
 
@@ -334,6 +334,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
         ${tempOnly ? "" : `<div class="stats">
           <div class="stat"><span class="stat-label">门磁</span><span class="stat-value">${this._escapeHtml(doorLabel)}</span></div>
           <div class="stat"><span class="stat-label">${this._escapeHtml(battery.label)}</span><span class="stat-value">${this._escapeHtml(battery.value)}</span></div>
+          <div class="stat opening"><span class="stat-label">最近开门</span><span class="stat-value">${this._escapeHtml(this._state(this._entities.unlock) || "无")}</span></div>
         </div>`}
         ${!tempOnly ? `
           <div class="section history-section">
@@ -452,6 +453,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
           .form label { grid-template-columns: 1fr; gap: 4px; }
           .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
           .stat { min-width: 0; padding: 8px; }
+          .stat.opening { grid-column: 1 / -1; }
         }
       </style>
     `;
@@ -716,7 +718,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
         type: "call_service",
         domain: "orvibo_smart_control",
         service: "list_events",
-        service_data: { device_id: this._deviceId, limit: 12 },
+        service_data: { device_id: this._deviceId, limit: this._historyLimit, media_type: "image" },
         return_response: true,
       });
       const res = result && result.response;

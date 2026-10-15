@@ -33,6 +33,7 @@ from .const import (
     SSL_PORT,
     UPDATE_INTERVAL,
     DEFAULT_KEY,
+    DEFAULT_LOCK_SNAPSHOT_LIMIT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         transport_mode: TransportMode = TransportMode.AUTO,
         lan_credentials: AccountCredentials | None = None,
         poll_interval: timedelta | None = UPDATE_INTERVAL,
+        lock_snapshot_limit: int = DEFAULT_LOCK_SNAPSHOT_LIMIT,
     ):
         self.credentials = credentials
         self.username = credentials.username
@@ -82,6 +84,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._lock_user_names_shared: Dict[str, str] = dict(lock_user_names or {})  # 持久化映射（entry 级）
         self.lock_events = LockEventManager(
             self.lock_user_name,
+            credential_name=self.lock_user_name,
             door_open_window=self.LOCK_DOOR_OPEN_WINDOW,
         )
         
@@ -124,7 +127,8 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             transport_mode,
         )
         self.lock_media = LockMediaManager(
-            self.hass, self.devices, self._redaction_salt
+            self.hass, self.devices, self._redaction_salt,
+            snapshot_limit=lock_snapshot_limit,
         )
         self.temp_passwords = TempPasswordManager(
             self.hass,
@@ -300,6 +304,17 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         data = self.lock_events.build_event(device_id, raw_status)
         if data is None:
             return
+        if not data.get("historical") and (data.get("kind") == "unlock" or data.get("door_opened")):
+            state = self.device_states.get(device_id)
+            if state is not None:
+                values = {
+                    "open_direction": data.get("open_direction", "unknown"),
+                    "unlock_method": data.get("unlock_method"),
+                    "unlock_type": data.get("unlock_type"),
+                    "unlock_user_id": data.get("unlock_user_id"),
+                    "unlock_time": data.get("time"),
+                }
+                self.state_store.merge(device_id, values, StateSource.SSL)
         data["source"] = raw_status.get("source", "ssl")
         if data.get("kind"):
             data.update(self.lock_media.attach_urls(device_id, raw_status, data))
@@ -333,8 +348,9 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self,
         device_id: str = "",
         limit: int = 100,
+        media_type: str | None = None,
     ) -> list[dict[str, str]]:
-        return await self.lock_media.list_events(device_id, limit)
+        return await self.lock_media.list_events(device_id, limit, media_type)
 
     def start_history_cleanup(self) -> None:
         self.lock_media.start_cleanup()
@@ -408,12 +424,18 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         """取消临时密码回收定时任务（集成卸载时调用）。"""
         self.temp_passwords.stop_cleanup()
 
-    def lock_user_name(self, device_id: str, user_id: object) -> Optional[str]:
+    def lock_user_name(self, device_id: str, user_id: object, method: Optional[str] = None) -> Optional[str]:
         """返回门锁 userId 配置的显示名称（无配置返回 None）。"""
         if not isinstance(user_id, (str, int)):
             return None
         key = str(user_id)
+        if method:
+            for scoped_key in (f"{device_id}/{method}/{key}", f"{method}/{key}"):
+                if scoped_key in self._lock_user_names_shared:
+                    return self._lock_user_names_shared[scoped_key] or None
         name = self._lock_user_names.get(device_id, {}).get(key)
+        if name is None:
+            name = self._lock_user_names_shared.get(f"{device_id}/{key}")
         if name is None:
             name = self._lock_user_names_shared.get(key)
         return name if isinstance(name, str) and name else None
@@ -421,16 +443,12 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     def set_lock_user_name(self, device_id: str, user_id: str, name: str) -> bool:
         """为门锁 userId 设置/清除显示名称。"""
         device_id = str(device_id or "")
-        user_id = str(user_id or "")
+        user_id = str(user_id) if user_id is not None else ""
         if not device_id or not user_id:
             return False
         names = self._lock_user_names.setdefault(device_id, {})
-        if name:
-            names[user_id] = str(name)
-            self._lock_user_names_shared[user_id] = str(name)
-        else:
-            names.pop(user_id, None)
-            self._lock_user_names_shared.pop(user_id, None)
+        names[user_id] = str(name or "")
+        self._lock_user_names_shared[f"{device_id}/{user_id}"] = str(name or "")
         return True
 
     def _publish_lock_message(self, device_id: str, raw_status: dict) -> None:
@@ -1056,6 +1074,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     async def async_cleanup(self):
         self._lan_closed = True
+        await self.lock_media.async_shutdown()
         if self._lan_discover_task is not None:
             self._lan_discover_task.cancel()
             self._lan_discover_task = None

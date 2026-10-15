@@ -71,7 +71,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         coordinator = types.SimpleNamespace(devices={
             "nvr": {"device_id": "nvr", "uid": "vendor-nvr", "device_type_raw": 162, "device_name": "录像机"},
             "other": {"device_id": "other", "device_type_raw": 14, "camera_type": 4},
-            "lock": {"device_id": "lock", "device_type_raw": 521},
+            "lock": {"device_id": "lock", "device_type_raw": 522},
         }, register_lock_camera=MagicMock())
         hass = types.SimpleNamespace(data={"orvibo_smart_control": {"entry": coordinator}})
         entry = types.SimpleNamespace(entry_id="entry", options=options or {})
@@ -135,6 +135,24 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
                 await self.module.async_setup_entry(hass, entry, entities.extend)
         self.assertNotIn("SECRET", str(error.exception))
         self.assertEqual(entities, [])
+
+    async def test_lock_snapshot_can_restore_before_added_and_updates_state_when_loaded(self):
+        coordinator, _, _ = self.platform()
+        coordinator.lock_media = types.SimpleNamespace(unregister_camera=MagicMock())
+        entity = self.module.OrviboLockSnapshotCamera(coordinator, coordinator.devices["lock"])
+        entity.async_write_ha_state = MagicMock()
+        coordinator.register_lock_camera.assert_called_once_with("lock", entity)
+        await entity.async_set_image(b"restored")
+        revision = entity.extra_state_attributes["snapshot_revision"]
+        self.assertEqual(entity.camera_image(), b"restored")
+        entity.async_write_ha_state.assert_not_called()
+        entity.hass = object()
+        await entity.async_set_image(b"new")
+        self.assertGreater(entity.extra_state_attributes["snapshot_revision"], revision)
+        self.assertEqual(entity.camera_image(), b"new")
+        entity.async_write_ha_state.assert_called_once()
+        await entity.async_will_remove_from_hass()
+        coordinator.lock_media.unregister_camera.assert_called_once_with("lock", entity)
 
     def entity(self):
         description = self.module.LiveCameraDescription("nvr", "private-vendor", 1, True)

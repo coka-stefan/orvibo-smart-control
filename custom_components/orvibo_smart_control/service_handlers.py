@@ -190,7 +190,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_set_lock_user_name(call: ServiceCall) -> None:
         device_id = str(call.data.get("device_id") or "").strip()
-        user_id = str(call.data.get("user_id") or "").strip()
+        raw_user_id = call.data.get("user_id")
+        user_id = str(raw_user_id).strip() if raw_user_id is not None else ""
         name = str(call.data.get("name") or "").strip()[:64]
         if not device_id or not user_id:
             _LOGGER.error("set_lock_user_name 需要 device_id 和 user_id")
@@ -223,11 +224,17 @@ async def async_register_services(hass: HomeAssistant) -> None:
     async def handle_list_events(call: ServiceCall) -> dict[str, Any]:
         device_id = str(call.data.get("device_id") or "").strip()
         limit = _bounded_int(call.data.get("limit"), 100, 1, 500)
+        media_type = call.data.get("media_type")
+        if media_type not in (None, "image", "video"):
+            return {"error": "media_type 必须为 image 或 video"}
         events: list[dict[str, Any]] = []
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if device_id and not _is_lock(coordinator, device_id):
                 continue
-            events.extend(await coordinator.async_list_events(device_id, limit))
+            if media_type is None:
+                events.extend(await coordinator.async_list_events(device_id, limit))
+            else:
+                events.extend(await coordinator.async_list_events(device_id, limit, media_type))
             if len(events) >= limit:
                 break
         return {"events": [_public_event(item) for item in events[:limit]]}

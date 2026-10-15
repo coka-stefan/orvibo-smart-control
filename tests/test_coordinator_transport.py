@@ -233,6 +233,7 @@ def _load_coordinator_module(package_name="orvibo_smart_control_coordinator_test
         SSL_PORT=10002,
         UPDATE_INTERVAL=timedelta(minutes=30),
         DEFAULT_KEY="test-key",
+        DEFAULT_LOCK_SNAPSHOT_LIMIT=30,
     )
 
     loaded = importlib.import_module(f"{package_name}.coordinator")

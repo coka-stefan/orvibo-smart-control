@@ -495,8 +495,10 @@ class OrviboDoorLockUnlockSensor(OrviboDoorLockSensorBase):
         if not state:
             return "无"
         user_id = state.get("unlock_user_id")
-        name = self.coordinator.lock_user_name(self._device_id, user_id)
-        return format_unlock_label(user_id, name)
+        name = self.coordinator.lock_user_name(self._device_id, user_id, state.get("unlock_method"))
+        return format_unlock_label(
+            user_id, name, state.get("open_direction"), state.get("unlock_method")
+        )
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -504,10 +506,13 @@ class OrviboDoorLockUnlockSensor(OrviboDoorLockSensorBase):
         attributes = {
             "unlock_type": state.get("unlock_type"),
             "unlock_user_id": state.get("unlock_user_id"),
+            "open_direction": state.get("open_direction"),
+            "unlock_method": state.get("unlock_method"),
         }
         user_name = self.coordinator.lock_user_name(
             self._device_id,
             state.get("unlock_user_id"),
+            state.get("unlock_method"),
         )
         if user_name:
             attributes["unlock_user_name"] = user_name

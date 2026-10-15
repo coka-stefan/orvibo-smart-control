@@ -1,0 +1,46 @@
+"""History services preserve the image filter and scoped lock ownership."""
+import types
+import unittest
+from unittest.mock import AsyncMock, MagicMock
+
+from test_service_handlers import _load_module
+
+
+class LockHistoryServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.module = _load_module()
+        self.handlers = {}
+        def register(domain, name, handler, **kwargs):
+            self.handlers[name] = handler
+        self.coordinator = types.SimpleNamespace(
+            devices={'a': {'device_type_raw': 522}},
+            async_list_events=AsyncMock(return_value=[{
+                'device_id': 'a', 'kind': 'ring', 'time': '1',
+                'type': 'image', 'media_id': 'media-source://image', 'file': 'C:/private.jpg'}]),
+            set_lock_user_name=MagicMock(return_value=True),
+        )
+        self.hass = types.SimpleNamespace(
+            data={'orvibo_smart_control': {'entry': self.coordinator}},
+            bus=types.SimpleNamespace(async_listen_once=lambda *args: None),
+            services=types.SimpleNamespace(async_register=register),
+        )
+        await self.module.async_register_services(self.hass)
+
+    async def test_images_filtered_before_limit_and_no_filesystem_paths(self):
+        response = await self.handlers['list_events'](types.SimpleNamespace(data={
+            'device_id': 'a', 'limit': 30, 'media_type': 'image'}))
+        self.coordinator.async_list_events.assert_awaited_once_with('a', 30, 'image')
+        self.assertEqual(len(response['events']), 1)
+        self.assertNotIn('file', response['events'][0])
+
+    async def test_invalid_filter_and_unknown_lock_never_read_files(self):
+        response = await self.handlers['list_events'](types.SimpleNamespace(data={'media_type': 'other'}))
+        self.assertIn('error', response)
+        response = await self.handlers['list_events'](types.SimpleNamespace(data={'device_id': 'missing', 'media_type': 'image'}))
+        self.assertEqual(response, {'events': []})
+        self.coordinator.async_list_events.assert_not_awaited()
+
+    async def test_user_zero_can_be_named_by_service(self):
+        await self.handlers['set_lock_user_name'](types.SimpleNamespace(data={
+            'device_id': 'a', 'user_id': 0, 'name': '管理员'}))
+        self.coordinator.set_lock_user_name.assert_called_once_with('a', '0', '管理员')

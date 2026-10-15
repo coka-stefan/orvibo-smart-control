@@ -109,6 +109,9 @@ def _load_config_flow():
             CONF_CLOUD_REGION="cloud_region",
             CONF_FAMILY_ID="family_id",
             CONF_LOCK_USER_NAMES="lock_user_names",
+            CONF_LOCK_SNAPSHOT_LIMIT="lock_snapshot_limit",
+            DEFAULT_LOCK_SNAPSHOT_LIMIT=30,
+            MAX_LOCK_SNAPSHOT_LIMIT=500,
             CONF_TRANSPORT_MODE="transport_mode",
             CONF_USE_INDEPENDENT_LAN_CREDENTIALS="use_independent_lan_credentials",
             CONF_LAN_USERNAME="lan_username",
@@ -218,8 +221,24 @@ class TestOptionsReauth(unittest.IsolatedAsyncioTestCase):
                 "availability_notifications",
                 "update_check",
                 "lock_users",
+                "lock_snapshots",
             ],
         )
+
+    async def test_snapshot_retention_saves_and_preserves_options(self):
+        flow, entry = self._flow()
+        result = await flow.async_step_lock_snapshots({"lock_snapshot_limit": 47})
+        self.assertEqual(result["data"]["lock_snapshot_limit"], 47)
+        self.assertEqual(result["data"]["selected_device_ids"], ["device-1"])
+        self.assertNotIn("lock_snapshot_limit", entry.options)
+
+    async def test_snapshot_retention_rejects_out_of_range(self):
+        flow, _ = self._flow()
+        for value in (0, 501, "bad", None, 1.5, True):
+            with self.subTest(value=value):
+                result = await flow.async_step_lock_snapshots({"lock_snapshot_limit": value})
+                self.assertEqual(result["type"], "form")
+                self.assertEqual(result["errors"], {"base": "invalid_snapshot_limit"})
 
     def test_device_selector_uses_checkbox_list_mode(self):
         select_config = self.module.selector.SelectSelectorConfig

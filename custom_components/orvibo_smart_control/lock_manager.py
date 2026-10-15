@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
+import math
 import time
 from typing import Any, Callable, Mapping, Optional
 
@@ -11,11 +13,14 @@ from .lock_status import (
     normalize_lock_event,
     normalize_message_event,
     resolve_opened_by,
+    normalize_unlock_method,
+    unlock_direction,
 )
 from .parsers.base import StatePatch
 
 
 UserNameResolver = Callable[[str, object], Optional[str]]
+CredentialNameResolver = Callable[[str, object, Optional[str]], Optional[str]]
 Clock = Callable[[], float]
 
 
@@ -36,12 +41,17 @@ class LockEventManager:
         *,
         door_open_window: float = 30,
         clock: Clock = time.monotonic,
+        credential_name: Optional[CredentialNameResolver] = None,
     ) -> None:
         self._user_name = user_name
+        self._credential_name = credential_name
         self._door_open_window = door_open_window
         self._clock = clock
         self._last_signatures: dict[str, tuple[Any, ...]] = {}
         self._last_unlocks: dict[str, dict[str, Any]] = {}
+        self._latest_unlock_times: dict[str, float] = {}
+        self._door_states: dict[str, bool] = {}
+        self._seen_events: dict[str, OrderedDict[tuple[Any, ...], float]] = {}
 
     def build_event(
         self, device_id: str, raw_status: Mapping[str, Any]
@@ -68,6 +78,7 @@ class LockEventManager:
                 event.get("unlock_type"),
                 event.get("unlock_user_id"),
                 event.get("time"),
+                event.get("pic_url") or event.get("doorbell_url"),
             )
         else:
             signature = (
@@ -78,7 +89,18 @@ class LockEventManager:
                 lock["child_locked"],
                 lock["leave_home_armed"],
             )
-        if self._last_signatures.get(device_id) == signature:
+        now = self._clock()
+        if event is not None:
+            # A state push between two deliveries must not resurrect an old unlock.
+            seen = self._seen_events.setdefault(device_id, OrderedDict())
+            key = tuple(str(value) for value in signature)
+            if key in seen and (event.get("time") is not None or now - seen[key] < 1):
+                return None
+            seen[key] = now
+            seen.move_to_end(key)
+            while len(seen) > 64:
+                seen.popitem(last=False)
+        elif self._last_signatures.get(device_id) == signature:
             return None
         self._last_signatures[device_id] = signature
 
@@ -94,35 +116,88 @@ class LockEventManager:
         if event is not None:
             data.update(event)
 
-        now = self._clock()
         if event is not None and event.get("kind") == "unlock":
+            try:
+                event_time = float(event.get("time"))
+            except (TypeError, ValueError, OverflowError):
+                event_time = None
+            if event_time is not None and math.isfinite(event_time):
+                if event_time < self._latest_unlock_times.get(device_id, event_time):
+                    # Still archive the picture, but do not change the latest
+                    # opening/person or create a new correlation opportunity.
+                    data["historical"] = True
+                    return data
+                self._latest_unlock_times[device_id] = event_time
             self._last_unlocks[device_id] = {
                 "user_id": event.get("unlock_user_id"),
                 "unlock_type": event.get("unlock_type"),
+                "open_direction": event.get("open_direction", "unknown"),
+                "unlock_method": event.get("unlock_method"),
+                "time": event.get("time"),
                 "at": now,
             }
-            name = self._user_name(device_id, event.get("unlock_user_id"))
+            name = self._resolve_name(device_id, event.get("unlock_user_id"), event.get("unlock_method"))
             if name:
                 data["unlock_user_name"] = name
 
-        if lock["door_open"] is True:
-            last_unlock = self._last_unlocks.get(device_id)
+        previous_door = self._door_states.get(device_id)
+        if lock["door_open"] is not None:
+            self._door_states[device_id] = lock["door_open"]
+        if lock["door_open"] is False and previous_door is True:
+            self._last_unlocks.pop(device_id, None)
+        if lock["door_open"] is True and previous_door is not True:
+            data["door_opened"] = True
+            data["open_direction"] = "unknown"
+            data["unlock_method"] = None
+            data["unlock_user_id"] = None
+            data["unlock_type"] = None
+            last_unlock = self._last_unlocks.pop(device_id, None)
+            elapsed = now - last_unlock["at"] if last_unlock is not None else 0
+            # Prefer producer timestamps when both packets carry one. Delayed
+            # delivery of an old event must not be attributed to a new opening.
+            if (
+                last_unlock is not None
+                and raw_status.get("time") is not None
+                and last_unlock.get("time") is not None
+            ):
+                try:
+                    producer_elapsed = float(raw_status["time"]) - float(last_unlock["time"])
+                    elapsed = (
+                        max(elapsed, producer_elapsed)
+                        if math.isfinite(producer_elapsed) and producer_elapsed >= 0
+                        else self._door_open_window + 1
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    elapsed = self._door_open_window + 1
+            if last_unlock is not None and 0 <= elapsed <= self._door_open_window:
+                method = last_unlock.get("unlock_method") or normalize_unlock_method(last_unlock.get("unlock_type"))
+                data["open_direction"] = unlock_direction(method)
+                if last_unlock.get("open_direction") == "inside" and data["open_direction"] != "outside":
+                    data["open_direction"] = "inside"
+                data["unlock_method"] = method
+                data["unlock_type"] = last_unlock.get("unlock_type")
             opened = (
                 resolve_opened_by(
                     last_unlock,
-                    now - last_unlock["at"],
+                    elapsed,
                     self._door_open_window,
                 )
                 if last_unlock is not None
                 else None
             )
             if opened is not None:
+                data["unlock_user_id"] = opened["user_id"]
                 data["opened_by_user_id"] = opened["user_id"]
                 data["opened_by_type"] = opened["unlock_type"]
-                name = self._user_name(device_id, opened["user_id"])
+                name = self._resolve_name(device_id, opened["user_id"], data.get("unlock_method"))
                 if name:
                     data["opened_by_name"] = name
         return data
+
+    def _resolve_name(self, device_id: str, user_id: object, method: Optional[str]) -> Optional[str]:
+        if self._credential_name is not None:
+            return self._credential_name(device_id, user_id, method)
+        return self._user_name(device_id, user_id)
 
     @staticmethod
     def build_message(
@@ -167,9 +242,6 @@ class LockEventManager:
                 StatePatch(
                     {
                         "unlock_event": True,
-                        "unlock_type": event.get("unlock_type"),
-                        "unlock_user_id": event.get("unlock_user_id"),
-                        "unlock_time": event.get("time"),
                     }
                 ),
                 "unlock",
@@ -191,3 +263,6 @@ class LockEventManager:
 
         self._last_signatures.pop(device_id, None)
         self._last_unlocks.pop(device_id, None)
+        self._latest_unlock_times.pop(device_id, None)
+        self._door_states.pop(device_id, None)
+        self._seen_events.pop(device_id, None)

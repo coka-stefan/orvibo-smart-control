@@ -92,7 +92,8 @@
                     "polling": "Configure polling interval",
                     "availability_notifications": "Configure device availability notifications",
                     "update_check": "Configure integration update check",
-                    "lock_users": "Lock user mapping"
+                    "lock_users": "Lock user mapping",
+                    "lock_snapshots": "Lock snapshot retention"
                 }
             },
             "transport_mode": {
@@ -161,7 +162,7 @@
             },
             "lock_users": {
                 "title": "Lock user mapping",
-                "description": "One entry per line: userID=name (e.g. 1=John, 2=Jane). Used to show who opened the door.",
+                "description": "One entry per line: userID=name. To distinguish locks and credentials, use deviceID/fingerprint/userID=name. User ID 0 is valid.",
                 "data": {
                     "lock_user_names": "User mapping"
                 }
@@ -206,6 +207,13 @@
                 "data": {
                     "area_id": "Area"
                 }
+            },
+            "lock_snapshots": {
+                "title": "Lock snapshot retention",
+                "description": "Keep the newest snapshots per lock (default 30, range 1–500). Older pictures are removed after a successful save. Automatic age cleanup preserves retained snapshots.",
+                "data": {
+                    "lock_snapshot_limit": "Snapshots to keep per lock"
+                }
             }
         },
         "error": {
@@ -216,7 +224,8 @@
             "no_devices": "No devices found in this family",
             "no_visible_devices": "All discovered devices are hidden by the name rules",
             "lan_credentials_required": "Enter the independent MixPad username and password",
-            "invalid_service": "Use a service in domain.service format"
+            "invalid_service": "Use a service in domain.service format",
+            "invalid_snapshot_limit": "Enter a whole number from 1 to 500."
         },
         "abort": {
             "reauth_successful": "Signed in successfully; existing device and entity settings were preserved",
