@@ -17,32 +17,58 @@ class OrviboNvrCard extends HTMLElement {
     this._sync();
     if (this._player) this._player.hass = value;
   }
-  getCardSize() { return 8; }
+  getCardSize() { return this._player ? 5 : 3; }
+  getGridOptions() { return { columns: 12, rows: "auto", min_columns: 6 }; }
   _build() {
     this.shadowRoot.innerHTML = `
       <style>
-        ha-card{padding:16px} h2{font-size:20px;margin:0 0 12px}
-        label{display:block;margin:12px 0 4px} select,input,button{font:inherit;
+        ha-card{padding:12px 14px} h2{font-size:16px;font-weight:600;margin:0 0 10px}
+        label{display:block;font-size:12px;color:var(--secondary-text-color);margin:0 0 4px}
+        select,input,button{font:inherit;font-size:14px;
           color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);
-          border-radius:6px;padding:9px;box-sizing:border-box;max-width:100%}
-        select{width:100%} button{cursor:pointer} button:disabled{opacity:.5;cursor:default}
+          border-radius:6px;padding:7px 8px;box-sizing:border-box;max-width:100%;min-width:0;min-height:36px}
+        select,input{width:100%} button{cursor:pointer} button:disabled{opacity:.5;cursor:default}
+        .fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.8fr);gap:8px}
         .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
-        .note,#status{color:var(--secondary-text-color);line-height:1.5;font-size:14px}
-        #status{min-height:24px;margin:12px 0} #fragments{max-height:260px;overflow:auto}
-        #fragments button{display:block;width:100%;text-align:left;margin:6px 0}
-        #player{margin-top:12px}
+        #search{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color)}
+        .note,#status{color:var(--secondary-text-color);line-height:1.45;font-size:12px}
+        .note{margin-top:8px} #status{margin:8px 0 0;overflow-wrap:anywhere}
+        #status:empty,#days:empty,#player:empty{display:none}
+        details{margin-top:10px;border-top:1px solid var(--divider-color);padding-top:8px}
+        summary{cursor:pointer;font-size:13px;line-height:24px;user-select:none}
+        #clip-count{color:var(--secondary-text-color);font-size:12px}
+        #fragments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;
+          max-height:120px;overflow:auto;overscroll-behavior:contain;margin-top:6px}
+        #fragments button{width:100%;text-align:center;font-size:12px;white-space:nowrap;min-height:34px;padding:6px}
+        #days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;max-height:140px;overflow:auto}
+        #days:empty{display:none} #days button{font-size:12px;padding:4px;min-height:30px}
+        .seek{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:6px}
+        .advanced-body{padding-top:8px} .advanced-body label{margin-top:10px}
+        #player{margin:10px auto 0;max-width:560px;--ha-card-border-width:0}
+        #player>*{display:block}
+        @media(max-width:340px){.fields{grid-template-columns:minmax(0,1fr)}
+          #fragments{grid-template-columns:minmax(0,1fr)} .seek{grid-template-columns:minmax(0,1fr)}}
       </style>
       <ha-card>
-        <h2></h2><label for="channel">录像机通道</label><select id="channel"></select>
-        <label for="day">录像日期</label><input id="day" type="date">
-        <div class="row"><button id="month">查询当月</button><button id="search">查询当天</button>
+        <h2></h2>
+        <div class="fields">
+          <div><label for="channel">通道</label><select id="channel"></select></div>
+          <div><label for="day">日期</label><input id="day" type="date"></div>
+        </div>
+        <div class="row"><button id="search">查询录像</button>
         <button id="stop">停止回放</button></div>
-        <div class="note">日期和时间以录像机显示为准。首次连接可能需要约一分钟。</div>
-        <div id="days" class="row"></div><div id="status" role="status" aria-live="polite"></div>
-        <div id="fragments"></div>
-        <label for="position">指定回放时间</label><div class="row">
-        <input id="position" type="datetime-local" step="1"><button id="play">从此时间播放</button></div>
+        <div id="status" role="status" aria-live="polite"></div>
         <div id="player"></div>
+        <details id="clips" hidden><summary>录像片段 <span id="clip-count"></span></summary>
+          <div id="fragments"></div>
+        </details>
+        <details id="advanced"><summary>更多选项</summary><div class="advanced-body">
+          <button id="month">查询当月日期</button><div id="days" class="row"></div>
+          <label for="position">指定回放时间</label><div class="seek">
+            <input id="position" type="datetime-local" step="1"><button id="play">播放</button>
+          </div>
+          <div class="note">以录像机显示的时间为准。首次连接可能需要约一分钟。</div>
+        </div></details>
       </ha-card>`;
     this._ui = (id) => this.shadowRoot.getElementById(id);
     this._ui("day").value = new Date().toLocaleDateString("sv-SE");
@@ -52,6 +78,7 @@ class OrviboNvrCard extends HTMLElement {
       this._generation = (this._generation || 0) + 1;
       this._clearPlayer();
       this._ui("fragments").replaceChildren();
+      this._ui("clips").hidden = true;
       this._ui("days").replaceChildren();
       this._status("");
       if (previous) this._service("stop_hdd_playback", {}, previous).catch(() => {});
@@ -59,6 +86,7 @@ class OrviboNvrCard extends HTMLElement {
     this._ui("day").addEventListener("change", () => {
       this._generation = (this._generation || 0) + 1;
       this._ui("fragments").replaceChildren();
+      this._ui("clips").hidden = true;
       this._ui("days").replaceChildren();
       this._status("");
     });
@@ -137,12 +165,17 @@ class OrviboNvrCard extends HTMLElement {
         }));
         this._status(`当月 ${response.recording_count} 天有录像；点击日期查询片段`);
       } else {
-        this._ui("fragments").replaceChildren(...(response.fragments || []).map((row) => {
+        const fragments = response.fragments || [];
+        this._ui("fragments").replaceChildren(...fragments.map((row) => {
           const button = document.createElement("button");
-          button.textContent = `${this._time(row.start)} — ${this._time(row.end)}　播放`;
+          button.textContent = `${this._time(row.start)} — ${this._time(row.end)}`;
+          button.setAttribute("aria-label", `播放 ${this._time(row.start)} 至 ${this._time(row.end)} 的录像`);
           button.addEventListener("click", () => this._play(row.start)); return button;
         }));
-        this._status(response.recording_count ? `找到 ${response.recording_count} 个片段${response.fragments_truncated ? "，显示前 256 个，也可指定时间播放" : ""}` : "当天没有录像片段");
+        this._ui("clips").hidden = !fragments.length;
+        this._ui("clips").open = !!fragments.length && !this._player;
+        this._ui("clip-count").textContent = `· ${response.recording_count}${response.fragments_truncated ? "（显示前 256 个）" : ""}`;
+        this._status(fragments.length ? "点击片段开始回放" : "当天没有录像片段");
       }
     } catch (_) { this._status("查询失败，请稍后重试；可在开发者工具中查看查询操作响应"); }
     finally { this._busy = false; this._busyButtons(); }
@@ -162,10 +195,12 @@ class OrviboNvrCard extends HTMLElement {
       const helpers = await window.loadCardHelpers();
       if (generation !== this._generation) return;
       this._player = helpers.createCardElement({ type: "picture-entity", entity: this._entity,
-        camera_view: "live", show_name: false, show_state: false });
+        camera_view: "live", aspect_ratio: "16:9", show_name: false, show_state: false });
       this._player.hass = this._hass;
       this._ui("player").replaceChildren(this._player);
-      this._status(`已选择 ${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)} ${this._time(date)}。播放结束或连接失败后，可重新选择片段。`);
+      this._ui("clips").open = false;
+      this._ui("advanced").open = false;
+      this._status(`${date.slice(4, 6)}-${date.slice(6, 8)} ${this._time(date)} · 回放已选择，正在连接`);
     } catch (_) { this._status("回放未能启动，请重新选择片段；也可指定录像机时间重试"); }
     finally { this._busy = false; this._busyButtons(); }
   }

@@ -13,6 +13,7 @@ class Element {
  addEventListener(type,fn){this.events[type]=fn;}
  replaceChildren(...children){this.children=children;}
  querySelectorAll(){return this.children;}
+ setAttribute(key,value){this[key]=value;}
 }
 class Root {
  constructor(){this.elements={};this.heading=new Element();}
@@ -35,6 +36,8 @@ card.hass={states:{'camera.live':{attributes:{video_mode:'live'}},'camera.hdd3':
 callWS:async(request)=>{calls.push(request);if(failure)throw Error('PRIVATE');return {response};}};
 (async()=>{
  assert.equal(card._entity,'camera.hdd3');
+ assert.equal(card.getCardSize(),3);
+ assert.equal(card.getGridOptions().rows,'auto');
  assert.equal(card._ui('channel').children[0].textContent,'<img onerror=evil>');
  assert(!card.shadowRoot.html.includes('<img onerror=evil>'));
  card._ui('day').value='2026-10-15';
@@ -44,12 +47,16 @@ callWS:async(request)=>{calls.push(request);if(failure)throw Error('PRIVATE');re
  assert.equal(card._ui('days').children.length,2);
  response={stage:'hdd_search_received',fragments:[{start:'20261015090000',end:'20261015100000'}],recording_count:1,fragments_truncated:false};
  await card._search('day');
- assert.equal(card._ui('fragments').children[0].textContent,'09:00:00 — 10:00:00　播放');
+ assert.equal(card._ui('fragments').children[0].textContent,'09:00:00 — 10:00:00');
+ assert.equal(card._ui('clips').hidden,false);assert.equal(card._ui('clips').open,true);
+ assert.equal(card._ui('clip-count').textContent,'· 1');
  response={stage:'playback_selected'};
  await card._play('20261015090000');
  assert.equal(calls.at(-1).service,'start_hdd_playback');
  assert.equal(configs.at(-1).entity,'camera.hdd3');assert.equal(configs.at(-1).camera_view,'live');
  assert.equal(card._ui('player').children.length,1);
+ assert.equal(card._ui('clips').open,false);assert.equal(card._ui('advanced').open,false);
+ assert.equal(card.getCardSize(),5);
  response={stage:'playback_stopped'};
  await card._stop();assert.equal(card._ui('player').children.length,0);
  assert.equal(calls.at(-1).service,'stop_hdd_playback');
