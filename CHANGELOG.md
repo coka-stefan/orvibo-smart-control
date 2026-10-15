@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 保留 `bN` 诊断版本号，GitHub 按普通 Release 发布并设为 Latest；修复已有版本的 Pre-release 标记及安装说明，不移动标签或替换已上传的安装包。
+
 ## [0.2.6b1] - 2026-10-15
 
 ### Added

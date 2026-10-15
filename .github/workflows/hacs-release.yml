@@ -72,8 +72,11 @@ jobs:
             if (!/^0\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:b(0|[1-9]\d*))?$/.test(version)) {
               throw new Error(`Invalid release version: ${version}`);
             }
-            const prerelease = version.includes('b');
+            // bN identifies diagnostic builds; publish normal releases for HACS updates.
+            const prerelease = false;
             const tag = `v${version}`;
+            const notesPath = `docs/releases/${version}.md`;
+            const body = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, 'utf8') : undefined;
             const tagPush = context.eventName === 'push' && context.ref.startsWith('refs/tags/');
             if (tagPush && context.ref !== `refs/tags/${tag}`) {
               throw new Error(`Tag ${context.ref} does not match manifest version ${version}`);
@@ -99,7 +102,9 @@ jobs:
               throw new Error(`Tag ${tag} must point to a commit`);
             }
             const asset = release?.data.assets.find(item => item.name === 'orvibo-smart-control.zip');
-            const complete = asset?.state === 'uploaded' && asset.size > 0 && !release.data.draft && release.data.prerelease === prerelease;
+            const complete = asset?.state === 'uploaded' && asset.size > 0 &&
+              !release.data.draft && release.data.prerelease === prerelease &&
+              (body === undefined || release.data.body === body);
             if (target.sha !== context.sha) {
               core.notice(`${tag} already points to ${target.sha}; increase the manifest version to release newer code`);
             }
@@ -155,10 +160,11 @@ jobs:
               throw new Error(`Tag ${tag} changed while packaging; refusing to upload mismatched code`);
             }
             let release = await github.rest.repos.getReleaseByTag({...context.repo, tag}).catch(error => error.status === 404 ? null : Promise.reject(error));
+            // Release notes may be corrected on main; package code always comes from the tag.
+            const notesPath = `docs/releases/${tag.slice(1)}.md`;
+            const body = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, 'utf8') : undefined;
             if (!release) {
-              const notesPath = `release-source/docs/releases/${tag.slice(1)}.md`;
-              const body = prerelease && fs.existsSync(notesPath) ? fs.readFileSync(notesPath, 'utf8') : undefined;
-              release = await github.rest.repos.createRelease({...context.repo, tag_name: tag, target_commitish: sha, name: tag, body, generate_release_notes: true, prerelease, draft: true});
+              release = await github.rest.repos.createRelease({...context.repo, tag_name: tag, target_commitish: sha, name: tag, body, generate_release_notes: body === undefined, prerelease, draft: true});
             }
             const asset = release.data.assets.find(item => item.name === 'orvibo-smart-control.zip');
             if (asset?.state !== 'uploaded' || asset.size <= 0) {
@@ -166,7 +172,8 @@ jobs:
               const data = fs.readFileSync('orvibo-smart-control.zip');
               await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name: 'orvibo-smart-control.zip', data, headers: {'content-type': 'application/zip', 'content-length': data.length}});
             }
-            if (release.data.draft || release.data.prerelease !== prerelease) {
-              await github.rest.repos.updateRelease({...context.repo, release_id: release.data.id, draft: false, prerelease});
+            if (release.data.draft || release.data.prerelease !== prerelease ||
+                (body !== undefined && release.data.body !== body)) {
+              await github.rest.repos.updateRelease({...context.repo, release_id: release.data.id, draft: false, prerelease, body, make_latest: 'true'});
             }
             core.notice(`Release ${tag} and its HACS ZIP are ready`);
