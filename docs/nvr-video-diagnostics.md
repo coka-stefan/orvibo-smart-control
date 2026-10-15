@@ -32,6 +32,38 @@ data: {}
 
 可以将动作返回的脱敏 JSON 用于后续排查，无需提供账号密码、设备 IP 或原始授权响应。
 
+## 厂商设备列表诊断（0.2.6b1）
+
+会话动作返回 `stage: external_session_received` 后，可执行：
+
+```yaml
+action: orvibo_smart_control.inspect_video_devices
+data: {}
+```
+
+此动作重新获取一次外部会话，使用内存中的 token 为设备列表请求签名，向欧瑞博
+响应下发的 HTTPS API 发送一次只读查询。它不连接 MQTT 或摄像机，不修改设备或硬盘。
+地区和 `entry_id` 参数与会话动作相同。token、设备标识、设备名称、密钥和原始响应
+不会出现在动作返回值中，也不会写入集成配置或日志。
+
+返回保留 `stage` 表示欧瑞博会话阶段；`vendor_stage` 表示 Meari 请求阶段：
+
+- `vendor_devices_received`：返回成功码 `1001` 及已识别的设备分类；查看 `device_count`
+  和 `category_counts`。空列表也是有效结果，不能推断用户没有设备。
+- `vendor_request_rejected`：厂商返回非成功码，`vendor_result_code` 是有限范围的数字码。
+- `vendor_http_error`：HTTP 状态不是 200；`vendor_http_status` 是状态码，不跟随重定向。
+- `inventory_request_data_invalid`：会话中的 API 地址或签名必需字段不满足请求要求。
+- `vendor_request_failed`、`vendor_response_too_large`、`invalid_device_response`、
+  `unrecognized_inventory_shape`：网络、响应大小或结构未通过验证，不能宣称授权已被接受。
+
+`devices` 按列表顺序编号，仅包含固定分类、连接字段是否存在及有限的原始能力码。
+`inventory_shape` 区分 App 使用的顶层分类结构与 `result` 包装结构；不返回任意服务端键。
+输出最多 512 条，超过时 `devices_truncated` 为 true，`device_count` 仍为总行数。
+
+NVR 通道来自 App 后续的设备参数查询，不是简单的设备库存字段。因此本版始终返回
+`channel_query_implemented: false`。`nct` 等能力码不能直接解释为实际在线通道数，
+这一步也不能证明首帧或硬盘回放可用。请提供完整动作返回的脱敏 JSON 继续排查。
+
 ## 当前证据与下一阶段
 
 用户目标是 HAOS 虚拟机/x86 Linux 宿主上的实时画面和录像机硬盘历史。

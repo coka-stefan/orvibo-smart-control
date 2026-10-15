@@ -218,3 +218,31 @@ inspect_video_session:
           options:
             - zh
             - en
+
+inspect_video_devices:
+  name: 检查录像机厂商设备列表
+  description: 获取 Meari 会话并请求厂商设备列表，返回数量和能力字段诊断；不连接设备、不播放视频。
+  fields:
+    entry_id:
+      name: 配置项 ID
+      description: 只有一个欧瑞博配置项时可留空。
+      selector:
+        text:
+    country_code:
+      name: 国家代码
+      default: CN
+      selector:
+        text:
+    phone_code:
+      name: 电话区号
+      default: "86"
+      selector:
+        text:
+    language:
+      name: 语言
+      default: zh
+      selector:
+        select:
+          options:
+            - zh
+            - en

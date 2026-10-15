@@ -108,7 +108,7 @@ def summarize_session_response(response: object) -> dict[str, Any]:
 
 async def async_inspect_video_session(
     coordinator: Any, *, country_code: str = "CN", phone_code: str = "86",
-    language: str = "zh",
+    language: str = "zh", http_session: Any = None,
 ) -> dict[str, Any]:
     client = coordinator.ssl_client
     if client is None or not client.connected:
@@ -121,4 +121,12 @@ async def async_inspect_video_session(
         return {**summarize_session_response(None), "stage": "request_in_progress"}
     except (ConnectionError, OSError, ValueError):
         return {**summarize_session_response(None), "stage": "session_request_failed"}
-    return summarize_session_response(response)
+    public = summarize_session_response(response)
+    if http_session is not None and public["stage"] == "external_session_received":
+        from .meari_inventory import async_inspect_device_inventory
+
+        public.update(await async_inspect_device_inventory(
+            http_session, response, country_code=country_code,
+            phone_code=phone_code, language=language,
+        ))
+    return public

@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_REFRESH = "refresh_devices"
 SERVICE_INSPECT_VIDEO_SESSION = "inspect_video_session"
+SERVICE_INSPECT_VIDEO_DEVICES = "inspect_video_devices"
 SERVICE_SET_LOCK_USER_NAME = "set_lock_user_name"
 SERVICE_FETCH_VIDEO = "fetch_video"
 SERVICE_LIST_EVENTS = "list_events"
@@ -78,7 +79,9 @@ def _public_authorizations(result: dict[str, Any]) -> dict[str, Any]:
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register integration services once during domain setup."""
 
-    async def handle_inspect_video_session(call: ServiceCall) -> dict[str, Any]:
+    async def handle_inspect_video_session(
+        call: ServiceCall, *, inspect_devices: bool = False,
+    ) -> dict[str, Any]:
         targets = _targets(hass, call.data.get("entry_id"))
         if len(targets) != 1:
             return {"stage": "select_one_entry", "video_playback_implemented": False,
@@ -93,9 +96,18 @@ async def async_register_services(hass: HomeAssistant) -> None:
         ):
             return {"stage": "invalid_region", "video_playback_implemented": False,
                     "real_device_video_verified": False}
+        kwargs: dict[str, Any] = {}
+        if inspect_devices:
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+            kwargs["http_session"] = async_get_clientsession(hass)
         return await async_inspect_video_session(
             targets[0], country_code=country, phone_code=phone, language=language,
+            **kwargs,
         )
+
+    async def handle_inspect_video_devices(call: ServiceCall) -> dict[str, Any]:
+        return await handle_inspect_video_session(call, inspect_devices=True)
 
     async def handle_refresh(call: ServiceCall) -> None:
         entry_id = str(call.data.get("entry_id") or "")
@@ -238,6 +250,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
     )
     for service, handler in (
         (SERVICE_INSPECT_VIDEO_SESSION, handle_inspect_video_session),
+        (SERVICE_INSPECT_VIDEO_DEVICES, handle_inspect_video_devices),
         (SERVICE_FETCH_VIDEO, handle_fetch_video),
         (SERVICE_LIST_EVENTS, handle_list_events),
         (SERVICE_CLEANUP_HISTORY, handle_cleanup_history),
