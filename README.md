@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.6b8-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b9-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control 是一个面向 Home Assistant 的独立自定义集成。它把 MixPad
 网关局域网直连与 ORVIBO 云端协议放在同一条设备、状态和控制链路中：能在 LAN
@@ -58,7 +58,7 @@ LAN > 云端实时推送（SSL）> 云端快照（REST）> 乐观状态 > 初始
 ### 摄像机与录像机实时画面
 
 `0.2.6b5` 为匹配成功的 Meari XTS/p2p=2 摄像机及录像机在线通道创建 `camera` 实体。
-在 HACS 更新到 `v0.2.6b8` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
+在 HACS 更新到 `v0.2.6b9` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
 “通道 3”等摄像头实体；也可把实体加入图片概览卡片并设置 `camera_view: live`。
 HAOS 使用自带 FFmpeg，无需单独安装视频服务。首次连接需要获取授权和建立设备连接，
 可能需要数十秒；首次缩略图超时后再次打开即可复用正在建立的连接。
@@ -111,7 +111,8 @@ MD5 摘要；配置项不保存明文，但该摘要仍可直接用于认证，�
 | 配置轮询间隔时间         | 设置云端快照轮询间隔，范围 5 到 1440 分钟                |
 | 配置设备上下线通知       | 分别控制上线/离线通知，可指定 `domain.service`           |
 | 配置集成更新检查         | 每 6 到 168 小时检查一次 GitHub 稳定版本                 |
-| 锁用户映射               | 把门锁用户编号映射为可读名称                             |
+| 锁用户映射               | 按设备、开锁方式和授权编号映射姓名                       |
+| 门锁抓拍保留数量         | 每把锁保留最近 30 张，可配置为 1–500 张                  |
 
 独立 MixPad 密码与云端密码一样只保存协议摘要，不保存明文。清理操作不会删除账号、家庭、
 设备选择、锁用户映射、实体注册或 Home Assistant `.storage`；执行前必须在 UI 中确认。
@@ -167,6 +168,16 @@ MD5 摘要；配置项不保存明文，但该摘要仍可直接用于认证，�
 - 门锁事件图片签名、H.264 录像归档及 Home Assistant 媒体浏览器索引；
 - 临时密码下发、查询、撤销和每 6 小时的过期回收；
 - 内置门锁总览卡片和独立的临时密码管理卡片。
+
+`0.2.6b9` 增加开门方向和开锁人归属：密码、指纹、钥匙和卡片等凭据开锁判为外开；
+明确内开记录不继承上次外开人员。如果固件只上报门磁、没有方向或用户编号，保留“未知”。
+在集成选项“锁用户映射”中可使用 `设备ID/指纹方式/用户编号=姓名`，例如
+`deviceID/fingerprint/7=张三`，也兼容 `deviceID/7=张三` 和 `7=张三`。
+
+猫眼抓拍默认每把锁保留最近 **30 张**，集成选项“门锁抓拍保留数量”可设为 **1–500**。
+下载失败会重试；同秒多图分别保存；重启恢复最新图片，迟到的旧图不会覆盖新画面。
+总览卡片默认展示 30 张，使用 `history_limit` 调整展示数量。更新后重启 Home Assistant，
+卡片仍显示旧内容时强制刷新浏览器。详见[门锁方向、开锁人及抓拍](docs/lock-opening-and-snapshots.md)。
 
 只管理临时密码时，添加以下 Lovelace 卡片：
 
