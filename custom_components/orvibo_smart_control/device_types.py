@@ -145,13 +145,13 @@ _CATEGORY_INFO: Dict[DeviceCategory, CategoryInfo] = {
     DeviceCategory.WIFI_CAMERA: CategoryInfo(
         category=DeviceCategory.WIFI_CAMERA,
         label="WiFi 摄像机",
-        description="deviceTypeId=14，仅厂商 SDK 识别诊断，暂不支持实时流",
+        description="deviceTypeId=14，匹配的 Meari XTS/p2p2 提供实时画面，其他协议仅诊断",
         capabilities=(),
     ),
     DeviceCategory.CAMERA_NVR: CategoryInfo(
         category=DeviceCategory.CAMERA_NVR,
         label="摄像机 NVR",
-        description="deviceTypeId=162，Meari NVR，仅识别诊断，暂不支持通道实时流",
+        description="deviceTypeId=162，匹配的 Meari XTS/p2p2 在线通道提供实时画面；硬盘回放开发中",
         capabilities=(),
         is_container=True,
     ),

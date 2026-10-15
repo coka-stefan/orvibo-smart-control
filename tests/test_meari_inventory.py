@@ -229,7 +229,7 @@ class InventoryRequestTests(unittest.IsolatedAsyncioTestCase):
         public = await self.session_module.async_inspect_video_session(types.SimpleNamespace(ssl_client=client), http_session=session)
         self.assertEqual(public["stage"], "external_session_received")
         self.assertEqual(public["vendor_stage"], "vendor_devices_received")
-        self.assertFalse(public["video_playback_implemented"])
+        self.assertTrue(public["video_playback_implemented"])
         for secret in ("PRIVATE", "SECRET", "example.invalid", "123456"):
             self.assertNotIn(secret, json.dumps(public))
 

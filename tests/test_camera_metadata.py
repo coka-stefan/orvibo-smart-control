@@ -163,29 +163,13 @@ class CameraInventoryTests(unittest.TestCase):
         inventory.merge_cloud([{"device_id": "camera", "device_type_raw": 14, "camera_type": 8}])
         self.assertEqual(metadata.camera_sdk_hint(devices["camera"]), "meari")
 
-    def test_camera_platform_does_not_create_sdk_stream_entities(self):
+    def test_unknown_camera_sdk_does_not_create_stream_entities(self):
         from types import SimpleNamespace
+        from test_camera_live import load_camera_module
         import asyncio
-        modules = {}
-        for name, attrs in (
-            ("homeassistant.components.camera", {"Camera": type("Camera", (), {})}),
-            ("homeassistant.config_entries", {"ConfigEntry": object}),
-            ("homeassistant.core", {"HomeAssistant": object}),
-            ("homeassistant.helpers.entity_platform", {"AddEntitiesCallback": object}),
-            ("homeassistant.helpers.update_coordinator", {
-                "CoordinatorEntity": type("CoordinatorEntity", (), {}),
-            }),
-            (f"{PACKAGE_NAME}.coordinator", {"OrviboSmartControlCoordinator": object}),
-        ):
-            module = types.ModuleType(name)
-            for key, value in attrs.items():
-                setattr(module, key, value)
-            modules[name] = module
-        with patch.dict(sys.modules, modules):
-            camera = importlib.import_module(f"{PACKAGE_NAME}.camera")
+        camera = load_camera_module()
         coordinator = SimpleNamespace(devices={
             "camera": {"device_id": "camera", "device_type_raw": 14},
-            "nvr": {"device_id": "nvr", "device_type_raw": 162},
         })
         hass = SimpleNamespace(data={"orvibo_smart_control": {"entry": coordinator}})
         entities = []

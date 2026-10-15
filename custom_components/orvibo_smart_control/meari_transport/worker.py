@@ -1,4 +1,4 @@
-"""Disposable XTS encoded-keyframe probe. Run by absolute path, never in HA.
+"""Disposable XTS media receiver. Run by absolute path, never inside HA.
 
 Credentials arrive once on private stdin. All stdout is suppressed except the
 fixed records written by emit(); stderr and logging are disabled before vendor
@@ -28,14 +28,50 @@ MAX_FRAME_BYTES = 2 * 1024 * 1024
 MAX_MEDIA_BYTES = 24 * 1024 * 1024
 MAX_PACKETS = 100000
 MAX_CANDIDATES = 8
+MAX_STREAM_FRAME_BYTES = 8 * 1024 * 1024
+MAX_STATUS_BYTES = 4096
+MAX_STREAM_SECONDS = 3600
+STREAM_IDLE_SECONDS = 30
+TURN_REFRESH_SECONDS = 120
+MAX_STREAM_FRAMES = 1000000
+MAX_STREAM_MEDIA_BYTES = 64 * 1024 * 1024 * 1024
+MAX_STREAM_PACKETS = 100000000
 _DEPENDENCY_ROOT: str | None = None
 STAGES = frozenset({
     "worker_started", "root_discovery", "signaling_connect",
     "signaling_registered", "device_status", "turn_allocate", "sdp_offer",
     "ice_connect", "kcp_connect", "receiving_video", "video_keyframe_received",
     "no_video_frame", "device_unavailable", "probe_failed", "probe_timeout",
-    "dependency_missing", "invalid_context",
+    "dependency_missing", "invalid_context", "stream_complete",
+    "stream_idle_timeout",
 })
+
+
+class OutputClosed(Exception):
+    """Stop transport retries when the owned stdout consumer goes away."""
+
+
+class BinaryOutput:
+    """Bounded J status / V Annex-B records: ASCII kind + uint32 BE length."""
+
+    def __init__(self, output) -> None:
+        self.output = output
+
+    def write(self, kind: bytes, payload: bytes) -> None:
+        limit = MAX_STATUS_BYTES if kind == b"J" else MAX_STREAM_FRAME_BYTES
+        if kind not in (b"J", b"V") or not payload or len(payload) > limit:
+            raise ValueError("output_limit")
+        try:
+            for body in (kind + struct.pack(">I", len(payload)), payload):
+                remaining = memoryview(body)
+                while remaining:
+                    written = self.output.write(remaining)
+                    if not isinstance(written, int) or written <= 0:
+                        raise OutputClosed()
+                    remaining = remaining[written:]
+            self.output.flush()
+        except (OSError, ValueError) as err:
+            raise OutputClosed() from err
 
 
 def _text(value: object, maximum: int = 256) -> str:
@@ -120,10 +156,11 @@ def load_protocol() -> SimpleNamespace:
 
 
 class Observation:
-    """Only scalar evidence crosses the process boundary; frame data stays here."""
+    """Decode vendor framing; optionally forward bounded Annex-B access units."""
 
-    def __init__(self, library: SimpleNamespace) -> None:
+    def __init__(self, library: SimpleNamespace, frame_output=None) -> None:
         self.library = library
+        self.frame_output = frame_output
         self.video_frames = 0
         self.video_bytes = 0
         self.received_packets = 0
@@ -132,6 +169,8 @@ class Observation:
         self.keyframe_received = False
         self.parameter_sets_received = False
         self.parameters = library.codecs.CodecParameterCache()
+        self.sequence = library.codec.FrameSequenceTracker()
+        self.last_frame_at: float | None = None
 
     def summary(self) -> dict:
         return {
@@ -163,7 +202,8 @@ class Observation:
 
     def feed(self, data: bytes) -> bool:
         lib = self.library
-        if len(data) > MAX_FRAME_BYTES:
+        frame_limit = MAX_STREAM_FRAME_BYTES if self.frame_output is not None else MAX_FRAME_BYTES
+        if len(data) > frame_limit:
             raise ValueError("frame_limit")
         if data.startswith(b"\xff\x01"):
             iva = lib.parse_iva_frame(data)
@@ -171,7 +211,7 @@ class Observation:
                 return False
             data = iva[3]
         for chunk in lib.codec.split_stream_frames(data):
-            if len(chunk) > MAX_FRAME_BYTES or len(chunk) < 4 or chunk[3] not in (0xFC, 0xFD):
+            if len(chunk) > frame_limit or len(chunk) < 4 or chunk[3] not in (0xFC, 0xFD):
                 continue
             options = []
             for candidate in (chunk, bytes(lib.codec.decrypt_stream_frame(bytearray(chunk)))):
@@ -185,10 +225,16 @@ class Observation:
                         for unit in lib.codecs.annexb_units(parsed.payload)[:64]:
                             nal = lib.codecs.nal_payload(unit)
                             if nal and not nal[0] & 0x80:
-                                if nal[0] & 0x1f in (7, 8):
+                                h264_kind = nal[0] & 0x1f
+                                if h264_kind in (7, 8) and len(nal) >= {7:5, 8:2}[h264_kind]:
                                     identified = lib.codecs.CodecName.H264
-                                elif len(nal) >= 2 and nal[1] & 7 and (nal[0] >> 1) & 0x3f in (32, 33, 34):
-                                    identified = lib.codecs.CodecName.HEVC
+                                elif len(nal) >= 3 and not nal[0] & 1 and not nal[1] & 0xf8 and nal[1] & 7:
+                                    # Ordinary HEVC parameter sets use layer 0.
+                                    # H264 delta slices beginning 0x41 must not
+                                    # be mistaken for an isolated HEVC VPS.
+                                    kind = (nal[0] >> 1) & 0x3f
+                                    if len(nal) >= {32:6, 33:15, 34:3}.get(kind, frame_limit + 1):
+                                        identified = lib.codecs.CodecName.HEVC
                             if identified is not None:
                                 break
                     options.append((identified is not None, identified, parsed))
@@ -197,9 +243,15 @@ class Observation:
             _, identified, parsed = max(options, key=lambda item: item[0])
             self.video_frames += 1
             self.video_bytes += len(parsed.payload)
-            if self.video_frames > 256 or self.video_bytes > MAX_MEDIA_BYTES:
+            max_frames = MAX_STREAM_FRAMES if self.frame_output is not None else 256
+            max_bytes = MAX_STREAM_MEDIA_BYTES if self.frame_output is not None else MAX_MEDIA_BYTES
+            if self.video_frames > max_frames or self.video_bytes > max_bytes:
                 raise ValueError("media_limit")
             if identified is not None:
+                if self.codec != "unknown" and self.codec != identified.value and self.frame_output is not None:
+                    # A decoder process consumes one codec for its lifetime.
+                    # Close rather than feed a different bitstream into it.
+                    raise ValueError("codec_changed")
                 self.codec = identified.value
             if self.codec not in ("h264", "hevc"):
                 continue
@@ -210,7 +262,23 @@ class Observation:
             is_keyframe = parsed.frame_type == 0xFC and lib.codecs.is_keyframe(self.codec, checked)
             if is_keyframe and self.parameter_sets_received:
                 self.keyframe_received = True
-                return True
+                if self.frame_output is None:
+                    return True
+            if self.frame_output is not None and checked and self.keyframe_received:
+                # Parameter-only frames prime the cache without incrementing
+                # the decoder clock. VCL access units begin at random access.
+                kinds = lib.codecs.nal_types(self.codec, checked)
+                has_picture = any(1 <= kind <= 5 for kind in kinds) if self.codec == "h264" else any(kind <= 31 for kind in kinds)
+                if not has_picture:
+                    continue
+                recovery = is_keyframe and self.parameter_sets_received
+                if self.sequence.should_drop(parsed.sequence, recovery=recovery):
+                    continue
+                output = self.parameters.with_params(self.codec, checked) if recovery else checked
+                if len(output) > MAX_STREAM_FRAME_BYTES:
+                    raise ValueError("frame_limit")
+                self.frame_output(output, self.summary())
+                self.last_frame_at = time.monotonic()
         return False
 
 
@@ -252,16 +320,16 @@ def _candidates(values: list[dict]) -> list[dict]:
     return result
 
 
-def _bounded_kcp(kcp) -> None:
+def _bounded_kcp(kcp, frame_limit: int = MAX_FRAME_BYTES) -> None:
     if len(kcp.recv_buf) > 4096 or len(kcp.recv_queue) > 256 or len(kcp.recv_frag_buf) > 4096:
         raise ValueError("kcp_limit")
-    if sum(len(item) for item in kcp.recv_frag_buf) > MAX_FRAME_BYTES:
+    if sum(len(item) for item in kcp.recv_frag_buf) > frame_limit:
         raise ValueError("kcp_limit")
-    if sum(len(item[1]) for item in kcp.recv_buf.values()) > 4 * MAX_FRAME_BYTES:
+    if sum(len(item[1]) for item in kcp.recv_buf.values()) > 4 * frame_limit:
         raise ValueError("kcp_limit")
 
 
-def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: str, observation: Observation, emit) -> str:
+def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: str, observation: Observation, emit, *, stream_deadline=None) -> str:
     lib.budget.remaining()
     emit("sdp_offer")
     ufrag, password = os.urandom(4).hex(), os.urandom(12).hex()
@@ -328,9 +396,16 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
         next_heartbeat = now + 5
         next_signal = now + max(5, min(float(sig.heartbeat_interval_s) * 2 / 3, 20))
         next_retransmit = now + 0.5
+        next_turn_refresh = now + TURN_REFRESH_SECONDS
+        continuous_started = False
         while True:
-            lib.budget.remaining()
             now = time.monotonic()
+            if stream_deadline is not None and continuous_started:
+                if now >= stream_deadline:
+                    return "stream_complete"
+                if observation.last_frame_at is not None and now - observation.last_frame_at >= STREAM_IDLE_SECONDS:
+                    return "stream_idle_timeout"
+            lib.budget.remaining()
             if now >= next_ice:
                 for candidate in candidates:
                     if candidate["type"] != "relay":
@@ -347,12 +422,26 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                 kcp.retransmit_unacked()
                 kcp.send_gap_nudge()
                 next_retransmit = now + 0.5
+            if stream_deadline is not None and continuous_started and now >= next_turn_refresh:
+                # TURN permissions and channel bindings expire independently
+                # of signaling/VVP heartbeats. Renew using the same thread and
+                # the existing bounded transactions; KCP recovers any packets
+                # arriving while a TURN control response is being matched.
+                if not turn.refresh():
+                    return "probe_failed"
+                endpoints = [peer] if peer is not None else [(c["ip"], c["port"]) for c in candidates]
+                for endpoint in endpoints:
+                    if not turn.channel_bind(endpoint[0], endpoint[1]):
+                        return "probe_failed"
+                next_turn_refresh = time.monotonic() + TURN_REFRESH_SECONDS
             packets = lib.recv_peer_packets(turn, timeout=lib.budget.remaining(0.02), max_packets=128)
             for packet in packets:
                 lib.budget.remaining()
                 observation.received_packets += 1
                 observation.received_bytes += len(packet.data)
-                if observation.received_packets > MAX_PACKETS or observation.received_bytes > MAX_MEDIA_BYTES:
+                packet_limit = MAX_STREAM_PACKETS if stream_deadline is not None else MAX_PACKETS
+                media_limit = MAX_STREAM_MEDIA_BYTES if stream_deadline is not None else MAX_MEDIA_BYTES
+                if observation.received_packets > packet_limit or observation.received_bytes > media_limit:
                     return "no_video_frame"
                 endpoint = packet.peer or packet.source
                 if packet.stun:
@@ -367,7 +456,7 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                 if lib.parse_kcp_segments(packet.data) or packet.data.startswith(b"\xff\x01"):
                     peer = endpoint
                 response = kcp.process_input(packet.data)
-                _bounded_kcp(kcp)
+                _bounded_kcp(kcp, MAX_STREAM_FRAME_BYTES if stream_deadline is not None else MAX_FRAME_BYTES)
                 payloads = []
                 if response and response[0] in ("data", "iva_data", "iva") and response[1]:
                     payloads.append(response[1])
@@ -379,10 +468,17 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                 for payload in payloads:
                     if observation.feed(payload):
                         return "video_keyframe_received"
+                    if stream_deadline is not None and observation.last_frame_at is not None and not continuous_started:
+                        continuous_started = True
+                        # Discovery and first-keyframe remain under the short
+                        # startup budget. Only verified media earns a session.
+                        lib.budget.configure(max(0, stream_deadline - time.monotonic()))
                 if kcp.ack_flush_due():
                     kcp.flush_acks()
             kcp.flush_acks()
     except TimeoutError:
+        if stream_deadline is not None and observation.last_frame_at is not None:
+            return "stream_complete" if time.monotonic() >= stream_deadline else "probe_timeout"
         return "no_video_frame" if started else "probe_timeout"
     finally:
         if started:
@@ -393,10 +489,11 @@ def stream_probe(lib: SimpleNamespace, context: dict, sig, turn, device_uuid: st
                 pass
 
 
-def run_probe(context: dict, emit, *, library=None) -> tuple[str, dict]:
+def run_probe(context: dict, emit, *, library=None, frame_output=None) -> tuple[str, dict]:
     lib = library or load_protocol()
     lib.budget.configure(float(context["timeout_seconds"]) - 2)
-    observation = Observation(lib)
+    stream_deadline = time.monotonic() + MAX_STREAM_SECONDS - 2 if frame_output is not None else None
+    observation = Observation(lib, frame_output)
     account, device = context["account"], context["device"]
     # SDK iotType=3 always derives uuid from SN, overriding deviceUUID.
     serial = device["snNum"]
@@ -432,10 +529,16 @@ def run_probe(context: dict, emit, *, library=None) -> tuple[str, dict]:
                 turn.connect()
                 if not turn.allocate():
                     continue
-                outcome = stream_probe(lib, context, sig, turn, device_uuid, observation, emit)
+                outcome = stream_probe(lib, context, sig, turn, device_uuid, observation, emit, stream_deadline=stream_deadline)
                 break
+            except OutputClosed:
+                raise
             except (OSError, ValueError, RuntimeError, KeyError, TypeError, struct.error):
                 lib.budget.remaining()
+                if observation.last_frame_at is not None:
+                    # An active bitstream must not silently restart and emit
+                    # another codec or timestamp epoch into its consumer.
+                    return "probe_failed", observation.summary()
             finally:
                 if turn is not None:
                     turn.close()
@@ -445,6 +548,8 @@ def run_probe(context: dict, emit, *, library=None) -> tuple[str, dict]:
                     sig.close()
                     sig = None
         return outcome, observation.summary()
+    except OutputClosed:
+        raise
     except TimeoutError:
         return "probe_timeout", observation.summary()
     except Exception:
@@ -461,6 +566,7 @@ def main() -> int:
     global _DEPENDENCY_ROOT
     logging.disable(sys.maxsize)
     output = sys.stdout
+    binary_output = BinaryOutput(output.buffer) if "--stream" in sys.argv[1:] else None
     with open(os.devnull, "w", encoding="utf-8") as sink:
         # fd-level stderr closes the uncaught-exception/native diagnostics path.
         os.dup2(sink.fileno(), 2)
@@ -481,14 +587,28 @@ def main() -> int:
                 record["codec"] = summary.get("codec") if summary.get("codec") in ("h264", "hevc") else "unknown"
                 for key in ("keyframe_received", "parameter_sets_received"):
                     record[key] = summary.get(key) is True
-            output.write(json.dumps(record, separators=(",", ":")) + "\n")
-            output.flush()
+            body = json.dumps(record, separators=(",", ":")).encode("ascii")
+            if binary_output is not None:
+                binary_output.write(b"J", body)
+            else:
+                output.write(body.decode("ascii") + "\n")
+                output.flush()
+
+        first_video = True
+
+        def emit_video(payload: bytes, summary: dict) -> None:
+            nonlocal first_video
+            if first_video:
+                emit("video_keyframe_received", summary=summary)
+                first_video = False
+            binary_output.write(b"V", payload)
 
         with contextlib.redirect_stdout(sink):
             emit("worker_started")
             try:
                 parser = argparse.ArgumentParser(add_help=False)
                 parser.add_argument("--dependency-root")
+                parser.add_argument("--stream", action="store_true")
                 options = parser.parse_args()
                 if options.dependency_root:
                     dependency_root = Path(options.dependency_root)
@@ -503,8 +623,10 @@ def main() -> int:
                 emit("invalid_context", final=True)
                 return 0
             try:
-                stage, summary = run_probe(context, emit)
+                stage, summary = run_probe(context, emit, frame_output=emit_video if options.stream else None)
                 emit(stage, final=True, summary=summary)
+            except OutputClosed:
+                return 0
             except ImportError:
                 emit("dependency_missing", final=True)
             except Exception:

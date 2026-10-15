@@ -59,7 +59,7 @@ class SessionBoundaryTests(unittest.TestCase):
         raw = response()
         public = self.module.summarize_session_response(raw)
         self.assertEqual(public["stage"], "external_session_received")
-        self.assertFalse(public["video_playback_implemented"])
+        self.assertTrue(public["video_playback_implemented"])
         self.assertFalse(public["real_device_video_verified"])
         encoded = json.dumps(public)
         for secret in ("SECRET", "PRIVATE", "123456", "example.invalid"):

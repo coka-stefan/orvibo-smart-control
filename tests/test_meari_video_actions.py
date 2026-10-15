@@ -44,7 +44,7 @@ class VideoActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(public["channel_stage"], "nvr_channels_received")
         self.assertEqual(public["nvrs"][0]["channel_count"], 2)
         self.assertTrue(public["channel_query_implemented"])
-        self.assertFalse(public["video_playback_implemented"])
+        self.assertTrue(public["video_playback_implemented"])
         self.assertFalse(public["real_device_video_verified"])
         for forbidden in ("PRIVATE", "SECRET", "example.invalid", "123456"):
             self.assertNotIn(forbidden, json.dumps(public))

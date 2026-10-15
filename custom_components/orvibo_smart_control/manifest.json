@@ -6,8 +6,10 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "ffmpeg",
+    "frontend",
     "http",
-    "frontend"
+    "stream"
   ],
   "documentation": "https://github.com/maycode0-0/orvibo-smart-control",
   "homekit": {},
@@ -17,5 +19,5 @@
   "requirements": [
     "pycryptodome==3.23.0"
   ],
-  "version": "0.2.6b3"
+  "version": "0.2.6b4"
 }

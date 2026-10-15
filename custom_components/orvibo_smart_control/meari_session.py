@@ -69,7 +69,7 @@ def _endpoint_present(value: object) -> bool:
 def summarize_session_response(response: object) -> dict[str, Any]:
     """Return presence/count facts, never tokens, account data or raw JSON."""
     public: dict[str, Any] = {
-        "video_playback_implemented": False,
+        "video_playback_implemented": True,
         "real_device_video_verified": False,
     }
     raw = _object(response)

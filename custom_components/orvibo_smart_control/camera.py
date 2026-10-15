@@ -3,8 +3,8 @@
 每把门锁一个 camera 实体，显示最近一次事件截图（门铃/撬锁/离家告警等）。
 事件到达时 coordinator 后台下载图片并推送到实体，前端门锁卡片直接显示。
 
-实时视频流暂不支持；APK 中旧摄像机的 SEP2P 分支不能证明门锁猫眼协议。本实体
-仅提供事件快照，camera 属性不声明 stream 能力。
+Meari XTS 摄像机和录像机通过私有视频桥接输出 H.264，供 HA Stream 播放。
+门锁仍只提供事件快照；旧摄像机的 SEP2P 分支不能证明门锁猫眼协议。
 """
 
 from __future__ import annotations
@@ -13,13 +13,20 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from homeassistant.components.camera import Camera
+from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.ffmpeg import get_ffmpeg_manager
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.exceptions import HomeAssistantError, PlatformNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .camera_metadata import camera_sdk_hint
+from .meari_live import LiveCameraBootstrap, LiveCameraDescription
+from .meari_stream import MeariVideoBridge, _finish_uninterrupted
 from .coordinator import OrviboSmartControlCoordinator
 from .device_types import DeviceCategory, classify_device
 from .selection import selected_device_ids
@@ -47,6 +54,23 @@ async def async_setup_entry(
             continue
         if classify_device(device) == DeviceCategory.DOOR_LOCK:
             entities.append(OrviboLockSnapshotCamera(coordinator, device))
+    video_devices = {
+        device_id: device for device_id, device in coordinator.devices.items()
+        if device_id in selected_ids and camera_sdk_hint(device) == "meari"
+    }
+    if video_devices:
+        bootstrap = LiveCameraBootstrap(coordinator, async_get_clientsession(hass))
+        try:
+            descriptions = await bootstrap.discover(video_devices)
+        except (ValueError, OSError, TimeoutError):
+            # Raise before adding entities so a platform retry cannot duplicate locks.
+            raise PlatformNotReady("录像机设备或通道清单暂时不可用，将自动重试") from None
+        binary = get_ffmpeg_manager(hass).binary
+        for description in descriptions:
+            entities.append(OrviboLiveCamera(
+                coordinator, video_devices[description.device_id], description,
+                bootstrap, binary,
+            ))
     if entities:
         async_add_entities(entities)
 
@@ -87,4 +111,111 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
             "manufacturer": "ORVIBO",
             "model": "Smart Lock",
             "sw_version": "1.0",
+        }
+
+
+class OrviboLiveCamera(CoordinatorEntity, Camera):
+    """One selected Meari IPC or online NVR channel, using HA's HLS player."""
+
+    _attr_icon = "mdi:cctv"
+    _attr_supported_features = CameraEntityFeature.STREAM
+    _attr_should_poll = False
+    _attr_brand = "ORVIBO"
+
+    def __init__(
+        self, coordinator: OrviboSmartControlCoordinator, device: dict[str, Any],
+        description: LiveCameraDescription, bootstrap: LiveCameraBootstrap,
+        ffmpeg_binary: str,
+    ) -> None:
+        super().__init__(coordinator)
+        Camera.__init__(self)
+        self._device = device
+        self._description = description
+        self._attr_unique_id = (
+            f"orvibo_smart_control_live_{description.device_id}_{description.channel_id}"
+        )
+        self._attr_name = (
+            f"{device.get('device_name') or '录像机'} 通道 {description.channel_id}"
+            if description.is_nvr else f"{device.get('device_name') or '摄像机'} 实时画面"
+        )
+        self._bridge = MeariVideoBridge(
+            ffmpeg_binary, lambda: bootstrap.context(description),
+        )
+        self._closed = False
+
+    @property
+    def use_stream_for_stills(self) -> bool:
+        """Reuse HA's decoded keyframe instead of opening another P2P session."""
+        return True
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None,
+    ) -> bytes | None:
+        stream = await self.async_create_stream()
+        if stream is None:
+            return None
+        return await stream.async_get_image(width=width, height=height)
+
+    async def async_create_stream(self):
+        if self._closed:
+            return None
+        try:
+            # HA limits stream_source to 10s and PyAV source open to 30s.
+            # Establish slow P2P signaling before either of those clocks starts.
+            await self._bridge.async_prepare()
+        except (ValueError, OSError, RuntimeError, TimeoutError):
+            raise HomeAssistantError("录像机暂时无法建立视频连接，请稍后重试") from None
+        return await super().async_create_stream()
+
+    async def stream_source(self) -> str | None:
+        if self._closed:
+            return None
+        return await self._bridge.async_start()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._async_stop,
+        ))
+
+    async def _async_stop(self, _event: Any = None) -> None:
+        self._closed = True
+
+        async def cleanup() -> None:
+            try:
+                # Interrupt the localhost reader before joining HA's stream thread.
+                await self._bridge.async_close()
+            finally:
+                if self.stream is not None:
+                    settings = getattr(self.stream, "dynamic_stream_settings", None)
+                    if settings is not None:
+                        settings.preload_stream = False
+                    elif hasattr(self.stream, "keepalive"):
+                        self.stream.keepalive = False
+                    await self.stream.stop()
+
+        await _finish_uninterrupted(cleanup())
+
+    async def async_will_remove_from_hass(self) -> None:
+        await self._async_stop()
+        await super().async_will_remove_from_hass()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "channel_id": self._description.channel_id,
+            "video_transport": "meari_xts",
+            "video_stage": self._bridge.last_stage,
+            "output_codec": "h264",
+            "audio_supported": False,
+            "hdd_playback_supported": False,
+        }
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        return {
+            "identifiers": {(DOMAIN, self._description.device_id)},
+            "name": self._device.get("device_name") or "ORVIBO Camera",
+            "manufacturer": "ORVIBO",
+            "model": "NVR" if self._description.is_nvr else "Camera",
         }

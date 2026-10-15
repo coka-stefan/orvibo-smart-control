@@ -87,7 +87,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
     ) -> dict[str, Any]:
         targets = _targets(hass, call.data.get("entry_id"))
         if len(targets) != 1:
-            return {"stage": "select_one_entry", "video_playback_implemented": False,
+            return {"stage": "select_one_entry", "video_playback_implemented": True,
                     "real_device_video_verified": False}
         country = str(call.data.get("country_code") or "CN").upper()
         phone = str(call.data.get("phone_code") or "86")
@@ -97,7 +97,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             or not re.fullmatch(r"[0-9]{1,4}", phone)
             or language not in ("zh", "en")
         ):
-            return {"stage": "invalid_region", "video_playback_implemented": False,
+            return {"stage": "invalid_region", "video_playback_implemented": True,
                     "real_device_video_verified": False}
         kwargs: dict[str, Any] = {}
         if inspect_devices or inspect_channels:
@@ -118,7 +118,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         return await handle_inspect_video_session(call, inspect_channels=True)
 
     async def handle_probe_video_stream(call: ServiceCall) -> dict[str, Any]:
-        base = {"video_playback_implemented": False, "real_device_video_verified": False}
+        base = {"video_playback_implemented": True, "real_device_video_verified": False}
         targets = _targets(hass, call.data.get("entry_id"))
         if len(targets) != 1:
             return {**base, "probe_stage": "select_one_entry"}

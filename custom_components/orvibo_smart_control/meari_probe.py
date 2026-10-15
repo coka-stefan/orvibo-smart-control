@@ -67,7 +67,7 @@ async def async_run_video_probe(
 ) -> dict[str, Any]:
     """Run one finite probe, always reaping the child before returning."""
     base: dict[str, Any] = {
-        "probe_implemented": True, "video_playback_implemented": False,
+        "probe_implemented": True, "video_playback_implemented": True,
         "real_device_video_verified": False, "decoded": False,
         "encoded_video_verified": False,
     }
@@ -189,7 +189,7 @@ async def async_probe_video_stream(
     key = id(coordinator)
     if key in _ACTIVE:
         return {"probe_stage": "probe_in_progress", "probe_implemented": True,
-                "video_playback_implemented": False, "real_device_video_verified": False}
+                "video_playback_implemented": True, "real_device_video_verified": False}
     task = asyncio.current_task()
     _ACTIVE[key] = task
     try:
@@ -204,7 +204,7 @@ async def async_probe_video_stream(
             )
     except TimeoutError:
         return {"probe_stage": "probe_timeout", "probe_implemented": True,
-                "video_playback_implemented": False, "real_device_video_verified": False,
+                "video_playback_implemented": True, "real_device_video_verified": False,
                 "encoded_video_verified": False, "worker_stopped": True}
     finally:
         _ACTIVE.pop(key, None)

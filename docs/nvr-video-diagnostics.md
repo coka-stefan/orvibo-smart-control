@@ -92,7 +92,8 @@ data: {}
 - `channel_request_rejected`、`channel_http_error`、`channel_request_failed` 等顶层阶段表示请求失败；只返回有限结果码/HTTP 状态，不输出错误原文。
 
 云端快照可能滞后，原始 `state/type` 不直接等同于已验证在线或可播放。
-`video_playback_implemented` 和 `real_device_video_verified` 仍为 false。
+`0.2.6b4` 的 `video_playback_implemented=true` 表示已提供实时播放代码；
+`real_device_video_verified=false` 表示本动作没有验证 HA 的真实画面播放。
 用户已提供本动作的真实成功结果：录像机容量与返回通道数均为 8；1、3 号 state=1、p2p=2，其余 state=0、p2p=0。
 此结果仅证明通道云端查询成功，媒体仍需单独测试。
 请求与静态依据见 [NVR 通道接口](meari-nvr-channel-protocol.md)。
@@ -137,8 +138,9 @@ data:
 | `last_probe_stage` / `worker_stopped` | 最近尝试的阶段、媒体子进程已结束并回收 |
 | `probe_device_index` / `probe_channel_id` | 本次明确请求的设备序号与通道号 |
 
-本版始终返回 `decoded=false`、`video_playback_implemented=false`、`real_device_video_verified=false`。
-尚未加入解码器和 HA 播放出口。不能从首帧结构探测成功推断硬盘片段可播放。
+首帧动作仍返回 `decoded=false`、`real_device_video_verified=false`，因为该动作不执行解码。
+`0.2.6b4` 起 `video_playback_implemented=true` 表示另外提供了实时摄像头播放出口。
+不能从首帧结构探测成功推断硬盘片段可播放。
 
 身份取自外部会话的 partnerId/userID；不套用其他品牌账号。
 本轮模拟客户端版本为 `5.2.6.307a13`，发现协议版本沿用固定参考实现的 `15259`，设备兼容性仍待实测。
@@ -151,8 +153,24 @@ App 也可能把视频密码状态存在手机本地，所以字段缺失不表�
 APK 的 Android ARM 原生视频库不能直接用于此环境。公开 MIT 项目
 [Ha-CloudEdge-Meari](https://github.com/ajeanney/Ha-CloudEdge-Meari/tree/5bc9f97766c3d8076da8bb15dcb7b62ca7721127)
 提供了可参考的 Python P2P 实时协议；其当前代码没有 NVR 硬盘索引、回放和定位实现。
-该参考实现与欧瑞博账号、NVR 通道和媒体格式的兼容性尚未通过真实设备验证。
+已收到用户真实 NVR 1 号通道的 HEVC 关键帧及参数集（153,474 字节、144 个网络包）。
+这确认了指定通道的编码接收，尚未证明真实连续播放或硬盘回放。
 
 外部会话、库存及 NVR 通道查询已获得用户环境成功返回。
 接下来由新动作验证一个通道的媒体首帧，再接入解码和播放出口；硬盘片段检索、播放及定位仍需独立实现。
 此探测结果不会改变 `stream_supported=False`。
+
+
+## 实时摄像头（0.2.6b4）
+
+更新后进入录像机的设备页面，打开新增的 `camera` 通道实体。已有“云端”“Meari”是
+诊断传感器，打开它们不会显示画面。当前会为云端报告 state=1、p2p=2，且通过 XTS
+会话校验的通道生成实体；按 App 的 Device.uid 与 CameraInfo.deviceID 精确关联，
+不会按名称、设备数量或旧库存序号猜测对应关系。没有实体时检查是否选中了录像机，
+运行 `inspect_video_channels`，并查看 HA 中该集成 camera 平台是否正在重试。
+
+`video_stage` 是当前连接阶段（idle/starting/connecting/transcoding/streaming等固定值）。
+`streaming` 表示转码器已有输出，不单独证明浏览器成功显示。请反馈能否看到实际画面、
+1/3号各自情况，以及关闭后重新打开是否恢复。音频、硬盘历史和设备时间轴暂未接入。
+
+实现与限制见 [实时视频](meari-live-video.md)。
