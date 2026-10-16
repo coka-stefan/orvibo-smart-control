@@ -200,6 +200,108 @@ class LockPropertyTableRegressionTests(unittest.TestCase):
         self.assertEqual(payload, before)
 
 
+class LegacyBatteryPowerTests(unittest.TestCase):
+    """Type 300/400 AA lock: properties.battery_power, value1-4=-1."""
+
+    @classmethod
+    def setUpClass(cls):
+        package_name = "orvibo_legacy_lock_battery_regression"
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(MODULE_PATH.parent)]
+        sys.modules[package_name] = package
+        cls.protocol = importlib.import_module(f"{package_name}.protocol")
+        cls.inventory_module = importlib.import_module(f"{package_name}.device_inventory")
+        cls.parser = importlib.import_module(f"{package_name}.parsers.lock")
+        cls.dispatcher = importlib.import_module(f"{package_name}.status_dispatcher")
+
+    def test_diagnostic_battery_power_is_dry_battery_percentage(self):
+        properties = {"battery_power": 60, "handle": "on", "reverse_lock": "off",
+                      "door_status": "off", "clild_lock": "off"}
+        before = copy.deepcopy(properties)
+        result = lock_status.normalize_battery_properties(properties)
+        self.assertEqual(result, {"dry_battery_level": 60})
+        self.assertEqual(properties, before)
+
+    def test_legacy_percentage_boundaries_and_numeric_strings(self):
+        for value, expected in ((0, 0), (100, 100), ("60", 60), ("0", 0), (60.0, 60)):
+            with self.subTest(value=value):
+                self.assertEqual(lock_status.normalize_battery_properties({"battery_power": value}),
+                                 {"dry_battery_level": expected})
+
+    def test_invalid_legacy_percentages_do_not_erase_previous_reading(self):
+        for value in (None, "", "unknown", -1, 101, True, False, {}, 2.5,
+                      float("inf"), float("nan")):
+            with self.subTest(value=value):
+                self.assertEqual(lock_status.normalize_battery_properties({"battery_power": value}), {})
+
+    def test_explicit_managers_override_legacy_fallback(self):
+        for managers in (
+            {"batteryManager": {"level": 0, "isSetupBattery": "on"},
+             "batteryManager1": {"level": 81, "isSetupBattery": "on"}},
+            {"batteryManager_level": 0, "batteryManager_isSetupBattery": "on",
+             "batteryManager1_level": 81, "batteryManager1_isSetupBattery": "on"},
+        ):
+            with self.subTest(managers=managers):
+                result = lock_status.normalize_battery_properties({"battery_power": 60, **managers})
+                self.assertEqual(result["dry_battery_level"], 0)
+                self.assertEqual(result["lithium_battery_level"], 81)
+        result = lock_status.normalize_battery_properties({"battery_power": 60,
+            "batteryManager": {"level": 60, "isSetupBattery": "off"}})
+        self.assertIsNone(result["dry_battery_level"])
+        self.assertIs(result["dry_battery_setup"], False)
+
+    def test_readtable_initialization_and_cloud_partial_updates(self):
+        payload = {"data": {
+            "device": [{"deviceId": "lock", "deviceType": 300, "subDeviceType": 400,
+                        "model": "dec7d494f0454110805c0d5f7e7cba73"}],
+            "deviceStatus": [{"deviceId": "lock", "value1": -1, "value2": -1,
+                "value3": -1, "value4": -1, "online": 0,
+                "properties": {"battery_power": 60, "handle": "on",
+                               "reverse_lock": "off", "door_status": "off"}}],
+        }}
+        devices, states = {}, {}
+        store = self.inventory_module.StateStore(states)
+        inventory = self.inventory_module.DeviceInventory(None, devices, states, store, lambda _: None)
+        rows = [self.protocol.device_to_dict(d) for d in self.protocol.parse_readtable_devices(payload)]
+        inventory.initialize(rows)
+        self.assertEqual(states["lock"]["dry_battery_level"], 60)
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+        self.assertIs(states["lock"]["inside_lock_state"], False)
+        inventory.merge_cloud([{**rows[0], "properties": {"battery_power": 59}}])
+        self.assertEqual(states["lock"]["dry_battery_level"], 59)
+        inventory.merge_cloud([{**rows[0], "properties": {"handle": "on"}}])
+        self.assertEqual(states["lock"]["dry_battery_level"], 59)
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+
+    def test_realtime_battery_power_updates_survive_partial_pushes(self):
+        devices = {"lock": {"device_id": "lock", "device_type_raw": 300, "sub_device_type": 400,
+                            "model": "dec7d494f0454110805c0d5f7e7cba73",
+                            "properties": {"battery_power": 60, "handle": "on"}}}
+        states = {"lock": {}}
+        store = self.inventory_module.StateStore(states)
+        dispatcher = self.dispatcher.StatusUpdateDispatcher(
+            devices, states, store, {}, [],
+            on_motion=lambda *_: None, on_emergency=lambda *_: None,
+            on_lock_transient=lambda *_: None, on_lock_message=lambda *_: None,
+            on_lock_event=lambda *_: None, on_updated=lambda: None,
+        )
+        dispatcher.dispatch("lock", {"cmd": 42, "statusType": 300, "subDeviceType": 400,
+            "properties": {"battery_power": 60, "handle": "on", "reverse_lock": "off",
+                           "door_status": "off"}})
+        self.assertEqual(states["lock"]["dry_battery_level"], 60)
+        dispatcher.dispatch("lock", {"cmd": 42, "properties": {"battery_power": 58}})
+        dispatcher.dispatch("lock", {"cmd": 42, "properties": {"door_status": "off"}})
+        dispatcher.dispatch("lock", {"cmd": 42, "properties": {"battery_power": -1}})
+        self.assertEqual(states["lock"]["dry_battery_level"], 58)
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+        self.assertNotIn("lithium_battery_level", states["lock"])
+
+    def test_value4_event_code_is_not_used_as_battery_percentage(self):
+        patch = self.parser.parse_door_lock({}, {"cmd": 42, "value2": 65535, "value4": 20})
+        self.assertNotIn("dry_battery_level", patch.values)
+        self.assertNotIn("lithium_battery_level", patch.values)
+
+
 class BatteryTests(unittest.TestCase):
     def test_dual_battery_managers(self) -> None:
         result = lock_status.normalize_battery_properties(

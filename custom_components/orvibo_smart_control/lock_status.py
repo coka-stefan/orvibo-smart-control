@@ -169,9 +169,14 @@ def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
 
 
 def normalize_battery_properties(properties: Any) -> dict[str, Any]:
-    """Normalize dry/lithium battery managers to level + setup flags."""
+    """Normalize legacy AA percentages and dry/lithium battery managers."""
     props = _mapping(properties)
     result: dict[str, Any] = {}
+    # APK IntProperty.BatteryPower and type 300/400 AA lock diagnostics use
+    # battery_power (0..100). Managers below retain precedence, including removal.
+    legacy_level = normalize_battery_level(props.get("battery_power"))
+    if legacy_level is not None:
+        result["dry_battery_level"] = legacy_level
     for source_key, out_prefix in (
         ("batteryManager", "dry"),
         ("batteryManager1", "lithium"),

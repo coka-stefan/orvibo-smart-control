@@ -342,6 +342,47 @@ class TransportSensorTests(unittest.TestCase):
             lithium._sync_battery_visibility()
             self.assertEqual(len(updates), count)
 
+    def test_type300_legacy_battery_restores_dry_sensor_visibility(self):
+        coordinator = _Coordinator(self.module)
+        device = {"device_id": "lock", "device_name": "Lock", "device_type": "unknown",
+                  "device_type_raw": 300, "sub_device_type": 400, "online": False,
+                  "model": "dec7d494f0454110805c0d5f7e7cba73",
+                  "properties": {"battery_power": 60, "handle": "on"}}
+        coordinator.devices = {"lock": device}
+        package_name = "orvibo_lock_battery_sensor_regression"
+        package = _module(package_name)
+        package.__path__ = [str(MODULE_PATH.parent)]
+        with patch.dict(sys.modules, {package_name: package}):
+            parser = importlib.import_module(f"{package_name}.parsers.lock")
+        state = {"online": False}
+        parser.parse_door_lock(state, {"properties": {"battery_power": 60,
+            "handle": "on", "reverse_lock": "off", "door_status": "off"}}).apply_to(state)
+        coordinator.get_device_state = lambda _: state
+        entities = []
+        hass = SimpleNamespace(data={"orvibo_smart_control": {"entry-1": coordinator}})
+        asyncio.run(self.module.async_setup_entry(hass,
+            SimpleNamespace(entry_id="entry-1", options={}), entities.extend))
+        dry = next(entity for entity in entities
+                   if isinstance(entity, self.module.OrviboDoorLockDryBatterySensor))
+        lithium = next(entity for entity in entities
+                       if isinstance(entity, self.module.OrviboDoorLockLithiumBatterySensor))
+        entries = {"sensor.dry": SimpleNamespace(hidden_by="integration"),
+                   "sensor.lithium": SimpleNamespace(hidden_by="integration")}
+
+        def update(entity_id, **values):
+            entries[entity_id].hidden_by = values["hidden_by"]
+
+        registry = SimpleNamespace(async_get=entries.get, async_update_entity=update)
+        for entity, entity_id in ((dry, "sensor.dry"), (lithium, "sensor.lithium")):
+            entity.hass = SimpleNamespace(registry=registry)
+            entity.entity_id = entity_id
+            asyncio.run(entity.async_added_to_hass())
+        self.assertEqual(dry.native_value, 60)
+        self.assertTrue(dry.available)
+        self.assertIsNone(entries["sensor.dry"].hidden_by)
+        self.assertIsNone(lithium.native_value)
+        self.assertEqual(entries["sensor.lithium"].hidden_by, "integration")
+
     def test_lock_battery_sensor_rejects_invalid_and_removed_sources(self):
         coordinator = _Coordinator(self.module)
         state = {}
