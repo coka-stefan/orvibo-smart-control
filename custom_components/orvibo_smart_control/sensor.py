@@ -15,10 +15,12 @@ from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, Sen
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER
+from .lock_status import normalize_battery_level
 from .capabilities import (
     ControlChannel,
     TransportPath,
@@ -389,7 +391,28 @@ class OrviboGasBatterySensor(OrviboSensorBase):
         return None
 
 
-class OrviboDoorLockDryBatterySensor(OrviboDoorLockSensorBase):
+class OrviboDoorLockBatterySensorBase(OrviboDoorLockSensorBase):
+    """Keep valid battery sources visible as readings arrive or batteries are removed."""
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._sync_battery_visibility()
+
+    def _handle_coordinator_update(self) -> None:
+        self._sync_battery_visibility()
+        super()._handle_coordinator_update()
+
+    def _sync_battery_visibility(self) -> None:
+        registry = er.async_get(self.hass)
+        entry = registry.async_get(self.entity_id)
+        if entry is None or entry.hidden_by not in (None, er.RegistryEntryHider.INTEGRATION):
+            return
+        hidden_by = er.RegistryEntryHider.INTEGRATION if self.native_value is None else None
+        if entry.hidden_by != hidden_by:
+            registry.async_update_entity(self.entity_id, hidden_by=hidden_by)
+
+
+class OrviboDoorLockDryBatterySensor(OrviboDoorLockBatterySensorBase):
     """智能门锁 - 干电池电量（deviceType=522）。"""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
@@ -404,9 +427,9 @@ class OrviboDoorLockDryBatterySensor(OrviboDoorLockSensorBase):
     def native_value(self) -> Optional[int]:
         state = self.coordinator.get_device_state(self._device_id)
         if state:
-            bat = state.get("dry_battery_level")
-            if bat is not None:
-                return int(bat)
+            if state.get("dry_battery_setup") is False:
+                return None
+            return normalize_battery_level(state.get("dry_battery_level"))
         return None
 
     @property
@@ -419,7 +442,7 @@ class OrviboDoorLockDryBatterySensor(OrviboDoorLockSensorBase):
         }
 
 
-class OrviboDoorLockLithiumBatterySensor(OrviboDoorLockSensorBase):
+class OrviboDoorLockLithiumBatterySensor(OrviboDoorLockBatterySensorBase):
     """智能门锁 - 锂电池电量（deviceType=522）。"""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
@@ -434,9 +457,9 @@ class OrviboDoorLockLithiumBatterySensor(OrviboDoorLockSensorBase):
     def native_value(self) -> Optional[int]:
         state = self.coordinator.get_device_state(self._device_id)
         if state:
-            bat = state.get("lithium_battery_level")
-            if bat is not None:
-                return int(bat)
+            if state.get("lithium_battery_setup") is False:
+                return None
+            return normalize_battery_level(state.get("lithium_battery_level"))
         return None
 
     @property

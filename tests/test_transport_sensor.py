@@ -35,6 +35,12 @@ def _load_sensor_module():
         def __init__(self, coordinator):
             self.coordinator = coordinator
 
+        async def async_added_to_hass(self):
+            self.coordinator.added = True
+
+        def _handle_coordinator_update(self):
+            self.coordinator.updated = True
+
     class SensorEntity:
         pass
 
@@ -64,6 +70,11 @@ def _load_sensor_module():
             "homeassistant.core", HomeAssistant=object
         ),
         "homeassistant.helpers": _module("homeassistant.helpers"),
+        "homeassistant.helpers.entity_registry": _module(
+            "homeassistant.helpers.entity_registry",
+            RegistryEntryHider=SimpleNamespace(INTEGRATION="integration", USER="user"),
+            async_get=lambda hass: hass.registry,
+        ),
         "homeassistant.helpers.entity_platform": _module(
             "homeassistant.helpers.entity_platform",
             AddEntitiesCallback=object,
@@ -295,6 +306,56 @@ class TransportSensorTests(unittest.TestCase):
             ).native_value,
             "locked",
         )
+
+
+    def test_lock_battery_visibility_tracks_valid_source_without_changing_user_choice(self):
+        coordinator = _Coordinator(self.module)
+        state = {"dry_battery_level": 60, "lithium_battery_level": None}
+        coordinator.get_device_state = lambda _: state
+        entries = {"sensor.dry": SimpleNamespace(hidden_by=None),
+                   "sensor.lithium": SimpleNamespace(hidden_by=None)}
+        updates = []
+
+        def update(entity_id, **values):
+            updates.append((entity_id, values))
+            entries[entity_id].hidden_by = values["hidden_by"]
+
+        registry = SimpleNamespace(async_get=entries.get, async_update_entity=update)
+        device = {"device_id": "lock"}
+        dry = self.module.OrviboDoorLockDryBatterySensor(coordinator, device)
+        lithium = self.module.OrviboDoorLockLithiumBatterySensor(coordinator, device)
+        for entity, entity_id in ((dry, "sensor.dry"), (lithium, "sensor.lithium")):
+            entity.hass = SimpleNamespace(registry=registry)
+            entity.entity_id = entity_id
+            asyncio.run(entity.async_added_to_hass())
+        self.assertTrue(coordinator.added)
+        self.assertEqual(dry.native_value, 60)
+        self.assertEqual(updates, [("sensor.lithium", {"hidden_by": "integration"})])
+        state["lithium_battery_level"] = 0
+        lithium._handle_coordinator_update()
+        self.assertTrue(coordinator.updated)
+        self.assertEqual(updates[-1], ("sensor.lithium", {"hidden_by": None}))
+        for level in (None, 55):
+            entries["sensor.lithium"].hidden_by = "user"
+            state["lithium_battery_level"] = level
+            count = len(updates)
+            lithium._sync_battery_visibility()
+            self.assertEqual(len(updates), count)
+
+    def test_lock_battery_sensor_rejects_invalid_and_removed_sources(self):
+        coordinator = _Coordinator(self.module)
+        state = {}
+        coordinator.get_device_state = lambda _: state
+        for sensor_type, prefix in ((self.module.OrviboDoorLockDryBatterySensor, "dry"),
+                                    (self.module.OrviboDoorLockLithiumBatterySensor, "lithium")):
+            sensor = sensor_type(coordinator, {"device_id": "lock"})
+            for invalid in (-1, 101, True, "bad", float("nan")):
+                state.clear()
+                state[f"{prefix}_battery_level"] = invalid
+                self.assertIsNone(sensor.native_value)
+            state[f"{prefix}_battery_level"] = 60
+            state[f"{prefix}_battery_setup"] = False
+            self.assertIsNone(sensor.native_value)
 
 
 if __name__ == "__main__":

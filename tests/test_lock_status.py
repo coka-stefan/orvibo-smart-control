@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import copy
+import importlib
 import importlib.util
+import types
 from pathlib import Path
 import sys
 import unittest
@@ -67,7 +70,8 @@ class DoorLockPropertyTests(unittest.TestCase):
         result = lock_status.normalize_door_lock_properties(
             {"door_status": "closed", "reverse_lock": "locked"}
         )
-        self.assertIs(result["locked"], True)
+        self.assertIsNone(result["locked"])
+        self.assertIs(result["inside_locked"], True)
         self.assertIs(result["door_open"], False)
 
     def test_flat_keys_override_nested(self) -> None:
@@ -92,6 +96,108 @@ class DoorLockPropertyTests(unittest.TestCase):
         result = lock_status.normalize_door_lock_properties(None)
         self.assertIsNone(result["locked"])
         self.assertIsNone(result["door_open"])
+
+
+class LockPropertyTableRegressionTests(unittest.TestCase):
+    def test_property_table_leaf_keys_match_nested_properties(self):
+        nested = {
+            "doorLock": {"lockState": "off", "doorState": "off", "insideLockState": "on"},
+            "batteryManager": {"level": "60", "isSetupBattery": "on"},
+            "batteryManager1": {"level": 0, "isSetupBattery": "off"},
+        }
+        flat = {f"{group}_{key}": value for group, fields in nested.items()
+                for key, value in fields.items()}
+        normalized = lock_status.normalize_door_lock_properties(flat)
+        self.assertIs(normalized["locked"], True)
+        self.assertIs(normalized["door_open"], False)
+        self.assertIs(normalized["inside_locked"], False)
+        self.assertEqual(lock_status.derive_lock_status(normalized["locked"],
+                         normalized["door_open"], normalized["inside_locked"]), "locked")
+        self.assertEqual(lock_status.normalize_battery_properties(flat),
+                         lock_status.normalize_battery_properties(nested))
+        self.assertEqual(lock_status.normalize_battery_properties(flat)["dry_battery_level"], 60)
+
+    def test_property_table_leaf_overrides_inline_field_without_losing_other_fields(self):
+        props = {
+            "doorLock": {"lockState": "on", "doorState": "off"},
+            "doorLock_lockState": "off",
+            "batteryManager": {"level": 90, "isSetupBattery": "on"},
+            "batteryManager_level": "60",
+        }
+        before = copy.deepcopy(props)
+        lock = lock_status.normalize_door_lock_properties(props)
+        self.assertIs(lock["locked"], True)
+        self.assertIs(lock["door_open"], False)
+        battery = lock_status.normalize_battery_properties(props)
+        self.assertEqual(battery["dry_battery_level"], 60)
+        self.assertIs(battery["dry_battery_setup"], True)
+        self.assertEqual(props, before)
+
+    def test_reverse_lock_is_independent_of_main_lock(self):
+        for main_locked in (False, True):
+            for reverse_locked in (False, True):
+                with self.subTest(main=main_locked, reverse=reverse_locked):
+                    result = lock_status.normalize_door_lock_properties({
+                        "handle": "on" if main_locked else "off",
+                        "reverse_lock": "on" if reverse_locked else "off",
+                        "door_status": "off",
+                    })
+                    self.assertIs(result["locked"], main_locked)
+                    self.assertIs(result["inside_locked"], reverse_locked)
+
+    def test_reverse_lock_does_not_override_nested_main_lock(self):
+        result = lock_status.normalize_door_lock_properties({
+            "doorLock": {"lockState": "off"}, "reverse_lock": "unlocked"})
+        self.assertIs(result["locked"], True)
+        self.assertIs(result["inside_locked"], False)
+
+    def test_battery_partial_and_invalid_values_do_not_erase_level(self):
+        for invalid in (None, "", "unknown", -1, 101, True, {}, float("inf"), 2.5):
+            with self.subTest(invalid=invalid):
+                updates = lock_status.normalize_battery_properties({
+                    "batteryManager": {"level": invalid, "isSetupBattery": "on"}})
+                self.assertNotIn("dry_battery_level", updates)
+        self.assertEqual(lock_status.normalize_battery_properties({
+            "batteryManager": {"isSetupBattery": "on"}}), {"dry_battery_setup": True})
+        self.assertEqual(lock_status.normalize_battery_properties({
+            "batteryManager": {"level": 0}}), {"dry_battery_level": 0})
+
+    def test_readtable_to_initial_cloud_and_partial_state(self):
+        package_name = "orvibo_lock_power_regression"
+        package = types.ModuleType(package_name)
+        package.__path__ = [str(MODULE_PATH.parent)]
+        sys.modules[package_name] = package
+        protocol = importlib.import_module(f"{package_name}.protocol")
+        inventory_module = importlib.import_module(f"{package_name}.device_inventory")
+        parser = importlib.import_module(f"{package_name}.parsers.lock")
+        payload = {"data": {
+            "device": [{"deviceId": "lock", "deviceType": 522, "subDeviceType": 463}],
+            "devicePropertyStatus": [
+                {"deviceId": "lock", "property": key, "value": value}
+                for key, value in {"doorLock_lockState": "off", "doorLock_doorState": "off",
+                    "doorLock_insideLockState": "on", "batteryManager_level": "60",
+                    "batteryManager_isSetupBattery": "on", "batteryManager1_isSetupBattery": "off"}.items()
+            ],
+        }}
+        before = copy.deepcopy(payload)
+        devices, states = {}, {}
+        store = inventory_module.StateStore(states)
+        inventory = inventory_module.DeviceInventory(None, devices, states, store, lambda _: None)
+        rows = [protocol.device_to_dict(d) for d in protocol.parse_readtable_devices(payload)]
+        inventory.initialize(rows)
+        self.assertEqual(states["lock"]["dry_battery_level"], 60)
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+        inventory.merge_cloud([{"device_id": "lock", "device_type_raw": 522,
+            "properties": {"batteryManager": {"isSetupBattery": "on"}}}])
+        self.assertEqual(states["lock"]["dry_battery_level"], 60)
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+        parser.parse_door_lock(states["lock"], {"properties": {
+            "doorLock": {"insideLockState": "off"}}}).apply_to(states["lock"])
+        self.assertEqual(states["lock"]["lock_status"], "inside_locked")
+        parser.parse_door_lock(states["lock"], {"properties": {
+            "doorLock": {"insideLockState": "on"}}}).apply_to(states["lock"])
+        self.assertEqual(states["lock"]["lock_status"], "locked")
+        self.assertEqual(payload, before)
 
 
 class BatteryTests(unittest.TestCase):

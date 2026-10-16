@@ -205,7 +205,7 @@ class DeviceInventory:
                 parser = get_state_parser(category)
                 if parser is not None:
                     parser(
-                        lock_state,
+                        self.states[device_id],
                         {
                             "properties": device.get("properties", {}),
                             "value1": device.get("value1"),

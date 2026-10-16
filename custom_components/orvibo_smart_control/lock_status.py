@@ -57,6 +57,33 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _property_group(properties: Mapping[str, Any], group: str) -> dict[str, Any]:
+    """Read nested pushes and App DevicePropertyStatus server_name leaf keys."""
+    prefix = group + "_"
+    fields = dict(_mapping(properties.get(group)))
+    # APK BasePropertyMap.getObjectKey(): server + "_" + name. Independent
+    # readtable property rows follow inline properties in protocol.py.
+    fields.update({
+        key[len(prefix):]: value
+        for key, value in properties.items()
+        if isinstance(key, str) and key.startswith(prefix)
+    })
+    return fields
+
+
+def normalize_battery_level(value: Any) -> Optional[int]:
+    """Accept only actual percentages, including a depleted battery's zero."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        level = float(value)
+    except (ValueError, OverflowError):
+        return None
+    if not math.isfinite(level) or not level.is_integer() or not 0 <= level <= 100:
+        return None
+    return int(level)
+
+
 def normalize_unlock_method(value: Any) -> Optional[str]:
     """Normalize named ThingModel methods; numeric legacy codes are separate."""
     if not isinstance(value, str):
@@ -93,7 +120,7 @@ def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
         "raw": {},
     }
 
-    door_lock = _mapping(props.get("doorLock"))
+    door_lock = _property_group(props, "doorLock")
     if door_lock:
         # V5 Eyes（type=522/classId=463）实机验证（反语义，与 App 显示一致）：
         # lockState="on"=已解锁、"off"=已锁定；
@@ -105,8 +132,11 @@ def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
         result["inside_locked"] = None if inside_raw is None else not inside_raw
         result["raw"]["doorLock"] = dict(door_lock)
 
-    # 形态 B 的扁平权威字段优先（部分固件两种形态同时出现）
-    for key in ("reverse_lock", "lock_state", "lockStatus"):
+    # App renders handle as the main lock and reverse_lock as the independent deadbolt.
+    reverse = _normalize_state(props.get("reverse_lock"))
+    if reverse is not None:
+        result["inside_locked"] = reverse
+    for key in ("handle", "lock_state", "lockStatus"):
         value = _normalize_state(props.get(key))
         if value is not None:
             result["locked"] = value
@@ -130,6 +160,7 @@ def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
             "handle",
             "clild_lock",
             "lock_state",
+            "lockStatus",
             "leaveHomeAlarmCfg",
         )
         if key in props
@@ -145,15 +176,13 @@ def normalize_battery_properties(properties: Any) -> dict[str, Any]:
         ("batteryManager", "dry"),
         ("batteryManager1", "lithium"),
     ):
-        manager = _mapping(props.get(source_key))
+        manager = _property_group(props, source_key)
         if not manager:
             continue
-        level = manager.get("level")
-        try:
-            level = int(level) if level not in (None, "") else None
-        except (TypeError, ValueError):
-            level = None
-        result[f"{out_prefix}_battery_level"] = level
+        level = normalize_battery_level(manager.get("level"))
+        # Missing/invalid partial readings must not erase the last valid percentage.
+        if level is not None:
+            result[f"{out_prefix}_battery_level"] = level
         setup = _normalize_state(manager.get("isSetupBattery"))
         if setup is not None:
             result[f"{out_prefix}_battery_setup"] = setup
