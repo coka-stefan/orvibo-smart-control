@@ -13,8 +13,39 @@ from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import DOMAIN
 from .camera_metadata import camera_diagnostics
-from .device_types import get_device_profile
+from .device_types import DeviceCategory, get_device_profile
 from .redact import redact_packet
+
+
+def _redact_device_rows(rows: dict[str, Any], salt: bytes) -> dict[str, Any]:
+    """Keep every device; apply packet size bounds within each device instead."""
+    result: dict[str, Any] = {}
+    for device_id, row in rows.items():
+        # Single-row wrappers retain the same identifier fingerprints and depth
+        # bounds, without treating a whole home's inventory as a 50-item packet.
+        result.update(redact_packet({device_id: row}, salt, strict=False))
+    return result
+
+
+def _lock_diagnostics(device: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    """Expose the source data needed to distinguish missing battery properties."""
+    return {
+        "sub_device_type": device.get("sub_device_type"),
+        "class_id": device.get("class_id"),
+        "status_type": device.get("status_type"),
+        "inventory_values": {
+            f"value{index}": device.get(f"value{index}") for index in range(1, 5)
+        },
+        "state_values": {
+            key: state[key]
+            for index in range(1, 5)
+            for key in (f"raw_value{index}", f"value{index}")
+            if key in state
+        },
+        # Inventory and live pushes can differ; keep both sources for comparison.
+        "device_properties": device.get("properties") or {},
+        "state_properties": state.get("properties") or {},
+    }
 
 
 async def async_get_config_entry_diagnostics(
@@ -45,6 +76,10 @@ async def async_get_config_entry_diagnostics(
             "online": dev.get("online"),
             **camera_diagnostics(dev),
         }
+        if profile.category == DeviceCategory.DOOR_LOCK:
+            devices_raw[dev_id]["lock_diagnostics"] = _lock_diagnostics(
+                dev, coordinator.device_states.get(dev_id, {})
+            )
 
     # 整理当前状态
     states_raw = {}
@@ -64,8 +99,8 @@ async def async_get_config_entry_diagnostics(
 
     info = {
         "device_count": len(devices_raw),
-        "devices": redact_packet(devices_raw, salt, strict=False),
-        "states": redact_packet(states_raw, salt, strict=False),
+        "devices": _redact_device_rows(devices_raw, salt),
+        "states": _redact_device_rows(states_raw, salt),
         "recent_cmd42_push": cmd42_entries,
     }
     return info
@@ -107,6 +142,17 @@ async def async_get_device_diagnostics(
         result["current_state"].pop("properties", None)
     else:
         result["current_state"] = None
+
+    if device_id and device_id in coordinator.devices:
+        raw_device = coordinator.devices[device_id]
+        if get_device_profile(raw_device).category == DeviceCategory.DOOR_LOCK:
+            result["lock_diagnostics"] = redact_packet(
+                _lock_diagnostics(
+                    raw_device, coordinator.device_states.get(device_id, {})
+                ),
+                salt,
+                strict=False,
+            )
 
     # 该设备的最近cmd42推送
     device_cmd42 = []
