@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.6b12-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b13-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control 是一个面向 Home Assistant 的独立自定义集成。它把 MixPad
 网关局域网直连与 ORVIBO 云端协议放在同一条设备、状态和控制链路中：能在 LAN
@@ -58,7 +58,7 @@ LAN > 云端实时推送（SSL）> 云端快照（REST）> 乐观状态 > 初始
 ### 摄像机与录像机实时画面
 
 `0.2.6b5` 为匹配成功的 Meari XTS/p2p=2 摄像机及录像机在线通道创建 `camera` 实体。
-在 HACS 更新到 `v0.2.6b12` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
+在 HACS 更新到 `v0.2.6b13` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
 “通道 3”等摄像头实体；也可把实体加入图片概览卡片并设置 `camera_view: live`。
 HAOS 使用自带 FFmpeg，无需单独安装视频服务。首次连接需要获取授权和建立设备连接，
 可能需要数十秒；首次缩略图超时后再次打开即可复用正在建立的连接。
@@ -169,6 +169,14 @@ MD5 摘要；配置项不保存明文，但该摘要仍可直接用于认证，�
 - 临时密码下发、查询、撤销和每 6 小时的过期回收；
 - 内置门锁总览卡片和独立的临时密码管理卡片。
 
+`0.2.6b13` 优化门锁总览卡片：主锁、门磁与反锁分别显示，顶部展示有效电池电量；
+最近开门突出姓名、内外开方向、方式和时间，内开不显示旧的外开人员或凭据。
+猫眼抓拍增加最新图片大预览、横滑历史缩略图和可用键盘翻页的大图；刷新失败保留已有图片。
+相关状态更新保留正在填写的内容与输入焦点，卡片适配手机窄列和深浅色主题。
+在 HACS 更新到 **v0.2.6b13**，**重启 Home Assistant 后强制刷新浏览器**，原卡片配置可继续使用。
+本地回归与模拟浏览器验证已通过，真实 Home Assistant 的手机显示和抓拍仍需设备确认。
+详见 [本版说明](docs/releases/0.2.6b13.md)。
+
 `0.2.6b12` 补齐旧式门锁的 `battery_power` 电量字段，兼容 `deviceType=300`、
 `subDeviceType=400` 的 5 号干电池门锁；用户诊断中的库存和 6 次实时推送回放均读出 60%。
 继续支持干电池、锂电池管理器的扁平与嵌套字段，有效管理器数据优先；只显示有有效电量的
@@ -177,7 +185,7 @@ MD5 摘要；配置项不保存明文，但该摘要仍可直接用于认证，�
 “未反锁”不覆盖主锁的已上锁状态。更新后重启 Home Assistant，实际实体显示仍需设备确认。
 
 全家诊断保留全部设备，修复超过 50 台时门锁可能被截断的问题；门锁诊断同时提供库存和
-最新状态的属性，继续执行脱敏。详见 [本版说明](docs/releases/0.2.6b12.md)。
+最新状态的属性，继续执行脱敏。详见 [旧式门锁电量兼容说明](docs/releases/0.2.6b12.md)。
 
 从 `0.2.6b10` 起，开门方向按四类凭据规则判断：密码（含临时密码）、指纹、钥匙和卡片判为外开；
 其余开锁方式及没有匹配到四类凭据的门磁开门统一判为内开，内开不沿用上次外开人员。
