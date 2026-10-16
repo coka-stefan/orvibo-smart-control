@@ -108,7 +108,7 @@ class FrontendResourceTests(unittest.IsolatedAsyncioTestCase):
         await self.module.async_register_card_resources(self.hass)
         self.assertEqual(self.frontend.add_extra_js_url.call_count, 2)
         self.assertEqual(self.collection.creates, [])
-        self.hass.bus.async_listen_once.assert_not_called()
+        self.hass.bus.async_listen_once.assert_called_once()
 
     async def test_late_dashboard_setup_retries_once_after_start_without_duplicate_route(self):
         self.hass.data.pop("lovelace")
@@ -121,6 +121,56 @@ class FrontendResourceTests(unittest.IsolatedAsyncioTestCase):
         await callback(None)
         self.assertEqual(len(self.collection.creates), 2)
         self.hass.http.async_register_static_paths.assert_awaited_once()
+
+    async def test_startup_reconciles_old_door_url_restored_by_a_late_lazy_load(self):
+        old = {"id": "existing-lock", "url": self.module.BASE_URL +
+               "/orvibo-smart-control-door-lock-card.js?v=03692a937bb05ef3", "type": "module"}
+        self.collection.stored = [dict(old)]
+        await self.module.async_register_card_resources(self.hass)
+        current_url = self.collection.items[0]["url"]
+        self.assertNotEqual(current_url, old["url"])
+        # HA's StorageCollection.async_load replaces rows from its disk snapshot.
+        # A browser preload already waiting on I/O can finish after this migration.
+        self.collection.items[0] = dict(old)
+        self.hass.bus.async_listen_once.assert_called_once()
+        event, callback = self.hass.bus.async_listen_once.call_args.args
+        self.assertEqual(event, "homeassistant_started")
+        self.hass.is_running = True
+        await callback(None)
+        self.assertEqual(self.collection.items[0], {**old, "url": current_url})
+        self.assertEqual(len(self.collection.creates), 1)  # Only the NVR was new.
+        self.hass.http.async_register_static_paths.assert_awaited_once()
+
+    async def test_initial_static_failure_is_retried_after_start(self):
+        self.hass.http.async_register_static_paths.side_effect = [RuntimeError("not ready"), None]
+        with self.assertLogs(self.module.__name__, "ERROR"):
+            await self.module.async_register_card_resources(self.hass)
+        self.assertEqual(self.collection.creates, [])
+        self.hass.bus.async_listen_once.assert_called_once()
+        _, callback = self.hass.bus.async_listen_once.call_args.args
+        self.hass.is_running = True
+        await callback(None)
+        self.assertEqual(len(self.collection.creates), 2)
+        self.assertEqual(self.hass.http.async_register_static_paths.await_count, 2)
+
+    async def test_failed_global_module_is_retried_even_when_storage_was_ready(self):
+        self.frontend.add_extra_js_url.side_effect = [RuntimeError("not ready"), None, None, None]
+        with self.assertLogs(self.module.__name__, "ERROR"):
+            await self.module.async_register_card_resources(self.hass)
+        self.assertEqual(len(self.collection.creates), 2)
+        self.hass.bus.async_listen_once.assert_called_once()
+        _, callback = self.hass.bus.async_listen_once.call_args.args
+        self.hass.is_running = True
+        await callback(None)
+        self.assertEqual(self.frontend.add_extra_js_url.call_count, 4)
+        self.assertEqual(len(self.collection.creates), 2)
+        self.hass.http.async_register_static_paths.assert_awaited_once()
+
+    async def test_registration_after_start_does_not_wait_for_another_start_event(self):
+        self.hass.is_running = True
+        await self.module.async_register_card_resources(self.hass)
+        self.assertEqual(len(self.collection.creates), 2)
+        self.hass.bus.async_listen_once.assert_not_called()
 
     async def test_static_route_serves_actual_nvr_script_with_javascript_mime_and_version(self):
         app = web.Application()

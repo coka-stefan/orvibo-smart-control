@@ -58,6 +58,17 @@ async def async_register_card_resources(hass) -> None:
     """One failed card registration must not skip the other bundled card."""
     state = hass.data.setdefault(DATA_KEY, {"lock": asyncio.Lock(), "static": False})
     async with state["lock"]:
+        # Reconcile once startup has settled, even if the first pass succeeded.
+        # HA's lazy resource load can restore an older disk snapshot afterwards;
+        # browsers reconnecting during startup can also miss the first JS event.
+        # Install this before static setup so its early failures are retried too.
+        if not state.get("startup_retry") and not getattr(hass, "is_running", False):
+            state["startup_retry"] = True
+
+            async def retry(_event):
+                await async_register_card_resources(hass)
+
+            hass.bus.async_listen_once("homeassistant_started", retry)
         directory = Path(__file__).parent / "www"
         try:
             urls = await hass.async_add_executor_job(_card_urls, directory)
@@ -81,12 +92,6 @@ async def async_register_card_resources(hass) -> None:
             except Exception:
                 _LOGGER.exception("欧瑞博卡片前端模块注册失败: %s", urlsplit(url).path)
         try:
-            ready = await _async_lovelace_resources(hass, urls)
+            await _async_lovelace_resources(hass, urls)
         except Exception:
             _LOGGER.exception("欧瑞博卡片仪表盘资源注册失败；可在仪表盘资源中手动添加 JavaScript 模块")
-            ready = False
-        if not ready and not state.get("startup_retry") and not getattr(hass, "is_running", False):
-            state["startup_retry"] = True
-            async def retry(_event):
-                await async_register_card_resources(hass)
-            hass.bus.async_listen_once("homeassistant_started", retry)
