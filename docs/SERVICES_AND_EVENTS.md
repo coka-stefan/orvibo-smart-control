@@ -76,7 +76,7 @@ response_variable: video_result
 
 ```yaml
 ok: true
-media_id: media-source://media_source/local/orvibo_smart_control/...
+media_id: media-source://orvibo_smart_control/archive/...
 ```
 
 服务不会返回 Home Assistant 主机上的绝对路径。录像先保存为 H.264；环境中存在 ffmpeg

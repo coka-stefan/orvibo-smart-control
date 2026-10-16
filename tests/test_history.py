@@ -79,7 +79,7 @@ class ListHistoryTests(unittest.TestCase):
             self.assertEqual(entries[0]["type"], "image")
             self.assertEqual(entries[1]["kind"], "ring")
             self.assertEqual(entries[2]["kind"], "picklock")
-            self.assertIn("media-source://media_source/", entries[0]["media_id"])
+            self.assertIn("media-source://orvibo_smart_control/archive/", entries[0]["media_id"])
 
     def test_device_filter_and_limit(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -128,7 +128,7 @@ class MediaSourceIdTests(unittest.TestCase):
             f = d / "ring_1785672298.jpg"
             self.assertEqual(
                 history.media_source_id(root, f),
-                "media-source://media_source/orvibo_smart_control/w-lock/ring_1785672298.jpg",
+                "media-source://orvibo_smart_control/archive/w-lock/ring_1785672298.jpg",
             )
 
 

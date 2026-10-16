@@ -200,9 +200,10 @@ class VideoArchiver:
         return base.with_suffix(".h264"), base.with_suffix(".mp4")
 
     def media_source_id(self, mp4_path: Path) -> str:
-        """生成 HA media_source 引用 ID（config/media 为根）。"""
-        rel = mp4_path.resolve().relative_to(self._media_root.resolve())
-        return f"media-source://media_source/{rel.as_posix()}"
+        """Reference the same private archive source as snapshot history."""
+        archive = self._media_root / "orvibo_smart_control"
+        rel = mp4_path.resolve().relative_to(archive.resolve())
+        return f"media-source://orvibo_smart_control/archive/{rel.as_posix()}"
 
     def archive(
         self,

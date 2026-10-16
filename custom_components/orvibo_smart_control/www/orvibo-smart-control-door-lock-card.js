@@ -847,7 +847,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
           const index = next++;
           const event = events[index];
           try {
-            const resolved = await hass.callWS({ type: "media_source/resolve_media", media_id: event.media_id });
+            const resolved = await hass.callWS({ type: "media_source/resolve_media", media_content_id: event.media_id });
             if (!resolved?.url || typeof resolved.url !== "string") throw new Error("图片地址无效");
             images[index] = { kind: event.kind, time: event.time, url: resolved.url, mediaId: event.media_id };
           } catch (error) {

@@ -121,9 +121,10 @@ def latest_snapshot(media_root: Path, device_id: str) -> tuple[int, bytes] | Non
 
 
 def media_source_id(media_root: Path, file_path: Path) -> str:
-    """生成 HA media_source 引用 ID（config/media 为根）。"""
-    rel = Path(file_path).resolve().relative_to(Path(media_root).resolve())
-    return f"media-source://media_source/{rel.as_posix()}"
+    """Reference our archive source, independently of HA's configured media dirs."""
+    archive = Path(media_root) / "orvibo_smart_control"
+    rel = Path(file_path).resolve().relative_to(archive.resolve())
+    return f"media-source://orvibo_smart_control/archive/{rel.as_posix()}"
 
 
 def list_history(

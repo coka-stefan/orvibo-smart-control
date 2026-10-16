@@ -25,7 +25,11 @@ const Card = definitions.get('orvibo-smart-control-door-lock-card');
   const requests = [];
   card._hass = {states: {'sensor.unlock': {state: '<张三>外开（指纹）'}}, callWS: async request => {
     requests.push(request);
-    if (request.type === 'media_source/resolve_media') return {url: '/media/picture.jpg'};
+    if (request.type === 'media_source/resolve_media') {
+      assert.equal(typeof request.media_content_id, 'string');
+      assert(!('media_id' in request));
+      return {url: '/media/picture.jpg'};
+    }
     return {response: {events: [
       {type:'video', kind:'ring', time:'2', media_id:'video'},
       {type:'image', kind:'ring', time:'1', media_id:'image'},
@@ -33,7 +37,7 @@ const Card = definitions.get('orvibo-smart-control-door-lock-card');
   }};
   await card._loadEvents();
   assert.deepEqual(requests[0].service_data, {device_id:'a', limit:47, media_type:'image'});
-  assert.equal(requests[1].media_id, 'image');
+  assert.equal(requests[1].media_content_id, 'image');
   assert.equal(card._events.length, 1);
   assert(card.shadowRoot.innerHTML.includes('&lt;张三&gt;外开（指纹）'));
   assert(!card.shadowRoot.innerHTML.includes('<张三>'));
@@ -53,6 +57,27 @@ class DoorLockCardTests(unittest.TestCase):
         result = subprocess.run([shutil.which('node'), '-e', script, str(card)],
                                 capture_output=True, text=True, encoding='utf-8', timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_capture_requests_match_home_assistant_media_resolve_schema(self):
+        self._run_script(r'''
+const card = new Card();
+card._deviceId='lock'; card._entitiesLoaded=true;
+const events=Array.from({length:4},(_,index)=>({type:'image',kind:'ring',time:100+index,
+  media_id:'media-source://orvibo_smart_control/archive/lock/ring_'+(100+index)+'.jpg'}));
+card._hass={states:{},callWS:async request=>{
+  if(request.service==='list_events')return {response:{events}};
+  // HA rejects unknown fields and requires media_content_id for this command.
+  assert.deepEqual(Object.keys(request).sort(),['media_content_id','type']);
+  assert.equal(request.type,'media_source/resolve_media');
+  assert(events.some(event=>event.media_id===request.media_content_id));
+  return {url:'/api/orvibo_smart_control/media/archive/lock/'+
+    request.media_content_id.split('/').pop()+'?authSig=example'};
+}};
+await card._loadEvents();
+assert.equal(card._events.length,4);
+assert.equal(card._eventsError,'');
+assert(card._events.every(event=>event.url.includes('?authSig=')));
+''')
 
     def test_battery_selection_validates_percentages_including_zero(self):
         self._run_script(r'''
@@ -101,10 +126,10 @@ card._hass={states:{},callWS:async request=>{
     return {response:{events}};
   }
   active++; peak=Math.max(peak,active);
-  await new Promise(resolve=>setTimeout(resolve,request.media_id.endsWith('0')?12:1));
+  await new Promise(resolve=>setTimeout(resolve,request.media_content_id.endsWith('0')?12:1));
   active--;
-  if(mode==='partial' && request.media_id==='image-0')throw new Error('resolve failed');
-  return {url:'/media/'+request.media_id};
+  if(mode==='partial' && request.media_content_id==='image-0')throw new Error('resolve failed');
+  return {url:'/media/'+request.media_content_id};
 }};
 await card._loadEvents();
 assert(peak>1 && peak<=4);

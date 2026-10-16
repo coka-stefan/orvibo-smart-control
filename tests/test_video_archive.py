@@ -92,6 +92,19 @@ class BuildMediaPathsTests(unittest.TestCase):
         )
         self.assertEqual(mp4.suffix, ".mp4")
 
+    def test_cached_video_uses_the_integration_archive_source(self) -> None:
+        archiver = video_archive.VideoArchiver(self.root, None)
+        key = "/uid/videoPicklockEvent/picklockEvent_1785652830.h264"
+        h264, mp4 = archiver.paths_for("lock", key)
+        mp4.parent.mkdir(parents=True, exist_ok=True)
+        mp4.write_bytes(b"saved-video")
+        result = archiver.archive("lock", key, "https://unused.invalid/video")
+        self.assertEqual(result["media_id"],
+                         "media-source://orvibo_smart_control/archive/lock/picklock_1785652830.mp4")
+        self.assertEqual(result["video_file"], str(mp4))
+        with self.assertRaises(ValueError):
+            archiver.media_source_id(self.root / "private.mp4")
+
     def test_unmatched_returns_none(self) -> None:
         self.assertIsNone(
             video_archive.build_media_paths(self.root, "w-x", "/a/b.bin")

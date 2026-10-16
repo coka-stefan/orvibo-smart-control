@@ -12,6 +12,7 @@
     "ffmpeg",
     "frontend",
     "http",
+    "media_source",
     "stream"
   ],
   "documentation": "https://github.com/maycode0-0/orvibo-smart-control",
