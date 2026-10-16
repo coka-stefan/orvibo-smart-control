@@ -50,10 +50,13 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     this._eventsLoaded = false;
     this._eventsLoading = false;
     this._eventsError = "";
+    this._eventsRequest = null;
     this._historyLimit = 30;
     this._eventsLastCam = "";
     this._lastReloadAt = 0;
-    this._lightboxUrl = null;
+    this._lightboxEvent = null;
+    this._lightboxOpener = "";
+    this._entitiesLoading = false;
     this.attachShadow({ mode: "open" });
   }
 
@@ -75,6 +78,9 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     this._eventsLoaded = false;
     this._eventsLoading = false;
     this._eventsError = "";
+    this._eventsRequest = null;
+    this._eventsLastCam = "";
+    this._lightboxEvent = null;
     const requestedHistoryLimit = Number(this._config.history_limit);
     this._historyLimit = Number.isInteger(requestedHistoryLimit)
       ? Math.min(500, Math.max(1, requestedHistoryLimit))
@@ -83,6 +89,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const previous = this._hass;
     this._hass = hass;
     if (!this._entitiesLoaded) {
       this._loadEntities();
@@ -95,7 +102,9 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
         this._entitiesLoaded = false;
         this._loadEntities();
       }
-      this._render();
+      if (!previous || Object.values(this._entities).some(
+        (id) => previous.states[id] !== hass.states[id]
+      )) this._render();
     }
   }
 
@@ -104,7 +113,8 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
   }
 
   async _loadEntities() {
-    if (!this._hass) return;
+    if (!this._hass || this._entitiesLoading) return;
+    this._entitiesLoading = true;
     try {
       const entities = await this._hass.callWS({ type: "config/entity_registry/list" });
       const devices = await this._hass.callWS({ type: "config/device_registry/list" });
@@ -180,6 +190,7 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     } catch (e) {
       console.error("ORVIBO card: 加载实体失败", e);
     }
+    this._entitiesLoading = false;
     this._render();
   }
 
@@ -230,20 +241,60 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
       },
     ];
     const hasLevel = ({ state }) =>
+      ["string", "number"].includes(typeof state) &&
       state != null &&
       state !== "" &&
       state !== "unknown" &&
       state !== "unavailable" &&
-      Number.isFinite(Number(state));
+      String(state).trim() !== "" &&
+      Number.isInteger(Number(state)) && Number(state) >= 0 && Number(state) <= 100;
     const battery =
       batteries.find((item) => item.installed !== false && hasLevel(item)) ||
-      batteries.find((item) => item.installed === true) ||
-      batteries.find((item) => item.installed !== false && item.state != null);
-    if (!battery) return { label: "电池", value: "未知" };
+      batteries.find((item) => item.installed === true);
+    if (!battery) return { label: "电池", value: "未知", level: null };
     return {
       label: battery.label,
       value: hasLevel(battery) ? `${Number(battery.state)}%` : "未知",
+      level: hasLevel(battery) ? Number(battery.state) : null,
     };
+  }
+
+  _doorSummary() {
+    const state = this._state(this._entities.door);
+    const open = state === "on" ? true : state === "off" ? false
+      : this._attr(this._entities.lock_state, "door_open");
+    return open === true ? { label: "门已开", icon: "mdi:door-open", tone: "warning" }
+      : open === false ? { label: "门已关", icon: "mdi:door-closed", tone: "" }
+        : { label: "门磁未知", icon: "mdi:door", tone: "muted" };
+  }
+
+  _openingSummary() {
+    const entity = this._entities.unlock;
+    const state = this._state(entity);
+    const direction = this._attr(entity, "open_direction");
+    const name = this._attr(entity, "unlock_user_name");
+    const method = this._attr(entity, "unlock_method");
+    const methods = { fingerprint: "指纹", password: "密码", temporary_password: "临时密码",
+      card: "卡片", key: "钥匙", face: "人脸" };
+    const hasEvent = state && !["无", "unknown", "unavailable"].includes(state);
+    return {
+      label: !hasEvent ? "暂无开门记录" : direction === "inside" ? "人员未知" : name || state,
+      direction: hasEvent ? ({ inside: "内开", outside: "外开" }[direction] || "") : "",
+      detail: hasEvent ? [direction === "inside" ? null : methods[method], this._shortTime(this._attr(entity, "unlock_time"))]
+        .filter(Boolean).join(" · ") : "开门后在这里查看",
+    };
+  }
+
+  _shortTime(ts) {
+    if (!ts || !Number.isFinite(Number(ts))) return "";
+    const date = new Date(Number(ts) * 1000);
+    if (Number.isNaN(date.getTime())) return "";
+    const today = new Date();
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const day = date.toDateString() === today.toDateString() ? "今天"
+      : date.toDateString() === yesterday.toDateString() ? "昨天"
+        : `${date.getFullYear() === today.getFullYear() ? "" : `${date.getFullYear()}/`}${date.getMonth() + 1}/${date.getDate()}`;
+    return `${day} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   }
 
   _fmtTs(ts) {
@@ -295,230 +346,252 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
 
   _render() {
     const root = this.shadowRoot;
-    if (!this._hass) {
-      root.innerHTML = "<ha-card style='padding:16px'>ORVIBO 门锁卡片</ha-card>";
+    if (!this._hass || !this._deviceId) {
+      root.innerHTML = `<ha-card style="padding:20px">${!this._hass ? "正在连接门锁…" : "未找到门锁，请确认集成已加载或配置 device_id"}</ha-card>`;
       return;
     }
-    if (!this._deviceId) {
-      root.innerHTML = "<ha-card style='padding:16px'>未找到门锁设备，请配置 device_id 或确认集成已加载</ha-card>";
-      return;
-    }
+    const active = root.activeElement;
+    const focusId = active && active.id;
+    const selection = active && typeof active.selectionStart === "number"
+      ? [active.selectionStart, active.selectionEnd] : null;
+    const scrollLeft = root.querySelector(".events")?.scrollLeft || 0;
     const e = this._entities;
     const lockState = this._lockState();
-    const door = this._state(e.door);
+    const lock = {
+      locked: { label: "已上锁", icon: "mdi:lock", tone: "secure" },
+      inside_locked: { label: "已反锁", icon: "mdi:shield-lock", tone: "secure" },
+      unlocked: { label: "未上锁", icon: "mdi:lock-open-variant", tone: "warning" },
+      abnormal: { label: "锁状态异常", icon: "mdi:alert-circle-outline", tone: "danger" },
+      unknown: { label: "锁状态未知", icon: "mdi:lock-question", tone: "muted" },
+    }[lockState] || { label: "锁状态未知", icon: "mdi:lock-question", tone: "muted" };
+    const door = this._doorSummary();
+    const insideLocked = this._attr(e.lock_state, "inside_locked");
+    const reverseLabel = insideLocked === true ? "已反锁" : insideLocked === false ? "未反锁" : "反锁未知";
     const battery = this._batterySummary();
+    const opening = this._openingSummary();
     const tempOnly = this._config.temp_password_only === true;
-    const lockStateLabel = { locked: "已上锁", unlocked: "未上锁", inside_locked: "门内已反锁", abnormal: "异常", unknown: "未知" }[lockState] || "未知";
-    const doorLabel = door === "on" ? "开" : door === "off" ? "关" : (door || "-");
-    const cameraEntity = e.camera;
-    const cameraState = cameraEntity ? this._hass.states[cameraEntity] : null;
-    const camKey = cameraState
-      ? `${cameraState.state}|${cameraState.last_updated}`
-      : "";
-    if (!tempOnly && !this._eventsLoaded) {
-      this._loadEvents();
-    } else if (!tempOnly && camKey && camKey !== this._eventsLastCam) {
-      this._loadEvents();
-    }
+    const camera = e.camera ? this._hass.states[e.camera] : null;
+    const camKey = camera ? `${camera.state}|${camera.last_updated}` : "";
+    if (!tempOnly && (!this._eventsLoaded || (camKey && camKey !== this._eventsLastCam))) this._loadEvents();
     this._eventsLastCam = camKey;
 
     root.innerHTML = `
+      <style>${this._styles()}</style>
       <ha-card>
-        <div class="header">
-          <div>
-            <div class="title"><ha-icon icon="${tempOnly ? "mdi:key-chain" : "mdi:lock"}"></ha-icon><span>${this._escapeHtml(tempOnly ? "临时密码管理" : this._deviceName)}</span></div>
-            <div class="subtitle">${this._escapeHtml(this._deviceName)} · ${tempOnly ? "访客授权" : "状态总览"}</div>
-          </div>
-          ${tempOnly ? "" : `<div class="lock-badge ${this._escapeHtml(lockState)}">${this._escapeHtml(lockStateLabel)}</div>`}
-        </div>
-        ${tempOnly ? "" : `<div class="stats">
-          <div class="stat"><span class="stat-label">门磁</span><span class="stat-value">${this._escapeHtml(doorLabel)}</span></div>
-          <div class="stat"><span class="stat-label">${this._escapeHtml(battery.label)}</span><span class="stat-value">${this._escapeHtml(battery.value)}</span></div>
-          <div class="stat opening"><span class="stat-label">最近开门</span><span class="stat-value">${this._escapeHtml(this._state(this._entities.unlock) || "无")}</span></div>
-        </div>`}
-        ${!tempOnly ? `
-          <div class="section history-section">
-            <div class="section-title history-heading">
-              <span class="section-label"><ha-icon icon="mdi:image-multiple-outline"></ha-icon>历史截图（自动保存）</span>
-              <button class="icon-button" id="ov-events-refresh" title="刷新历史截图" aria-label="刷新历史截图" ${this._eventsLoading ? "disabled" : ""}>
-                <ha-icon icon="mdi:refresh"></ha-icon>
-              </button>
+        <header class="header">
+          <div class="heading"><div class="eyebrow">${tempOnly ? this._escapeHtml(this._deviceName) : "门锁总览"}</div>
+            <h2 class="title">${this._escapeHtml(tempOnly ? "临时密码管理" : this._deviceName)}</h2></div>
+          ${tempOnly ? `<span class="header-icon"><ha-icon icon="mdi:key-chain"></ha-icon></span>` : `
+            <div class="battery ${battery.level === null ? "unknown" : battery.level <= 20 ? "low" : ""}" aria-label="${this._escapeHtml(`${battery.label} ${battery.value}`)}">
+              <ha-icon icon="${battery.level === null ? "mdi:battery-unknown" : battery.level <= 20 ? "mdi:battery-alert-variant-outline" : "mdi:battery-high"}"></ha-icon>
+              <span><small>${this._escapeHtml(battery.label)}</small><strong>${this._escapeHtml(battery.value)}</strong></span>
+            </div>`}
+        </header>
+        ${tempOnly ? "" : `
+          <section class="lock-overview ${lock.tone}" aria-label="当前门锁状态">
+            <div class="lock-symbol"><ha-icon icon="${lock.icon}"></ha-icon></div>
+            <div class="lock-content"><div class="lock-state">${lock.label}</div>
+              <div class="lock-details"><span class="${door.tone}"><ha-icon icon="${door.icon}"></ha-icon>${door.label}</span>
+                <span><ha-icon icon="mdi:shield-lock-outline"></ha-icon>${reverseLabel}</span></div>
+            </div>
+          </section>
+          <section class="opening" aria-label="最近开门">
+            <span class="opening-icon"><ha-icon icon="mdi:account-outline"></ha-icon></span>
+            <div class="opening-content"><div class="eyebrow">最近开门</div>
+              <div class="opening-name">${this._escapeHtml(opening.label)}</div>
+              ${opening.detail ? `<div class="meta">${this._escapeHtml(opening.detail)}</div>` : ""}</div>
+            ${opening.direction ? `<span class="direction-tag">${opening.direction}</span>` : ""}
+          </section>
+          <section class="section history-section">
+            <div class="section-title"><div><span class="section-label"><ha-icon icon="mdi:camera-outline"></ha-icon>猫眼抓拍</span>
+              <div class="meta history-meta">${this._events.length ? `最近 ${Math.min(this._events.length, this._historyLimit)} 张 · 点击查看大图` : "开门与来访记录"}</div></div>
+              <button type="button" class="icon-button ${this._eventsLoading ? "loading" : ""}" id="ov-events-refresh" title="刷新抓拍" aria-label="刷新抓拍" ${this._eventsLoading ? "disabled" : ""}><ha-icon icon="mdi:refresh"></ha-icon></button>
             </div>
             ${this._eventsMarkup()}
-          </div>` : ""}
-        ${
-          !tempOnly && this._lightboxUrl
-            ? `<div class="lightbox" id="ov-lightbox"><img src="${this._lightboxUrl}" alt="事件大图" /></div>`
-            : ""
-        }
-        <div class="section ${tempOnly ? "first" : ""}">
-          <div class="section-title toggle" id="ov-grant-toggle">
+          </section>`}
+        <section class="section ${tempOnly ? "first" : ""}">
+          <button type="button" class="section-toggle" id="ov-grant-toggle" aria-expanded="${this._grantOpen}" aria-controls="ov-grant-form">
             <span class="section-label"><ha-icon icon="mdi:key-plus"></ha-icon>生成临时密码</span>
-            <ha-icon icon="${this._grantOpen ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>
+            <ha-icon icon="mdi:chevron-${this._grantOpen ? "up" : "down"}"></ha-icon>
+          </button>
+          <div id="ov-grant-form" class="form" ${this._grantOpen ? "" : "hidden"}>
+            <label>密码类型<select id="ov-tp-type"><option value="2" ${this._draft.type === "2" ? "selected" : ""}>临时密码</option><option value="1" ${this._draft.type === "1" ? "selected" : ""}>限时密码</option></select></label>
+            <label>有效时长（分钟）<input id="ov-tp-minutes" type="number" value="${this._escapeHtml(this._draft.minutes)}" min="1" max="525600" inputmode="numeric" /></label>
+            <label>可用次数<input id="ov-tp-number" type="number" value="${this._escapeHtml(this._draft.number)}" min="0" max="100" inputmode="numeric" aria-describedby="ov-usage-help" /></label>
+            <div class="meta form-help" id="ov-usage-help">0 表示不限次数</div>
+            <label>手机号<input id="ov-tp-phone" type="tel" value="${this._escapeHtml(this._draft.phone)}" placeholder="可选，用于短信通知" autocomplete="tel" /></label>
+            <label>访客名称<input id="ov-tp-name" type="text" value="${this._escapeHtml(this._draft.name)}" placeholder="例如：保洁、访客" maxlength="64" autocomplete="off" /></label>
+            <button type="button" class="primary-button" id="ov-tp-grant" ${this._granting ? "disabled" : ""}>${this._granting ? "正在生成…" : "生成临时密码"}</button>
+            ${this._tempError ? `<div class="message error" role="alert">${this._escapeHtml(this._tempError)}</div>` : ""}
+            ${this._tempResult ? `<div class="result" role="status" aria-live="polite"><div><span>本次临时密码</span><strong>${this._escapeHtml(this._tempResult)}</strong><small>仅本次显示，请妥善保存</small></div><button type="button" class="icon-button" id="ov-tp-copy" title="复制密码" aria-label="复制密码"><ha-icon icon="mdi:content-copy"></ha-icon></button></div>` : ""}
           </div>
-          <div id="ov-grant-form" class="form" style="${this._grantOpen ? "" : "display:none"}">
-            <label>类型
-              <select id="ov-tp-type">
-                <option value="2" ${this._draft.type === "2" ? "selected" : ""}>临时密码</option>
-                <option value="1" ${this._draft.type === "1" ? "selected" : ""}>限时密码</option>
-              </select>
-            </label>
-            <label>时长（分钟）
-              <input id="ov-tp-minutes" type="number" value="${this._escapeHtml(this._draft.minutes)}" min="1" max="525600" inputmode="numeric" />
-            </label>
-            <label>次数
-              <input id="ov-tp-number" type="number" value="${this._escapeHtml(this._draft.number)}" min="0" max="100" inputmode="numeric" />
-            </label>
-            <label>手机号
-              <input id="ov-tp-phone" type="tel" value="${this._escapeHtml(this._draft.phone)}" placeholder="可选，用于短信通知" autocomplete="tel" />
-            </label>
-            <label>名称
-              <input id="ov-tp-name" type="text" value="${this._escapeHtml(this._draft.name)}" placeholder="例如：保洁、访客" maxlength="64" autocomplete="off" />
-            </label>
-            <div class="actions">
-              <ha-button raised id="ov-tp-grant" ${this._granting ? "disabled" : ""}>${this._granting ? "正在生成..." : "生成临时密码"}</ha-button>
-            </div>
-            ${this._tempError ? `<div class="error">${this._escapeHtml(this._tempError)}</div>` : ""}
-            ${this._tempResult ? `<div class="result" role="status" aria-live="polite"><div><span>本次临时密码</span><strong>${this._escapeHtml(this._tempResult)}</strong><small>密码只在本次创建后显示，请妥善保存</small></div><button class="icon-button" id="ov-tp-copy" title="复制密码" aria-label="复制密码"><ha-icon icon="mdi:content-copy"></ha-icon></button></div>` : ""}
-          </div>
-        </div>
-        <div class="section">
-          <div class="section-title toggle" id="ov-tp-toggle">
-            <span class="section-label"><ha-icon icon="mdi:key-chain-variant"></ha-icon>授权列表</span>
-            <span class="section-actions">
-              <button class="icon-button" id="ov-tp-refresh" title="刷新授权" aria-label="刷新授权" ${this._listLoading ? "disabled" : ""}><ha-icon icon="mdi:refresh"></ha-icon></button>
-              <ha-icon icon="${this._listOpen ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>
-            </span>
-          </div>
-          <div id="ov-tp-list" class="tp-list" style="${this._listOpen ? "" : "display:none"}">
-            ${this._listOpen ? this._recordsMarkup() : ""}
-          </div>
-        </div>
+        </section>
+        <section class="section">
+          <div class="list-heading"><button type="button" class="section-toggle" id="ov-tp-toggle" aria-expanded="${this._listOpen}" aria-controls="ov-tp-list"><span class="section-label"><ha-icon icon="mdi:key-chain-variant"></ha-icon>授权列表${Array.isArray(this._records) ? `<span class="count">${this._records.length}</span>` : ""}</span><ha-icon icon="mdi:chevron-${this._listOpen ? "up" : "down"}"></ha-icon></button>
+            <button type="button" class="icon-button" id="ov-tp-refresh" title="刷新授权" aria-label="刷新授权" ${this._listLoading ? "disabled" : ""}><ha-icon icon="mdi:refresh"></ha-icon></button></div>
+          <div id="ov-tp-list" class="tp-list" ${this._listOpen ? "" : "hidden"}>${this._listOpen ? this._recordsMarkup() : ""}</div>
+        </section>
         ${this._notice ? `<div class="message ${this._noticeKind === "error" ? "error" : "success"}" role="status" aria-live="polite">${this._escapeHtml(this._notice)}</div>` : ""}
       </ha-card>
-      <style>
-        ha-card { padding: 16px; font-size: 14px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .title { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; }
-        .title ha-icon { color: var(--primary-color); }
-        .subtitle { color: var(--secondary-text-color); font-size: 12px; }
-        .lock-badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; background: var(--primary-color); color: var(--text-primary-color); }
-        .lock-badge.unlocked { background: #43a047; }
-        .lock-badge.abnormal { background: #e53935; }
-        .stats { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-        .stat { background: var(--card-background-color, #f5f5f5); border-radius: 8px; padding: 8px 12px; flex: 1; min-width: 90px; }
-        .stat-label { display: block; color: var(--secondary-text-color); font-size: 11px; }
-        .stat-value { font-weight: 600; }
-        .events { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 10px; padding-bottom: 4px; }
-        .ev-item { flex: 0 0 auto; width: 76px; cursor: pointer; text-align: center; }
-        .ev-item img { width: 76px; height: 76px; object-fit: cover; border-radius: 6px; display: block; }
-        .ev-label { font-size: 11px; color: var(--secondary-text-color); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .ev-time { font-size: 10px; color: var(--secondary-text-color); opacity: 0.8; }
-        .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; z-index: 9999; cursor: zoom-out; }
-        .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
-        .section { border-top: 1px solid var(--divider-color); padding-top: 12px; margin-top: 12px; }
-        .section.first { border-top: 0; margin-top: 0; }
-        .section-title { min-height: 36px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .section-label, .section-actions { display: flex; align-items: center; gap: 8px; }
-        .section-label ha-icon { color: var(--primary-color); }
-        .toggle { cursor: pointer; user-select: none; }
-        .form { display: grid; gap: 8px; }
-        .form label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; }
-        .form input, .form select { min-height: 38px; width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 4px; padding: 7px 10px; color: var(--primary-text-color); background: var(--card-background-color); font: inherit; }
-        .actions { margin-top: 8px; }
-        .error { color: var(--error-color, #db4437); margin-top: 8px; }
-        .result { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 12px; border-left: 3px solid var(--primary-color); background: color-mix(in srgb, var(--primary-color) 8%, var(--card-background-color)); }
-        .result span, .result small { display: block; color: var(--secondary-text-color); font-size: 12px; }
-        .result strong { display: block; margin: 3px 0; font-size: 24px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-        .tp-list { display: grid; gap: 8px; }
-        .tp-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 58px; border: 1px solid var(--divider-color); border-radius: 6px; padding: 10px 12px; }
-        .tp-content { min-width: 0; }
-        .tp-heading { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-        .status { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-        .status.active { color: var(--success-color, #2e7d32); background: color-mix(in srgb, var(--success-color, #2e7d32) 12%, var(--card-background-color)); }
-        .status.expired { color: var(--secondary-text-color); background: var(--divider-color); }
-        .meta { color: var(--secondary-text-color); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-        .tp-item.expired { opacity: 0.7; }
-        .empty { padding: 18px 0; color: var(--secondary-text-color); text-align: center; }
-        .history-heading { margin-bottom: 4px; }
-        .history-section .message { margin-top: 4px; }
-        .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: 0 0 36px; padding: 0; border: 0; border-radius: 50%; color: var(--primary-text-color); background: transparent; cursor: pointer; }
-        .icon-button:hover { background: var(--secondary-background-color); }
-        .icon-button.danger { color: var(--error-color, #db4437); }
-        .icon-button:disabled { cursor: wait; opacity: 0.45; }
-        .message { margin-top: 12px; padding: 9px 10px; border-radius: 4px; }
-        .message.success { color: var(--success-color, #2e7d32); background: color-mix(in srgb, var(--success-color, #2e7d32) 10%, var(--card-background-color)); }
-        .message.error { color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 8%, var(--card-background-color)); }
-        @media (max-width: 480px) {
-          .form label { grid-template-columns: 1fr; gap: 4px; }
-          .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-          .stat { min-width: 0; padding: 8px; }
-          .stat.opening { grid-column: 1 / -1; }
-        }
-      </style>
-    `;
+      ${!tempOnly ? this._lightboxMarkup() : ""}`;
 
     root.querySelector("#ov-tp-grant").addEventListener("click", () => this._grant());
-    const draftInputs = {
-      "#ov-tp-type": "type",
-      "#ov-tp-minutes": "minutes",
-      "#ov-tp-number": "number",
-      "#ov-tp-phone": "phone",
-      "#ov-tp-name": "name",
-    };
-    for (const [selector, key] of Object.entries(draftInputs)) {
-      root.querySelector(selector).addEventListener("input", (event) => {
-        this._draft[key] = event.target.value;
-      });
+    for (const [selector, key] of Object.entries({ "#ov-tp-type": "type", "#ov-tp-minutes": "minutes", "#ov-tp-number": "number", "#ov-tp-phone": "phone", "#ov-tp-name": "name" })) {
+      root.querySelector(selector).addEventListener("input", (event) => { this._draft[key] = event.target.value; });
     }
-    root.querySelector("#ov-grant-toggle").addEventListener("click", () => {
-      this._grantOpen = !this._grantOpen;
-      this._render();
-    });
-    root.querySelector("#ov-tp-toggle").addEventListener("click", (e) => {
-      if (e.target.closest("#ov-tp-refresh")) return;
-      this._listOpen = !this._listOpen;
-      this._render();
-    });
+    root.querySelector("#ov-grant-toggle").addEventListener("click", () => { this._grantOpen = !this._grantOpen; this._render(); });
+    root.querySelector("#ov-tp-toggle").addEventListener("click", () => { this._listOpen = !this._listOpen; this._render(); });
     root.querySelector("#ov-tp-refresh").addEventListener("click", () => {
-      this._lastListAt = 0;
-      this._listLoaded = false;
-      this._loadList();
+      this._lastListAt = 0; this._listLoaded = false; this._listOpen = true; this._loadList();
     });
-    const eventsRefresh = root.querySelector("#ov-events-refresh");
-    if (eventsRefresh) {
-      eventsRefresh.addEventListener("click", () => this._loadEvents(true));
-    }
+    root.querySelector("#ov-events-refresh")?.addEventListener("click", () => this._loadEvents(true));
     root.querySelectorAll("button[data-aid]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._revoke(Number(button.getAttribute("data-aid")));
-      });
+      button.addEventListener("click", () => this._revoke(Number(button.getAttribute("data-aid"))));
     });
-    const copyButton = root.querySelector("#ov-tp-copy");
-    if (copyButton) {
-      copyButton.addEventListener("click", () => this._copyPassword());
-    }
-    root.querySelectorAll(".ev-item").forEach((el) => {
-      el.addEventListener("click", () => {
-        const idx = Number(el.getAttribute("data-idx"));
-        const ev = this._events[idx];
-        if (ev) {
-          this._lightboxUrl = ev.url;
-          this._render();
-        }
-      });
+    root.querySelector("#ov-tp-copy")?.addEventListener("click", () => this._copyPassword());
+    root.querySelectorAll("button[data-idx]").forEach((button) => {
+      button.addEventListener("click", () => this._openSnapshot(Number(button.dataset.idx), button.id));
     });
-    const lightboxEl = root.querySelector("#ov-lightbox");
-    if (lightboxEl) {
-      lightboxEl.addEventListener("click", () => {
-        this._lightboxUrl = null;
-        this._render();
+    root.querySelectorAll(".snapshot-image").forEach((image) => {
+      image.addEventListener("error", () => { image.hidden = true; image.parentElement.classList.add("image-failed"); });
+    });
+    const dialog = this._lightboxEvent ? root.querySelector("#ov-lightbox") : null;
+    if (dialog) {
+      dialog.addEventListener("cancel", (event) => { event.preventDefault(); this._closeLightbox(); });
+      dialog.addEventListener("click", (event) => { if (event.target === dialog) this._closeLightbox(); });
+      dialog.addEventListener("keydown", (event) => {
+        if (["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); this._moveSnapshot(event.key === "ArrowLeft" ? -1 : 1); }
       });
+      root.querySelector("#ov-lightbox-close").addEventListener("click", () => this._closeLightbox());
+      root.querySelector("#ov-lightbox-prev").addEventListener("click", () => this._moveSnapshot(-1));
+      root.querySelector("#ov-lightbox-next").addEventListener("click", () => this._moveSnapshot(1));
+      dialog.showModal?.();
     }
-    if (this._listOpen) {
-      this._loadList();
-    }
+    const rail = root.querySelector(".events");
+    if (rail) rail.scrollLeft = scrollLeft;
+    const restored = focusId ? root.querySelector(`#${focusId}`) : null;
+    if (restored) {
+      restored.focus?.({ preventScroll: true });
+      if (selection && restored.setSelectionRange) restored.setSelectionRange(...selection);
+    } else if (dialog) root.querySelector("#ov-lightbox-close").focus?.({ preventScroll: true });
+    if (this._listOpen) this._loadList();
   }
+
+  _styles() {
+    return `
+      :host { display:block; container-type:inline-size; --ov-surface:var(--secondary-background-color, #f3f5f7); --ov-success:var(--success-color, #23845b); --ov-warning:var(--warning-color, #a66b00); --ov-danger:var(--error-color, #db4437); }
+      * { box-sizing:border-box; }
+      [hidden] { display:none !important; }
+      ha-card { display:block; padding:20px; color:var(--primary-text-color); font-size:14px; line-height:1.5; }
+      button, input, select { font:inherit; }
+      button { color:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+      button:disabled { cursor:default; opacity:.45; }
+      button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--primary-color, #03a9f4); outline-offset:3px; }
+      button { transition:background-color .18s, border-color .18s; }
+      ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
+      .header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
+      .heading, .opening-content, .lock-content { min-width:0; }
+      .eyebrow { font-size:12px; color:var(--secondary-text-color); }
+      .title { margin:2px 0 0; font-size:20px; font-weight:650; line-height:1.35; overflow-wrap:anywhere; }
+      .battery { display:flex; align-items:center; gap:6px; flex-shrink:0; padding:6px 10px; border:1px solid var(--divider-color); border-radius:10px; }
+      .battery ha-icon { color:var(--ov-success); --mdc-icon-size:24px; }
+      .battery small { display:block; color:var(--secondary-text-color); font-size:10px; line-height:1.2; }
+      .battery strong { font-size:16px; font-variant-numeric:tabular-nums; }
+      .battery.low ha-icon { color:var(--ov-danger); }
+      .battery.unknown ha-icon { color:var(--secondary-text-color); }
+      .header-icon, .opening-icon { display:grid; place-items:center; width:40px; height:40px; border-radius:12px; background:var(--ov-surface); color:var(--secondary-text-color); flex-shrink:0; }
+      .lock-overview { --ov-state:var(--secondary-text-color); display:flex; align-items:center; gap:16px; padding:18px; border:1px solid color-mix(in srgb, var(--ov-state) 20%, var(--divider-color)); border-radius:14px; background:color-mix(in srgb, var(--ov-state) 7%, var(--card-background-color, #fff)); }
+      .lock-overview.secure { --ov-state:var(--ov-success); }
+      .lock-overview.warning { --ov-state:var(--ov-warning); }
+      .lock-overview.danger { --ov-state:var(--ov-danger); }
+      .lock-symbol { color:var(--ov-state); display:grid; place-items:center; width:48px; height:56px; flex-shrink:0; }
+      .lock-symbol ha-icon { --mdc-icon-size:42px; }
+      .lock-state { font-size:26px; font-weight:650; line-height:1.2; overflow-wrap:anywhere; }
+      .lock-details { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:8px; color:var(--secondary-text-color); font-size:12px; }
+      .lock-details span { display:inline-flex; align-items:center; gap:4px; }
+      .lock-details ha-icon { --mdc-icon-size:15px; }
+      .lock-details .warning { color:var(--primary-text-color); font-weight:600; }
+      .opening { display:flex; gap:12px; align-items:center; padding:18px 0 2px; }
+      .opening-content { flex:1; }
+      .opening-name { font-size:16px; font-weight:600; overflow-wrap:anywhere; }
+      .direction-tag, .count { border-radius:6px; background:var(--ov-surface); padding:3px 9px; font-size:12px; white-space:nowrap; }
+      .section { border-top:1px solid var(--divider-color); margin-top:16px; padding-top:10px; }
+      .section.first { border-top:0; margin-top:0; padding-top:0; }
+      .section-title { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:44px; margin-bottom:10px; }
+      .section-label { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+      .section-label ha-icon { color:var(--secondary-text-color); }
+      .history-meta { margin:2px 0 0 28px; }
+      .section-toggle { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; min-height:44px; padding:0; border:0; background:transparent; text-align:left; }
+      .section-toggle:hover { color:var(--primary-color); }
+      .list-heading { display:flex; align-items:center; gap:8px; }
+      .section-toggle > ha-icon { color:var(--secondary-text-color); }
+      .count { font-size:11px; padding:0 6px; font-weight:400; }
+      .icon-button { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; padding:0; border:0; border-radius:10px; background:transparent; }
+      .icon-button:hover { background:var(--ov-surface); }
+      .icon-button.danger { color:var(--ov-danger); }
+      .icon-button.loading ha-icon { animation:ov-spin 1.4s linear infinite; }
+      .snapshot { position:relative; display:block; width:100%; aspect-ratio:16/9; max-height:240px; padding:0; overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; background:var(--ov-surface); }
+      .snapshot img { display:block; width:100%; height:100%; object-fit:contain; background:#101820; }
+      .snapshot-caption { position:absolute; inset:auto 0 0; display:flex; justify-content:space-between; gap:8px; padding:24px 12px 10px; color:#fff; background:linear-gradient(transparent, rgba(0,0,0,.78)); font-size:12px; }
+      .snapshot-caption strong { font-weight:500; }
+      .events { display:flex; gap:8px; overflow-x:auto; padding:10px 2px 5px; scroll-snap-type:x proximity; scrollbar-width:thin; }
+      .ev-item { flex:0 0 88px; min-width:0; border:0; padding:0; border-radius:8px; background:transparent; text-align:left; scroll-snap-align:start; }
+      .thumb { position:relative; display:block; height:60px; border-radius:8px; overflow:hidden; background:var(--ov-surface); border:1px solid var(--divider-color); }
+      .thumb img { display:block; width:100%; height:100%; object-fit:cover; }
+      .ev-item:hover .thumb { border-color:var(--primary-color); }
+      .ev-time { display:block; margin-top:4px; font-size:11px; color:var(--secondary-text-color); font-variant-numeric:tabular-nums; white-space:nowrap; }
+      .image-fallback { display:none; position:absolute; inset:0; align-items:center; justify-content:center; flex-direction:column; gap:6px; color:var(--secondary-text-color); font-size:12px; }
+      .image-failed .image-fallback { display:flex; }
+      .image-failed .snapshot-caption { display:none; }
+      .snapshot-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:154px; border:1px dashed var(--divider-color); border-radius:12px; background:var(--ov-surface); color:var(--secondary-text-color); text-align:center; padding:20px; }
+      .snapshot-empty ha-icon { --mdc-icon-size:30px; margin-bottom:6px; }
+      .snapshot-empty strong { font-size:14px; font-weight:500; color:var(--primary-text-color); }
+      .snapshot-empty span { font-size:12px; }
+      .form { display:grid; gap:12px; margin-top:12px; }
+      .form label { display:grid; grid-template-columns:116px minmax(0,1fr); align-items:center; gap:10px; color:var(--secondary-text-color); font-size:13px; }
+      .form input, .form select { min-width:0; min-height:44px; width:100%; border:1px solid var(--divider-color); border-radius:8px; padding:9px 11px; color:var(--primary-text-color); background:var(--card-background-color); font-size:16px; }
+      .form-help { margin-top:-8px; padding-left:126px; }
+      .primary-button { display:block; min-height:44px; border:1px solid color-mix(in srgb, var(--primary-color, #03a9f4) 40%, var(--divider-color)); border-radius:9px; background:color-mix(in srgb, var(--primary-color, #03a9f4) 14%, var(--card-background-color, #fff)); color:var(--primary-text-color); padding:10px 16px; font-weight:600; }
+      .primary-button:hover { filter:brightness(.95); }
+      .result { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px; border-radius:10px; background:var(--ov-surface); border:1px solid var(--divider-color); }
+      .result span, .result small { display:block; color:var(--secondary-text-color); font-size:12px; }
+      .result strong { display:block; margin:3px 0; font-size:28px; font-variant-numeric:tabular-nums; letter-spacing:2px; }
+      .tp-list { display:grid; gap:8px; margin-top:10px; }
+      .tp-item { display:flex; justify-content:space-between; align-items:center; gap:12px; border:1px solid var(--divider-color); border-radius:10px; padding:10px 12px; }
+      .tp-content { min-width:0; }
+      .tp-heading { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-weight:600; overflow-wrap:anywhere; }
+      .status { border-radius:5px; padding:2px 6px; font-size:11px; font-weight:400; }
+      .status.active { background:color-mix(in srgb, var(--ov-success) 12%, var(--card-background-color)); }
+      .status.expired { background:var(--ov-surface); color:var(--secondary-text-color); }
+      .meta { color:var(--secondary-text-color); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+      .empty { padding:18px 0; color:var(--secondary-text-color); text-align:center; }
+      .message { margin:8px 0; padding:10px 12px; border-radius:8px; font-size:13px; overflow-wrap:anywhere; }
+      .message.success { background:color-mix(in srgb, var(--ov-success) 9%, var(--card-background-color)); }
+      .message.error { background:color-mix(in srgb, var(--ov-danger) 9%, var(--card-background-color)); color:var(--primary-text-color); border-left:3px solid var(--ov-danger); }
+      .lightbox { width:min(1000px,96vw); max-width:96vw; max-height:94dvh; padding:16px; border:0; border-radius:16px; background:#151a20; color:#f5f7fa; }
+      .lightbox::backdrop { background:rgba(0,0,0,.86); }
+      .lightbox-toolbar, .lightbox-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .lightbox-toolbar { margin-bottom:12px; }
+      .lightbox-toolbar strong { display:block; font-size:15px; }
+      .lightbox-toolbar small { color:#bec7d0; }
+      .lightbox .icon-button:hover { background:#303841; }
+      .lightbox-image { position:relative; min-height:140px; display:grid; place-items:center; }
+      .lightbox-image img { display:block; max-width:100%; max-height:calc(94dvh - 180px); object-fit:contain; border-radius:8px; }
+      .lightbox .image-fallback { color:#bec7d0; }
+      .lightbox-footer { margin-top:12px; font-size:12px; color:#bec7d0; }
+      @keyframes ov-spin { to { transform:rotate(360deg); } }
+      @container (max-width:360px) {
+        ha-card { padding:16px; }
+        .lock-overview { padding:16px 12px; gap:12px; }
+        .lock-state { font-size:24px; }
+        .lock-details { gap:4px 10px; }
+        .form label { grid-template-columns:1fr; gap:5px; }
+        .form-help { padding-left:0; }
+      }
+      @media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+    `;
+  }
+
 
   async _grant() {
     if (this._granting) return;
@@ -684,26 +757,60 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
   }
 
   _eventsMarkup() {
-    if (this._eventsLoading && !this._events.length) {
-      return "<div class='empty'>正在加载历史截图...</div>";
-    }
-    if (this._eventsError) {
-      return `<div class="message error">${this._escapeHtml(this._eventsError)}</div>`;
-    }
+    const error = this._eventsError
+      ? `<div class="message error" role="status">${this._escapeHtml(this._eventsError)}</div>` : "";
     if (!this._events.length) {
-      return "<div class='empty'>暂无历史截图</div>";
+      return `${error}<div class="snapshot-empty" role="status"><ha-icon icon="mdi:camera-outline"></ha-icon>
+        <strong>${this._eventsLoading ? "正在加载抓拍…" : this._eventsError ? "暂时无法获取抓拍" : "还没有抓拍记录"}</strong>
+        <span>${this._eventsError ? "点击右上角刷新重试" : "门锁上报抓拍后会显示在这里"}</span></div>`;
     }
-    return `<div class="events">${this._events
-      .slice(0, this._historyLimit)
-      .map(
-        (ev, idx) => `
-          <div class="ev-item" data-idx="${idx}">
-            <img src="${this._escapeHtml(ev.url)}" alt="${this._escapeHtml(this._eventLabel(ev.kind))}" loading="lazy" />
-            <div class="ev-label">${this._escapeHtml(this._eventLabel(ev.kind))}</div>
-            <div class="ev-time">${this._escapeHtml(this._fmtTs(ev.time))}</div>
-          </div>`
-      )
-      .join("")}</div>`;
+    const latest = this._events[0];
+    const fallback = `<span class="image-fallback"><ha-icon icon="mdi:image-off-outline"></ha-icon><span>图片暂不可用，请刷新</span></span>`;
+    return `${error}<button type="button" class="snapshot" id="ov-snapshot-latest" data-idx="0" aria-label="查看最新抓拍：${this._escapeHtml(this._fmtTs(latest.time))}">
+      <img class="snapshot-image" src="${this._escapeHtml(latest.url)}" alt="${this._escapeHtml(this._eventLabel(latest.kind))}" />${fallback}
+      <span class="snapshot-caption"><strong>最新抓拍 · ${this._escapeHtml(this._eventLabel(latest.kind))}</strong><span>${this._escapeHtml(this._shortTime(latest.time))}</span></span>
+    </button>${this._events.length > 1 ? `<div class="events" aria-label="历史抓拍">${this._events.slice(0, this._historyLimit).map((ev, idx) => `
+      <button type="button" class="ev-item" id="ov-snapshot-${idx}" data-idx="${idx}" title="${this._escapeHtml(`${this._eventLabel(ev.kind)} · ${this._fmtTs(ev.time)}`)}" aria-label="查看第 ${idx + 1} 张抓拍：${this._escapeHtml(this._fmtTs(ev.time))}">
+        <span class="thumb"><img class="snapshot-image" src="${this._escapeHtml(ev.url)}" alt="${this._escapeHtml(this._eventLabel(ev.kind))}" loading="lazy" />${fallback}</span>
+        <span class="ev-time">${this._escapeHtml(this._shortTime(ev.time) || "时间未知")}</span>
+      </button>`).join("")}</div>` : ""}`;
+  }
+
+  _lightboxMarkup() {
+    if (!this._lightboxEvent) return "";
+    const selected = this._lightboxEvent;
+    const index = this._events.findIndex((event) => (event.mediaId || event.url) === (selected.mediaId || selected.url));
+    const event = index >= 0 ? this._events[index] : selected;
+    return `<dialog class="lightbox" id="ov-lightbox" aria-labelledby="ov-lightbox-title">
+      <div class="lightbox-toolbar"><div><strong id="ov-lightbox-title">${this._escapeHtml(this._eventLabel(event.kind))}</strong><small>${this._escapeHtml(this._fmtTs(event.time))}</small></div>
+        <button type="button" class="icon-button" id="ov-lightbox-close" aria-label="关闭抓拍预览" autofocus><ha-icon icon="mdi:close"></ha-icon></button></div>
+      <div class="lightbox-image"><img class="snapshot-image" src="${this._escapeHtml(event.url)}" alt="${this._escapeHtml(this._eventLabel(event.kind))}" /><span class="image-fallback"><ha-icon icon="mdi:image-off-outline"></ha-icon>图片暂不可用，请关闭后刷新</span></div>
+      <div class="lightbox-footer"><button type="button" class="icon-button" id="ov-lightbox-prev" aria-label="上一张抓拍" ${index <= 0 ? "disabled" : ""}><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+        <span>${index >= 0 ? `${index + 1} / ${this._events.length}` : "抓拍预览"}</span>
+        <button type="button" class="icon-button" id="ov-lightbox-next" aria-label="下一张抓拍" ${index < 0 || index >= this._events.length - 1 ? "disabled" : ""}><ha-icon icon="mdi:chevron-right"></ha-icon></button></div>
+    </dialog>`;
+  }
+
+  _openSnapshot(index, opener) {
+    if (!Number.isInteger(index) || !this._events[index]) return;
+    this._lightboxEvent = this._events[index];
+    this._lightboxOpener = opener;
+    this._render();
+  }
+
+  _moveSnapshot(delta) {
+    if (!this._lightboxEvent) return;
+    const selected = this._lightboxEvent;
+    const index = this._events.findIndex((event) => (event.mediaId || event.url) === (selected.mediaId || selected.url));
+    if (index < 0 || !this._events[index + delta]) return;
+    this._lightboxEvent = this._events[index + delta];
+    this._render();
+  }
+
+  _closeLightbox() {
+    this._lightboxEvent = null;
+    this._render();
+    this.shadowRoot.querySelector(`#${this._lightboxOpener}`)?.focus?.({ preventScroll: true });
   }
 
   async _loadEvents(force = false) {
@@ -713,40 +820,53 @@ class OrviboSmartControlDoorLockCard extends HTMLElement {
     }
     this._eventsLoading = true;
     this._eventsError = "";
+    const request = {};
+    this._eventsRequest = request;
+    const deviceId = this._deviceId;
+    const hass = this._hass;
+    if (force) this._render();
     try {
-      const result = await this._hass.callWS({
+      const result = await hass.callWS({
         type: "call_service",
         domain: "orvibo_smart_control",
         service: "list_events",
-        service_data: { device_id: this._deviceId, limit: this._historyLimit, media_type: "image" },
+        service_data: { device_id: deviceId, limit: this._historyLimit, media_type: "image" },
         return_response: true,
       });
       const res = result && result.response;
-      const events = (res && res.events) || [];
-      const images = [];
-      for (const ev of events) {
-        if (ev.type !== "image") continue;
-        let url = "";
-        try {
-          const resolved = await this._hass.callWS({
-            type: "media_source/resolve_media",
-            media_id: ev.media_id,
-          });
-          url = resolved && resolved.url;
-        } catch (e) {
-          console.warn("ORVIBO card: 解析事件图片失败", ev.media_id, e);
+      if (res?.error) throw new Error(res.error);
+      if (!Array.isArray(res?.events)) throw new Error("抓拍列表响应无效，请刷新重试");
+      const events = res.events.filter((event) => event?.type === "image").slice(0, this._historyLimit);
+      const previous = new Map(this._events.map((event) => [event.mediaId, event]));
+      const images = new Array(events.length);
+      let next = 0;
+      let failed = 0;
+      // Bound concurrent media resolution; retain server ordering for the gallery.
+      await Promise.all(Array.from({ length: Math.min(4, events.length) }, async () => {
+        while (next < events.length && this._eventsRequest === request) {
+          const index = next++;
+          const event = events[index];
+          try {
+            const resolved = await hass.callWS({ type: "media_source/resolve_media", media_id: event.media_id });
+            if (!resolved?.url || typeof resolved.url !== "string") throw new Error("图片地址无效");
+            images[index] = { kind: event.kind, time: event.time, url: resolved.url, mediaId: event.media_id };
+          } catch (error) {
+            images[index] = previous.get(event.media_id);
+            failed++;
+          }
         }
-        if (url) {
-          images.push({ kind: ev.kind, time: ev.time, url, mediaId: ev.media_id });
-        }
-      }
-      this._events = images;
+      }));
+      if (this._eventsRequest !== request) return;
+      const resolvedImages = images.filter(Boolean);
+      if (resolvedImages.length || !failed) this._events = resolvedImages;
+      this._eventsError = failed ? `${failed} 张抓拍暂时无法加载，请刷新重试` : "";
       this._eventsLoaded = true;
     } catch (e) {
-      console.error("ORVIBO card: 加载事件历史失败", e);
+      if (this._eventsRequest !== request) return;
       this._eventsError = e.message || String(e);
       this._eventsLoaded = true;
     }
+    if (this._eventsRequest !== request) return;
     this._eventsLoading = false;
     this._render();
   }
