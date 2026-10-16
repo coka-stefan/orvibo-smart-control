@@ -131,7 +131,7 @@ class LockEventManager:
             self._last_unlocks[device_id] = {
                 "user_id": event.get("unlock_user_id"),
                 "unlock_type": event.get("unlock_type"),
-                "open_direction": event.get("open_direction", "unknown"),
+                "open_direction": event.get("open_direction", "inside"),
                 "unlock_method": event.get("unlock_method"),
                 "time": event.get("time"),
                 "at": now,
@@ -147,7 +147,8 @@ class LockEventManager:
             self._last_unlocks.pop(device_id, None)
         if lock["door_open"] is True and previous_door is not True:
             data["door_opened"] = True
-            data["open_direction"] = "unknown"
+            # Openings without a matching outside credential follow the inside policy.
+            data["open_direction"] = "inside"
             data["unlock_method"] = None
             data["unlock_user_id"] = None
             data["unlock_type"] = None
@@ -182,7 +183,7 @@ class LockEventManager:
                     elapsed,
                     self._door_open_window,
                 )
-                if last_unlock is not None
+                if last_unlock is not None and data["open_direction"] == "outside"
                 else None
             )
             if opened is not None:

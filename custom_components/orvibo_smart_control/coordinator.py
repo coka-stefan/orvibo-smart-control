@@ -308,7 +308,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             state = self.device_states.get(device_id)
             if state is not None:
                 values = {
-                    "open_direction": data.get("open_direction", "unknown"),
+                    "open_direction": data.get("open_direction", "inside"),
                     "unlock_method": data.get("unlock_method"),
                     "unlock_type": data.get("unlock_type"),
                     "unlock_user_id": data.get("unlock_user_id"),

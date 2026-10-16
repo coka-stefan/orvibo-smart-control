@@ -75,10 +75,10 @@ def normalize_unlock_method(value: Any) -> Optional[str]:
 
 
 def unlock_direction(method: Optional[str]) -> str:
-    """Credential readers are outside; absence of credentials proves nothing."""
-    if method in {"fingerprint", "password", "card", "key", "face", "temporary_password"}:
+    """Apply the configured policy: four credential families outside, all else inside."""
+    if method in {"fingerprint", "password", "card", "key", "temporary_password"}:
         return "outside"
-    return "unknown"
+    return "inside"
 
 
 def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
@@ -204,6 +204,8 @@ def normalize_lock_event(payload: Any) -> Optional[dict[str, Any]]:
         primary_id = "userId" if name == "unlockEvent" else "userID"
         alternate_id = "userID" if primary_id == "userId" else "userId"
         user_id = value.get(primary_id, value.get(alternate_id))
+        if unlock_direction(method) == "inside":
+            user_id = None
         if isinstance(user_id, bool) or not isinstance(user_id, (str, int)):
             user_id = None
         return {
@@ -341,8 +343,7 @@ def format_unlock_label(
 ) -> str:
     """生成"xxx开门"显示文本（未配置名称时回退为 用户{id}）。"""
     if direction is not None:
-        if unlock_direction(method) == "outside":
-            direction = "outside"
+        direction = unlock_direction(method)
         if direction == "inside":
             return "内开（人员未知）"
         who = str(name).strip() if name else ""

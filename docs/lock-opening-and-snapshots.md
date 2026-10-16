@@ -15,8 +15,9 @@
 | `com/orvibo/homemate/model/bind/scene/thing/a.java:39` | `insideLockState` 只表示反锁，不表示内开 |
 | `com/orvibo/homemate/device/smartlock/LockKeyUnlockAlarmSettingActivity.java:115` | `manual_unlock_alarm` 属于钥匙报警，不能因 manual 字样认定内开 |
 
-集成设计规则：凭据开锁优先判外开；明确内开记录不继承任何上次外开用户；证据不足时
-保持未知。普通内开若固件只上报门磁变化，现有静态证据不足以确定方向或人员。
+当前集成按用户指定规则判断：密码（含临时密码）、指纹、钥匙和卡片判外开；其余
+开锁方式（含人脸及未知方式）、只有门磁变化而未关联四类凭据的开门统一判内开。
+内开不继承任何上次外开用户，显示人员未知。这是方向推断规则，不代表固件明确上报内开。
 不会把新物模型的数字 `type=20` 套用旧枚举；也不把旧打包 `value4` 当成直接枚举。
 
 姓名由集成选项映射提供，支持设备及凭据方式隔离；锁侧没有上报身份时不能恢复开门人。

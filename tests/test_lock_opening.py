@@ -28,10 +28,31 @@ class LockOpeningTests(unittest.TestCase):
         return {'cmd': 42, 'properties': {'doorLock': {'doorState': 'on' if opened else 'off'}}}
 
     def test_credential_methods_always_outside_even_with_inside_hint(self):
-        for method in ('password', 'fingerprint', 'key', 'card', 'face', 'temppassword', 'temp password', 'emergency fingerprint'):
+        for method in ('password', 'fingerprint', 'key', 'card', 'temppassword', 'temp password', 'emergency fingerprint', 'emergency password', 'emergency card'):
             with self.subTest(method=method):
                 event = self.status.normalize_lock_event(self.unlock(method, direction='inside'))
                 self.assertEqual(event['open_direction'], 'outside')
+
+    def test_other_unlock_methods_follow_inside_policy_without_a_previous_person(self):
+        for method in ('face', 'remote', 'bluetooth', 'manual', '', None, 20):
+            with self.subTest(method=method):
+                self.manager.build_event('a', self.unlock(timestamp=1))
+                event = self.manager.build_event('a', self.unlock(method=method, user=7, timestamp=2))
+                self.assertEqual(event['open_direction'], 'inside')
+                self.assertIsNone(event['unlock_user_id'])
+                self.assertNotIn('unlock_user_name', event)
+                opened = self.manager.build_event('a', self.door(True))
+                self.assertEqual(opened['open_direction'], 'inside')
+                self.assertIsNone(opened['unlock_user_id'])
+                self.assertNotIn('opened_by_name', opened)
+                self.manager.remove('a')
+
+    def test_door_only_opening_follows_inside_policy(self):
+        self.manager.build_event('a', self.door(False))
+        opened = self.manager.build_event('a', self.door(True))
+        self.assertEqual(opened['open_direction'], 'inside')
+        self.assertIsNone(opened['unlock_user_id'])
+        self.assertNotIn('opened_by_name', opened)
 
     def test_new_user_id_zero_is_a_valid_administrator(self):
         event = self.manager.build_event('a', self.unlock(user=0))
@@ -66,7 +87,7 @@ class LockOpeningTests(unittest.TestCase):
 
     def test_no_cross_protocol_numeric_enum(self):
         event = self.status.normalize_lock_event(self.unlock(method=20))
-        self.assertEqual(event['open_direction'], 'unknown')
+        self.assertEqual(event['open_direction'], 'inside')
         self.assertIsNone(self.status.normalize_lock_event({'cmd': 42, 'value2': 7, 'value4': 20}))
         self.assertIsNone(self.status.normalize_lock_event({'event': {'name': 'manual_unlock', 'value': {}}}))
 
@@ -89,14 +110,14 @@ class LockOpeningTests(unittest.TestCase):
         self.assertEqual(first['opened_by_name'], '张三')
         self.manager.build_event('a', self.door(False))
         second = self.manager.build_event('a', self.door(True))
-        self.assertEqual(second['open_direction'], 'unknown')
+        self.assertEqual(second['open_direction'], 'inside')
         self.assertIsNone(second['unlock_user_id'])
 
     def test_expired_unlock_does_not_reuse_person_or_direction(self):
         self.manager.build_event('a', self.unlock())
         self.now += 31
         event = self.manager.build_event('a', self.door(True))
-        self.assertEqual(event['open_direction'], 'unknown')
+        self.assertEqual(event['open_direction'], 'inside')
         self.assertIsNone(event['unlock_user_id'])
 
     def test_replayed_unlock_after_state_change_stays_deduplicated(self):
@@ -106,7 +127,7 @@ class LockOpeningTests(unittest.TestCase):
         self.manager.build_event('a', self.door(False))
         self.assertIsNone(self.manager.build_event('a', packet))
         event = self.manager.build_event('a', self.door(True))
-        self.assertEqual(event['open_direction'], 'unknown')
+        self.assertEqual(event['open_direction'], 'inside')
 
     def test_two_images_at_same_second_are_distinct_events(self):
         self.assertIsNotNone(self.manager.build_event('a', self.unlock(url='/1.jpg')))
@@ -122,18 +143,20 @@ class LockOpeningTests(unittest.TestCase):
     def test_late_producer_timestamp_does_not_match_new_opening(self):
         self.manager.build_event('a', self.unlock(timestamp=10))
         event = self.manager.build_event('a', {**self.door(True), 'time': 100})
-        self.assertEqual(event['open_direction'], 'unknown')
+        self.assertEqual(event['open_direction'], 'inside')
 
     def test_future_unlock_cannot_attribute_an_earlier_opening(self):
         self.manager.build_event('a', self.unlock(timestamp=100))
         event = self.manager.build_event('a', {**self.door(True), 'time': 90})
-        self.assertEqual(event['open_direction'], 'unknown')
+        self.assertEqual(event['open_direction'], 'inside')
 
     def test_label_cannot_call_an_inside_opening_fingerprint(self):
         self.assertEqual(self.status.format_unlock_label(7, '张三', 'inside', None), '内开（人员未知）')
         self.assertEqual(self.status.format_unlock_label(7, '张三', 'outside', 'fingerprint'), '张三外开（指纹）')
         self.assertEqual(self.status.format_unlock_label(None, None, 'outside', 'key'), '外开（钥匙，人员未知）')
         self.assertEqual(self.status.format_unlock_label(7, '张三', 'inside', 'fingerprint'), '张三外开（指纹）')
+        self.assertEqual(self.status.format_unlock_label(7, '张三', 'outside', 'face'), '内开（人员未知）')
+        self.assertEqual(self.status.format_unlock_label(7, '张三', 'unknown', None), '内开（人员未知）')
 
     def test_nonfinite_correlation_is_rejected(self):
         self.assertIsNone(self.status.resolve_opened_by({'user_id': 7}, float('nan')))
@@ -187,6 +210,19 @@ class CoordinatorOpeningTests(unittest.TestCase):
         self.dispatcher.dispatch('a', packet)
         self.assertEqual(state['open_direction'], 'inside')
         self.assertIsNone(state['unlock_user_id'])
+
+    def test_number_name_mapping_resolves_each_outside_opening(self):
+        status = __import__(self.coordinator.lock_events.__module__.rsplit('.', 1)[0] + '.lock_status', fromlist=['lock_status'])
+        self.coordinator._lock_user_names_shared = status.parse_lock_user_names('1=家人甲\n2=家人乙\n3=家人丙')
+        for user_id, name in ((1, '家人甲'), (2, '家人乙'), (3, '家人丙')):
+            with self.subTest(user_id=user_id):
+                packet = {'cmd': 352, 'time': user_id, 'event': {
+                    'server': 'doorLock', 'name': 'unlockEvent',
+                    'value': {'type': 'fingerprint', 'userId': user_id}}}
+                self.dispatcher.dispatch('a', packet)
+                event = self.coordinator.hass.bus.async_fire.call_args.args[1]
+                self.assertEqual(event['unlock_user_name'], name)
+                self.assertEqual(event['open_direction'], 'outside')
 
     def test_service_names_are_scoped_per_lock_including_zero(self):
         self.assertTrue(self.coordinator.set_lock_user_name('a', 0, '管理员'))

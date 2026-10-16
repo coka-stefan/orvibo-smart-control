@@ -203,15 +203,16 @@ response_variable: authorizations
 | ------------------------------------------------------- | ------------------------------------------- |
 | `unlock_type`                                           | `fingerprint`、`password`、`face` 或 `card` |
 | `unlock_method`                                         | 规范化方式：`fingerprint/password/card/key/face/temporary_password`，未知为 null |
-| `open_direction`                                        | `inside`（内开）/ `outside`（外开）/ `unknown` |
+| `open_direction`                                        | `inside`（内开）/ `outside`（外开） |
 | `unlock_user_id`                                        | 门锁用户编号                                |
 | `unlock_user_name`                                      | 配置映射后的名称                            |
 | `opened_by_user_id`、`opened_by_type`、`opened_by_name` | 最近一次开锁与随后开门的关联结果            |
 
 新版 `doorLock/unlockEvent` 的 `userId` 与旧版 `unlock` 的 `userID` 均可读取，表示锁侧
-授权编号。密码、指纹、钥匙、卡片（含临时密码、胁迫凭据）均判外开；旧状态记录
-`value2=65535,value4=20` 明确表示内开，不沿用外开用户。反锁状态不用于判断方向。
-只有门磁打开而没有可信开锁事件时，方向为未知，不能据此断言内开。开锁与开门的关联
+授权编号。按四类凭据规则，密码、指纹、钥匙、卡片（含临时密码、胁迫凭据）判外开；
+其他开锁方式（包括人脸、未识别或未上报方式）统一判内开。只有门磁打开、没有匹配到
+四类外开凭据时也判内开，且不沿用上次外开人员。这是集成的方向推断规则；
+内开不会据外开用户映射猜测人员。反锁状态不用于判断方向。开锁与开门的关联
 窗口为 30 秒，一次开锁仅归属一次开门，关闭后再次打开不会复用上一个人。
 较旧的开锁事件迟到时带 `historical: true`，其抓拍仍归档，但不更新最近开门状态和人员。
 
