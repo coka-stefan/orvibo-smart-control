@@ -233,8 +233,23 @@ async def _fetch_devices(
             client.family_id = family_id
         if not await client.ensure_login():
             return []
-        data = await client.fetch_device_status()
-        devices = client.parse_device_status_list(data) if data else []
+        from .device_inventory import DeviceInventory
+        from .state_store import StateStore
+        from .cloud import cloud_candidates
+
+        # Setup must use the same discovery fallbacks as the running integration.
+        inventory = DeviceInventory(client, {}, {}, StateStore({}), lambda _: None)
+        _, devices = await inventory.discover()
+        if not devices:
+            alternate = cloud_candidates(cloud)[1]
+            _LOGGER.info(
+                "No devices in %s; trying the %s region",
+                cloud.region.value,
+                alternate.region.value,
+            )
+            await client.switch_cloud(alternate, family_id=family_id or None)
+            if await client.ensure_login():
+                _, devices = await inventory.discover()
     except Exception as e:
         _LOGGER.debug("Failed to fetch device list: %s", e)
         return []

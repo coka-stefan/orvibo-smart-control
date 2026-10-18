@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Use the running integration's device-discovery fallbacks during initial setup,
+  including the alternate cloud region when the first region has no devices.
+- Align card assertions with the English labels and validate fork repository metadata.
+
 ### Changed
 
 - Translate UI labels, entity names, notifications, service descriptions, cards,

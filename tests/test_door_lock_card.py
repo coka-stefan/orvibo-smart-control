@@ -104,13 +104,13 @@ card._hass={states:{'sensor.unlock':{state:'Previous user opened from outside (F
   open_direction:'inside',unlock_user_name:'Previous user',unlock_method:'fingerprint'}}}};
 const opening=card._openingSummary();
 assert.equal(opening.label,'Unknown person');
-assert.equal(opening.direction,'Opened from inside');
+assert.equal(opening.direction,'From inside');
 assert(!opening.detail.includes('Fingerprint'));
 card._hass.states['sensor.lock']={state:'unknown',attributes:{door_open:false,inside_locked:false}};
 assert.equal(card._lockState(),'unknown');
 assert.equal(card._doorSummary().label,'Door closed');
 card._hass.states['sensor.lock'].attributes.door_open=null;
-assert.equal(card._doorSummary().label,'Door sensor unknown');
+assert.equal(card._doorSummary().label,'Door state unknown');
 ''')
 
     def test_image_resolution_is_bounded_ordered_and_preserves_failed_refresh(self):
