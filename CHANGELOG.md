@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.2.6b16] - 2026-10-18
+
+### Fixed
+
+- Stop doubling the device name in entity friendly names (for example
+  "Roller Blinds Roller Blinds"). Primary light, cover, switch, climate, and fan
+  entities now use only the device name; feature entities keep their names.
+- Show the translated "Transport path" and "Camera SDK hint" names for the
+  diagnostic sensors instead of the bare device name. Unique IDs are unchanged.
+
 ## [0.2.6b15] - 2026-10-18
 
 ### Added
