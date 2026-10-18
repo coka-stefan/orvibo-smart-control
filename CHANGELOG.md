@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.6b15] - 2026-10-18
+
+### Added
+
+- Support multifunction relay curtain controllers (`deviceType=42`, `subDeviceType=-2`)
+  as open/close/stop covers. Open and close follow the device's learned app keys.
+
 ### Fixed
 
 - Use the running integration's device-discovery fallbacks during initial setup,

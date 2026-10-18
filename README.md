@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.6b14-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b15-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control is an independent custom integration for Home Assistant. It combines direct MixPad gateway LAN access and the ORVIBO cloud protocol in one device, state, and control path: actions that can be completed over LAN are preferred locally, while devices that cannot be controlled locally and failed requests are handled by the cloud.
 
@@ -55,7 +55,7 @@ For implementation details and failure boundaries, see [Runtime Architecture](FU
 ### Live camera and NVR video
 
 `0.2.6b5` creates `camera` entities for matching Meari XTS/p2p=2 cameras and online NVR channels.
-Update to `v0.2.6b14` in HACS and restart Home Assistant, then open the NVR device page and select a camera entity such as “Channel 1” or “Channel 3.” You can also add the entity to a picture glance card and set `camera_view: live`.
+Update to `v0.2.6b15` in HACS and restart Home Assistant, then open the NVR device page and select a camera entity such as “Channel 1” or “Channel 3.” You can also add the entity to a picture glance card and set `camera_view: live`.
 HAOS includes FFmpeg; no separate video service is needed. The first connection needs authorization and device setup and may take tens of seconds. If the first thumbnail request times out, open it again to reuse the connection being established.
 
 A real HEVC keyframe was received on the user's channel 1; local synthetic HEVC-to-H.264 transcoding and decoding tests passed. The user confirmed that live channel 1 is viewable; channel 3 becomes viewable after waiting for it to load. The “ORVIBO Recording Playback” dashboard card searches hard-drive or SD/TF card clips by the date on the device and plays them. `0.2.6b8` added an “SD Card Playback” entity for matching Meari XTS/p2p=2 cameras such as the Jumu 2K Smart Camera S1; after updating, make sure the device is selected in the integration.
@@ -146,9 +146,12 @@ The integration also provides:
 `0.2.6b13` improved the overview card: it shows the main lock, door contact, and deadbolt separately, with a valid battery level at the top. Recent openings emphasize the person, inside/outside direction, method, and time; an inside opening does not display the old outside-opening person or credential. Door-view snapshots add a large preview of the newest image, horizontally scrollable history thumbnails, and keyboard navigation in the large view; failed refreshes retain existing images. Related state updates preserve text being entered and input focus. The card adapts to narrow phone columns and light/dark themes.
 
 `0.2.6b14` fixed resource URLs reverting after upgrade and requiring users to delete and re-add JavaScript resources. After Home Assistant starts, it checks the URL again and updates it in place, preserving the resource entry and card configuration. It also corrected snapshot parsing parameters and media references, using the integration's authenticated media source to read existing images and recordings without configuring `media_dirs` or moving saved files.
-Update to **v0.2.6b14** in HACS, **restart Home Assistant, then force-refresh the browser**.
-Local regression and simulated browser checks passed; resource updates and snapshot reads after a real HA upgrade still need device confirmation.
-See the [release notes](docs/releases/0.2.6b14.md).
+See the [0.2.6b14 release notes](docs/releases/0.2.6b14.md).
+
+`0.2.6b15` adds multifunction relay curtain controllers (`deviceType=42`, `subDeviceType=-2`) as open/close/stop covers. The controller reports no position, so the cover has an assumed state; open and close follow the controller's learned keys in the ORVIBO app. Earlier "recognized; not yet supported" roller blinds on this controller become controllable after the update.
+Update to **v0.2.6b15** in HACS, **restart Home Assistant, then force-refresh the browser**.
+Local regression passed; open, close, and stop direction on a real controller still need device confirmation.
+See the [release notes](docs/releases/0.2.6b15.md).
 
 `0.2.6b12` added the `battery_power` field for older locks with five dry-cell batteries, covering `deviceType=300`, `subDeviceType=400`. The user's inventory and six live-push replays all reported 60%. The integration continues to support flat and nested fields for dry cells and lithium-battery managers, preferring valid manager data. It shows only sources with valid readings; entries without a value are hidden and restored when a valid reading arrives, preserving user-hidden settings.
 Partial pushes without battery data do not clear the latest valid reading; 0% is valid. The main lock, door contact, and deadbolt are parsed independently, so “not deadbolted” does not overwrite an engaged main lock. Restart Home Assistant after updating; the actual entity display still needs device confirmation.
