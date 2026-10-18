@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -65,3 +66,37 @@ def sync_selected_device_registries(
         removed += 1
 
     return removed
+
+
+def assign_room_areas(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    devices: Mapping[str, Mapping[str, Any]],
+) -> int:
+    """Place selected devices that have no area yet into their ORVIBO room's area.
+
+    Devices that already have an area keep it, so areas the user renamed,
+    merged or reassigned in Home Assistant are not recreated on every reload.
+    """
+
+    selected = selected_device_ids(entry.options, devices)
+    area_registry = ar.async_get(hass)
+    device_registry = dr.async_get(hass)
+    assigned = 0
+    for device_id, device in devices.items():
+        if device_id not in selected:
+            continue
+        room_name = device.get("room_name")
+        if not room_name:
+            continue
+        device_entry = device_registry.async_get_device(
+            identifiers={(DOMAIN, device_id)}
+        )
+        if device_entry is None or device_entry.area_id:
+            continue
+        area = area_registry.async_get_area_by_name(room_name)
+        if area is None:
+            area = area_registry.async_create(room_name)
+        device_registry.async_update_device(device_entry.id, area_id=area.id)
+        assigned += 1
+    return assigned

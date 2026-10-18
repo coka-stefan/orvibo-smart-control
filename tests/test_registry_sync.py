@@ -47,8 +47,13 @@ def _load_module():
             if entity.config_entry_id == entry_id
         ],
     )
+    area_registry = _module(
+        "homeassistant.helpers.area_registry",
+        async_get=lambda hass: hass.area_registry,
+    )
     helpers = _module(
         "homeassistant.helpers",
+        area_registry=area_registry,
         device_registry=device_registry,
         entity_registry=entity_registry,
     )
@@ -62,6 +67,7 @@ def _load_module():
             "homeassistant.core", HomeAssistant=object
         ),
         "homeassistant.helpers": helpers,
+        "homeassistant.helpers.area_registry": area_registry,
         "homeassistant.helpers.device_registry": device_registry,
         "homeassistant.helpers.entity_registry": entity_registry,
         f"{package_name}.const": _module(
@@ -181,6 +187,86 @@ class RegistrySyncTests(unittest.TestCase):
         hass.device_registry.async_remove_device.assert_not_called()
         hass.device_registry.async_update_device.assert_called_once_with(
             "registry-hidden", remove_config_entry_id="entry-1"
+        )
+
+
+class AssignRoomAreasTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module = _load_module()
+
+    def _hass(self, areas, devices):
+        by_identifier = {
+            next(iter(device.identifiers))[1]: device for device in devices
+        }
+        created = []
+
+        def create(name):
+            area = SimpleNamespace(id=name.lower().replace(" ", "_"), name=name)
+            areas[name] = area
+            created.append(name)
+            return area
+
+        hass = SimpleNamespace(
+            area_registry=SimpleNamespace(
+                async_get_area_by_name=lambda name: areas.get(name),
+                async_create=MagicMock(side_effect=create),
+            ),
+            device_registry=SimpleNamespace(
+                async_get_device=lambda identifiers: by_identifier.get(
+                    next(iter(identifiers))[1]
+                ),
+                async_update_device=MagicMock(),
+            ),
+        )
+        return hass, created
+
+    @staticmethod
+    def _device(device_id, area_id):
+        return SimpleNamespace(
+            id=f"registry-{device_id}",
+            identifiers={("orvibo_smart_control", device_id)},
+            area_id=area_id,
+        )
+
+    def test_keeps_areas_the_user_already_assigned(self):
+        hass, created = self._hass(
+            {}, [self._device("spots", "bedroom"), self._device("ceiling", "study")]
+        )
+        entry = SimpleNamespace(options={})
+        devices = {
+            "spots": {"device_id": "spots", "room_name": "Main bedroom"},
+            "ceiling": {"device_id": "ceiling", "room_name": "Study room"},
+        }
+
+        assigned = self.module.assign_room_areas(hass, entry, devices)
+
+        self.assertEqual(assigned, 0)
+        self.assertEqual(created, [])
+        hass.device_registry.async_update_device.assert_not_called()
+
+    def test_places_devices_without_an_area_in_their_room(self):
+        living = SimpleNamespace(id="living_room", name="Living Room")
+        hass, created = self._hass(
+            {"Living Room": living},
+            [self._device("sofa", None), self._device("wardrobe", None)],
+        )
+        entry = SimpleNamespace(options={})
+        devices = {
+            "sofa": {"device_id": "sofa", "room_name": "Living Room"},
+            "wardrobe": {"device_id": "wardrobe", "room_name": "Main bedroom"},
+            "unnamed": {"device_id": "unnamed", "room_name": ""},
+        }
+
+        assigned = self.module.assign_room_areas(hass, entry, devices)
+
+        self.assertEqual(assigned, 2)
+        self.assertEqual(created, ["Main bedroom"])
+        hass.device_registry.async_update_device.assert_any_call(
+            "registry-sofa", area_id="living_room"
+        )
+        hass.device_registry.async_update_device.assert_any_call(
+            "registry-wardrobe", area_id="main_bedroom"
         )
 
 

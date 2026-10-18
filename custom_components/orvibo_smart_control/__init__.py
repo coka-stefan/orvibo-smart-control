@@ -5,7 +5,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
@@ -44,7 +43,7 @@ from .selection import CONF_DEVICE_AREAS, selected_device_ids
 from .service_handlers import async_register_services
 from .meari_probe import async_cancel_video_probes
 from .runtime_options import AvailabilityNotifier, IntegrationUpdateChecker
-from .registry_sync import sync_selected_device_registries
+from .registry_sync import assign_room_areas, sync_selected_device_registries
 from .frontend_resources import async_register_card_resources
 
 _LOGGER = logging.getLogger(__name__)
@@ -232,27 +231,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
 
 
 async def _async_assign_areas(hass: HomeAssistant, entry: ConfigEntry):
-    """Automatically map cloud rooms to Home Assistant areas, as in orvibo-lan."""
+    """Map ORVIBO cloud rooms to Home Assistant areas for devices without one."""
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not coordinator:
         return
-    area_registry = ar.async_get(hass)
-    device_registry = dr.async_get(hass)
-    selected = selected_device_ids(entry.options, coordinator.devices)
-    for device_id, device in coordinator.devices.items():
-        if device_id not in selected:
-            continue
-        room_name = device.get("room_name")
-        if not room_name:
-            continue
-        area = area_registry.async_get_area_by_name(room_name)
-        if area is None:
-            area = area_registry.async_create(room_name)
-        device_entry = device_registry.async_get_device(
-            identifiers={(DOMAIN, device_id)}
-        )
-        if device_entry is not None and device_entry.area_id != area.id:
-            device_registry.async_update_device(device_entry.id, area_id=area.id)
+    assign_room_areas(hass, entry, coordinator.devices)
 
 
 async def _apply_device_areas(hass: HomeAssistant, entry: ConfigEntry):
