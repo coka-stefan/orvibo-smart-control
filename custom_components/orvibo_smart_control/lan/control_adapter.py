@@ -22,8 +22,13 @@ class LanControlAdapter:
     """Control methods matching ssl_client.send_control_* names and arguments, sent through the gateway."""
 
     def __init__(self, username: str, gateway_manager: Any) -> None:
-        self._username = username
+        self._default_username = username
         self._gateway_manager = gateway_manager
+
+    @property
+    def _username(self) -> str:
+        # Follow the identity the gateway accepted at login (see GatewayManager fallbacks).
+        return getattr(self._gateway_manager, "username", None) or self._default_username
 
     async def _send(self, payload: dict[str, Any]) -> bool:
         lan_payload = {

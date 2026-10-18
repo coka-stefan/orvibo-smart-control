@@ -636,6 +636,11 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             self.https_client.gateway_ips,
             push_callback=self._on_lan_status_update,
             password_is_hash=True,
+            fallback_usernames=(
+                (self.https_client.user_id or "",)
+                if lan_credentials is self.credentials
+                else ()
+            ),
         )
         self.lan_adapter = LanControlAdapter(
             lan_credentials.username,

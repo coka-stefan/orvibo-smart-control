@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -14,6 +14,7 @@ from .discovery import DiscoveryCandidate, GatewayDiscovery
 from .gateway_connection import (
     GatewayConnection,
     GatewayConnectionError,
+    GatewayLoginRejectedError,
     PushCallback,
 )
 
@@ -43,8 +44,13 @@ class GatewayManager:
         connection_factory: ConnectionFactory | None = None,
         push_callback: ManagerPushCallback | None = None,
         password_is_hash: bool = False,
+        fallback_usernames: Sequence[str] = (),
     ) -> None:
         self.username = username
+        # Some MixPads only accept the cloud user ID, not the login email/phone.
+        self._fallback_usernames = tuple(
+            name for name in fallback_usernames if name and name != username
+        )
         self.password = password
         self.password_is_hash = password_is_hash
         self._discovery = discovery or GatewayDiscovery()
@@ -253,25 +259,38 @@ class GatewayManager:
         enable_pushes: bool = True,
         allow_missing_uid: bool = False,
     ) -> GatewayConnection:
-        self._raise_if_closed()
-        connection = self._connection_factory(host)
-        self._set_push_callback(
-            connection,
-            self._bound_push_callback(uid) if enable_pushes else None,
-        )
-        try:
-            await connection.connect(
-                self.username,
-                self.password,
-                expected_uid=uid,
-                allow_missing_uid=allow_missing_uid,
-                password_is_hash=self.password_is_hash,
+        candidates = [self.username]
+        candidates += [name for name in self._fallback_usernames if name != self.username]
+        for index, username in enumerate(candidates):
+            self._raise_if_closed()
+            connection = self._connection_factory(host)
+            self._set_push_callback(
+                connection,
+                self._bound_push_callback(uid) if enable_pushes else None,
             )
-        except BaseException:
-            with suppress(Exception):
-                await connection.close()
-            raise
-        return connection
+            try:
+                await connection.connect(
+                    username,
+                    self.password,
+                    expected_uid=uid,
+                    allow_missing_uid=allow_missing_uid,
+                    password_is_hash=self.password_is_hash,
+                )
+            except GatewayLoginRejectedError:
+                with suppress(Exception):
+                    await connection.close()
+                if index == len(candidates) - 1:
+                    raise
+                continue
+            except BaseException:
+                with suppress(Exception):
+                    await connection.close()
+                raise
+            if username != self.username:
+                _LOGGER.info("LAN gateway accepted the fallback account identity; using it from now on")
+                self.username = username
+            return connection
+        raise AssertionError("unreachable")
 
     def _raise_if_closed(self) -> None:
         if self._closed:
