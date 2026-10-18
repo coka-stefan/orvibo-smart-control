@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.6b17] - 2026-10-18
+
+### Fixed
+
+- Connect to MixPad gateways over LAN when the gateway rejects the account
+  email at login (`status=9`): retry with the cloud user ID and use the accepted
+  identity for LAN control. Previously such setups silently ran cloud-only.
+
 ## [0.2.6b16] - 2026-10-18
 
 ### Fixed
