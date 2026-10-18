@@ -65,7 +65,7 @@ callWS:async(request)=>{calls.push(request);if(failure)throw Error('PRIVATE');re
  assert.equal(card._ui('search').disabled,false);
  const hdd=card._hass.states['camera.hdd3'];
  card.hass={...card._hass,states:{'camera.hdd3':hdd,'camera.s1_sd':{attributes:{
-   video_mode:'sd_playback',recording_storage:'sd_card',friendly_name:'S1 存储卡回放'}}}};
+   video_mode:'sd_playback',recording_storage:'sd_card',friendly_name:'S1 Memory-card playback'}}}};
  assert.equal(card._ui('channel').children.length,2);
  card._ui('channel').value='camera.s1_sd';card._ui('channel').events.change();
  assert.equal(card._entity,'camera.s1_sd');

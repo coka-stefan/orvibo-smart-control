@@ -1,30 +1,24 @@
-# 摄像机存储卡与录像机硬盘回放
+# Camera SD Card and NVR Hard-Drive Playback
 
-`0.2.6b5` 新增硬盘录像日期/片段查询和按时间播放，`0.2.6b8` 扩展到巨目 2K 智能
-摄像机 S1 的 SD/TF 存储卡录像。实时 NVR 通道 1、3 已获用户确认可看。
-**硬盘和存储卡查询与回放尚待真实设备验证**。
+`0.2.6b5` added hard-drive recording date/clip search and playback by time; `0.2.6b8` extended support to SD/TF card recordings on the S1 Jumu 2K Smart Camera. The user confirmed that live NVR channels 1 and 3 are viewable.
+**Hard-drive and SD card search and playback still need validation on real devices.**
 
-## 打开回放
+## Open playback
 
-1. 在 HACS 更新到 `v0.2.6b8`，重启 Home Assistant，强制刷新浏览器。
-2. 编辑仪表盘 → 添加卡片 → 搜索“欧瑞博录像回放”。也可添加手动卡片：
+1. Update to `v0.2.6b8` in HACS, restart Home Assistant, and force-refresh the browser.
+2. Edit the dashboard → Add Card → search for “ORVIBO Recording Playback.” You can also add a manual card:
 
    ```yaml
    type: custom:orvibo-smart-control-nvr-card
-   title: 欧瑞博录像回放
+   title: ORVIBO Recording Playback
    ```
 
-3. 选择设备 / 通道，如“S1 存储卡回放”或“录像机 通道 1 硬盘回放”，选择日期，点击“查询录像”。
-   当月查询位于“更多选项 → 查询当月日期”，点击返回的日期可查询片段。
-4. 点击片段播放。也可在“更多选项”中填写“指定回放时间”后点击“播放”。首次建立 P2P
-   连接可能需要约一分钟。点击“停止回放”释放连接。
+3. Select a device/channel, such as “S1 SD Card Playback” or “NVR Channel 1 Hard-Drive Playback,” choose a date, and click “Search recordings.” To search the current month, open “More Options → Search dates this month”; click a returned date to search its clips.
+4. Click a clip to play it. You can also enter a “Specified playback time” in “More Options” and click “Play.” The initial P2P connection can take about a minute. Click “Stop playback” to release the connection.
 
-卡片默认使用紧凑布局和自动高度。片段列表最多占约三行，多余片段在列表内滚动。
-播放后自动收起片段和更多选项；需要换片段时点击“录像片段”展开。播放器显示在
-通道和日期下方，不会被长列表推到页面底部。
+The card uses a compact layout and automatic height by default. The clip list takes about three rows at most, with additional clips scrollable inside the list. After playback starts, the clips and additional options collapse automatically; click “Recording clips” to expand them when selecting another clip. The player is below the channel and date, so a long list does not push it to the bottom of the page.
 
-如果原仪表盘曾手动设定固定行数，更新后仍有大块空白，可在卡片“布局”中改为
-自动高度，或在卡片 YAML 中加入：
+If the old dashboard had a fixed row count and has a large blank area after the update, set the card's “Layout” to automatic height or add the following to the card YAML:
 
 ```yaml
 grid_options:
@@ -32,32 +26,23 @@ grid_options:
   rows: auto
 ```
 
-卡片可通过 `entity: camera.your_nvr_channel_1_hdd` 固定为一个回放实体；S1 可选择其“存储卡回放”实体。
-`0.2.6b6` 会自动在存储模式的仪表盘资源列表中注册卡片，更新已有旧地址，并使用脚本
-内容校验值刷新缓存。YAML 模式不修改用户配置，继续通过全局前端模块加载。
+Set `entity: camera.your_nvr_channel_1_hdd` to pin the card to a specific playback entity; for the S1, select its “SD Card Playback” entity. Starting with `0.2.6b6`, the integration automatically registers the card in the storage-mode dashboard resources, updates an existing older URL, and refreshes the cache using a script-content checksum. YAML mode does not modify user configuration and continues to load the frontend module globally.
 
-若出现 `Custom element doesn't exist: orvibo-smart-control-nvr-card`，这是卡片脚本
-尚未注册。可在“设置 → 仪表盘 → 右上角菜单 → 资源”（需开启高级模式）添加：
+If you see `Custom element doesn't exist: orvibo-smart-control-nvr-card`, the card script has not been registered. In “Settings → Dashboards → upper-right menu → Resources” (Advanced Mode must be enabled), add:
 
 ```text
 /orvibo_smart_control/www/orvibo-smart-control-nvr-card.js?v=0.2.6b8
 ```
 
-类型选“JavaScript 模块”，保存后强制刷新。YAML 资源模式则在 `lovelace.resources`
-配置中使用同一 URL 和 `type: module`。若仍无法加载，在同一个 HA 地址下直接打开
-上述路径：应返回 JavaScript 源码；若为404，请检查实际安装版本及 HA 日志中
-“欧瑞博卡片静态资源注册失败”的记录。
-若没有回放实体，请检查集成设备选择中已勾选 S1 或录像机。S1 的通道 0 是内部协议编号，
-卡片显示设备名称；NVR 实体随在线通道创建。更新到 b8 后重启 HA 才会增加 S1 回放实体。
-此前如果手动注册过 b7 卡片资源，可把原条目的 URL 更新为：
-`/orvibo_smart_control/www/orvibo-smart-control-nvr-card.js?v=0.2.6b8`，避免保留重复旧条目。
+Choose “JavaScript module,” save, and force-refresh. In YAML resource mode, use the same URL and `type: module` in `lovelace.resources`. If it still does not load, open the path above directly on the same HA address; it should return JavaScript source. If it returns 404, check the installed version and HA logs for “ORVIBO card static resource registration failed.”
 
-日期和时间采用**摄像机或录像机本身的日历时间**，不自动按 HA 时区换算。日列表最多展示
-256 个有效片段，超过时会提示截断；仍可指定时间播放。
+If no playback entity appears, make sure the S1 or NVR is selected under the integration's device selection. S1 channel 0 is an internal protocol number; the card shows the device name. NVR entities are created for online channels. Restart HA after updating to b8 to create the new S1 playback entity. If you previously registered the b7 card resource manually, update its URL to `/orvibo_smart_control/www/orvibo-smart-control-nvr-card.js?v=0.2.6b8` to avoid a duplicate old entry.
 
-## 开发者工具中的操作
+Dates and times use the **camera or NVR's own calendar time**; they are not automatically converted to the HA time zone. A day list shows up to 256 valid clips and displays a truncation notice if there are more; playback can still be started for a specified time.
 
-`orvibo_smart_control.search_hdd_recordings`：
+## Developer tool actions
+
+`orvibo_smart_control.search_hdd_recordings`:
 
 ```yaml
 entity_id: camera.your_nvr_channel_1_hdd
@@ -65,33 +50,23 @@ operation: day
 date: "20261015"
 ```
 
-月查询使用 `operation: month` 和六位日期，例如 `"202610"`。成功响应
-`stage: hdd_search_received`，带 `recording_days` 或 `fragments`。
-连接失败的响应只含固定阶段；可将响应贴回用于诊断。
+For a month search, use `operation: month` and a six-digit date such as `"202610"`. A successful response has `stage: hdd_search_received` and includes `recording_days` or `fragments`. A connection failure response contains only a fixed stage; you can share the response for diagnosis.
 
-`orvibo_smart_control.start_hdd_playback`：
+`orvibo_smart_control.start_hdd_playback`:
 
 ```yaml
 entity_id: camera.your_nvr_channel_1_hdd
 date: "20261015090000"
 ```
 
-该操作选择回放位置；打开对应 camera 后才开始建连。`playback_selected` 只表示
-已选时间，不能证明收到录像。停止使用 `orvibo_smart_control.stop_hdd_playback`，
-只需相同的 `entity_id`。
+This action selects a playback position; connection setup begins only after opening the corresponding camera. `playback_selected` means only that a time was selected and does not prove that a recording was received. To stop, use `orvibo_smart_control.stop_hdd_playback` with the same `entity_id`.
 
-## 当前范围
+## Current scope
 
-- 支持 Meari XTS/p2p=2、默认 hostKey 鉴权的 IPC（含 S1）普通存储卡录像和 NVR 普通硬盘录像；不含云存储或
-  需要 record_id 的另一种录像模式。
-- 每台 IPC 或 NVR 通道有独立实时/回放实体；查询也建立独立短连接。设备能否允许多路同时
-  连接仍取决于设备。当前没有音频、暂停和倍速；重新选择时间会重新建连定位。
-- 回放结束后不会自动从最初时间重播。请重新点击片段或选择新时间。
-- 缩略图不启动录像播放；播放过程不自动保存视频文件。卸载或 HA 关闭会取消
-  查询并清理协议、FFmpeg 和 HA Stream。
-- 实时实体中的 `video_diagnostics` 提供固定阶段、连接次数、失败/超时计数和
-  帧/字节统计；`streaming` 只说明已输出转码视频，不代替肉眼画面验证。
+- Supports ordinary SD card recordings from IPC devices (including S1) and ordinary NVR hard-drive recordings for Meari XTS/p2p=2 devices using default hostKey authentication. Cloud storage and the other recording mode that requires `record_id` are not supported.
+- Each IPC or NVR channel has a separate live/playback entity, and searching also creates a separate short-lived connection. Whether the device allows multiple simultaneous connections depends on the device. Audio, pause, and variable speed are not supported; choosing another time reconnects to seek.
+- Playback does not automatically restart from the beginning when it ends. Click a clip again or choose a new time.
+- A thumbnail does not start recording playback, and playback does not automatically save video files. Unload or HA shutdown cancels searches and cleans up the protocol, FFmpeg, and HA Stream.
+- `video_diagnostics` on the live entity provides a fixed stage, connection count, failure/timeout counters, and frame/byte statistics. `streaming` means only that transcoded video was emitted; it does not replace visual verification.
 
-离线验证涵盖原生命令字节、隧道请求/回复序号、日历/片段解析、回放媒体类型及
-结束标记、取消清理、实体切换和卡片交互。真实硬盘和存储卡录像的查询结果、播放流畅度与
-定位精度需要用户测试。
+Offline validation covers native command bytes, tunnel request/reply sequence numbers, calendar and clip parsing, playback media types and end markers, cancellation cleanup, entity switching, and card interactions. Users still need to validate search results, playback smoothness, and seek accuracy for real hard-drive and SD card recordings.

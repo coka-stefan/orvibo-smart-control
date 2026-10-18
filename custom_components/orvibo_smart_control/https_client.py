@@ -44,15 +44,15 @@ class HttpsClient:
         self.access_token: Optional[str] = None
         self.family_id: Optional[str] = None
         self.family_name: Optional[str] = None
-        self.family_list: List[Dict[str, str]] = []  # 所有家庭列表
-        self.gateway_ips: Dict[str, str] = {}  # MixPad 网关 uid → 局域网 IP
+        self.family_list: List[Dict[str, str]] = []  # All families
+        self.gateway_ips: Dict[str, str] = {}  # MixPad gateway uid to LAN IP
 
     @property
     def is_logged_in(self) -> bool:
         return self.access_token is not None and self.user_id is not None
 
     async def close(self):
-        """关闭客户端，释放资源"""
+        """Close the client and release its resources."""
         self.access_token = None
 
     def set_session_id(self, session_id: str):
@@ -102,10 +102,10 @@ class HttpsClient:
             if not self.access_token or not self.user_id:
                 return False
 
-        # 获取家庭信息（即使已有family_id，也需要获取family_name和family_list）
+        # Fetch family information (including family_name and family_list even if family_id is already set)
         data = await self._fetch_family()
         if data:
-            # 如果之前没有family_id，使用获取到的
+            # Use the fetched family_id if none was set previously
             if not self.family_id:
                 self.family_id = data.get("familyId", "")
             self.family_name = data.get("familyName", "")
@@ -131,21 +131,21 @@ class HttpsClient:
                 _LOGGER.error(resp["message"])
                 return {}
             if "data" not in resp:
-                _LOGGER.error("响应包中未找到[data]")
+                _LOGGER.error("Response packet is missing [data]")
                 return {}
             if "access_token" not in resp["data"]:
-                _LOGGER.error("响应包中未找到[access_token]")
+                _LOGGER.error("Response packet is missing [access_token]")
                 return {}
-            _LOGGER.info("HTTPS 申请ACCESS_TOKEN成功")
+            _LOGGER.info("HTTPS access token request succeeded")
             return resp["data"]
         except Exception as e:
-            _LOGGER.error("HTTPS请求失败: %s", e)
+            _LOGGER.error("HTTPS request failed: %s", e)
             return {}
 
     async def _fetch_family(self) -> dict:
         try:
             if not self.user_id or not self.access_token:
-                _LOGGER.debug("跳过家庭请求：缺少 userId 或 accessToken")
+                _LOGGER.debug("Skipping family request: userId or accessToken is missing")
                 return {}
             ret = HomemateJsonData.get_family_statistics_users(
                 self.user_id, self.access_token, api_host=self.api_host
@@ -155,21 +155,21 @@ class HttpsClient:
                 _LOGGER.error(resp["message"])
                 return {}
             if "data" not in resp:
-                _LOGGER.error("响应包中未找到[data]")
+                _LOGGER.error("Response packet is missing [data]")
                 return {}
             data = resp["data"]
             if not isinstance(data, list):
-                _LOGGER.error("响应包中[data]不是数组格式")
+                _LOGGER.error("Response packet [data] is not an array")
                 return {}
             
-            # 保存所有家庭列表
+            # Store the complete family list
             self.family_list = [
-                {"familyId": item.get("familyId", ""), "familyName": item.get("familyName", "未知家庭")}
+                {"familyId": item.get("familyId", ""), "familyName": item.get("familyName", "Unknown family")}
                 for item in data if item.get("familyId")
             ]
-            _LOGGER.info(f"获取到 {len(self.family_list)} 个家庭")
+            _LOGGER.info("Retrieved %s families", len(self.family_list))
             
-            # 已有家庭时必须确认它确实属于当前区域，避免区域探测假命中。
+            # Confirm an existing family belongs to the current region to avoid false positives during region detection.
             if self.family_id:
                 selected = next(
                     (
@@ -181,7 +181,7 @@ class HttpsClient:
                 )
                 if selected is None:
                     _LOGGER.info(
-                        "家庭 %s 不属于当前云端区域 %s",
+                        "Family %s does not belong to cloud region %s",
                         self.family_id,
                         self.cloud.region.value,
                     )
@@ -193,21 +193,21 @@ class HttpsClient:
                 self.family_name = first_family["familyName"]
             
             if not self.family_id:
-                _LOGGER.error("响应包中未找到[familyId]")
+                _LOGGER.error("Response packet is missing [familyId]")
                 return {}
             return {"familyId": self.family_id, "familyName": self.family_name}
         except Exception as e:
-            _LOGGER.error("HTTPS 请求失败: %s", e)
+            _LOGGER.error("HTTPS request failed: %s", e)
             return {}
 
     def set_family(self, family_id: str):
-        """设置当前选定的家庭"""
+        """Set the currently selected family."""
         self.family_id = family_id
         for family in self.family_list:
             if family["familyId"] == family_id:
                 self.family_name = family["familyName"]
                 break
-        _LOGGER.info(f"切换到家庭: {self.family_name} ({self.family_id})")
+        _LOGGER.info("Switched to family: %s (%s)", self.family_name, self.family_id)
 
     async def switch_cloud(
         self,
@@ -223,7 +223,7 @@ class HttpsClient:
         self.family_id = family_id
         self.family_name = None
         self.family_list = []
-        _LOGGER.info("云端区域切换为 %s (%s)", cloud.region.value, cloud.api_host)
+        _LOGGER.info("Cloud region changed to %s (%s)", cloud.region.value, cloud.api_host)
 
     async def switch_host(self, host: str) -> None:
         """Compatibility wrapper accepting only known ORVIBO API hosts."""
@@ -239,7 +239,7 @@ class HttpsClient:
         return False
 
     async def _readtable(self, device_flag: int) -> Optional[Dict[str, Any]]:
-        """发送一次 readtable 请求并返回合并后的数据字典"""
+        """Send a readtable request and return the merged data dictionary."""
         ret = HomemateJsonData.get_devices_status(
             access_token=self.access_token,
             session_id=self.session_id or "",
@@ -252,16 +252,16 @@ class HttpsClient:
         resp = await self._send_request(ret['url'], ret['data'])
 
         if "message" in resp:
-            _LOGGER.error(f"readtable(deviceFlag={device_flag}) 失败: {resp['message']}")
+            _LOGGER.error("readtable(deviceFlag=%s) failed: %s", device_flag, resp["message"])
             return None
         if "data" not in resp:
-            _LOGGER.error(f"readtable(deviceFlag={device_flag}) 响应包中未找到[data]")
+            _LOGGER.error("readtable(deviceFlag=%s) response packet is missing [data]", device_flag)
             return None
 
         data = resp["data"]
-        # data 可能是列表：服务器按表分块返回，必须合并全部块
+        # data may be a list when the server returns tables in chunks; merge every chunk
         if isinstance(data, list):
-            _LOGGER.info(f"readtable(deviceFlag={device_flag}) 返回 {len(data)} 个数据块")
+            _LOGGER.info("readtable(deviceFlag=%s) returned %s data chunks", device_flag, len(data))
             merged: Dict[str, Any] = {}
             for element in data:
                 if not isinstance(element, dict):
@@ -275,19 +275,19 @@ class HttpsClient:
                         merged[key] = {**merged[key], **value}
             data = merged
 
-        _LOGGER.info(f"readtable(deviceFlag={device_flag}) 数据keys: "
+        _LOGGER.info(f"readtable(deviceFlag={device_flag}) data keys: "
                      f"{list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
         return data if isinstance(data, dict) else None
 
     async def fetch_device_status(self) -> Optional[Dict[str, Any]]:
-        """通过 /v2/cmd/app/readtable API 获取设备状态列表
+        """Fetch the device state list through the /v2/cmd/app/readtable API.
 
-        deviceFlag=0 可能只返回账户级表(account/userGatewayBind/gateway)，
-        此时用 deviceFlag=1 再次请求设备级表(device/deviceStatus)并合并。
+        deviceFlag=0 may return only account-level tables (account/userGatewayBind/gateway);
+        if so, request device-level tables (device/deviceStatus) with deviceFlag=1 and merge them.
         """
         try:
             if not await self.ensure_login():
-                _LOGGER.error("HTTPS 未登录")
+                _LOGGER.error("HTTPS client is not logged in")
                 return None
 
             data = await self._readtable(device_flag=0)
@@ -295,25 +295,25 @@ class HttpsClient:
                 return None
 
             if "device" not in data:
-                _LOGGER.warning("readtable(deviceFlag=0) 未返回 device 表，尝试 deviceFlag=1 ...")
+                _LOGGER.warning("readtable(deviceFlag=0) returned no device table; trying deviceFlag=1 ...")
                 data_flag1 = await self._readtable(device_flag=1)
                 if data_flag1:
                     data = {**data, **data_flag1}
 
             if "device" not in data:
                 _LOGGER.warning(
-                    f"readtable 响应中始终缺少 device 表: gateway表={data.get('gateway')}, "
-                    f"userGatewayBind表={data.get('userGatewayBind')}"
+                    f"readtable response is still missing the device table: gateway={data.get('gateway')}, "
+                    f"userGatewayBind={data.get('userGatewayBind')}"
                 )
             self.gateway_ips = self._extract_gateway_ips(data)
             return data
         except Exception as e:
-            _LOGGER.error("获取设备状态失败: %s", e)
+            _LOGGER.error("Failed to fetch device states: %s", e)
             return None
 
     @staticmethod
     def _extract_gateway_ips(data: Dict[str, Any]) -> Dict[str, str]:
-        """从 readtable 提取 MixPad 网关 uid → 局域网 IP（移植自 LAN 源实现）。"""
+        """Extract MixPad gateway uid to LAN IP from readtable (ported from the LAN source implementation)."""
         from .protocol import _safe_int, _table_rows
 
         mixpad_uids = {
@@ -333,14 +333,14 @@ class HttpsClient:
         return result
 
     async def fetch_device_desc(self, last_update_time: int = 0) -> Optional[Dict[str, Any]]:
-        """通过 getDeviceDesc API 获取设备描述和状态（用于初始化全量状态）"""
+        """Fetch device descriptions and states through getDeviceDesc for the initial full state."""
         try:
             if not await self.ensure_login():
-                _LOGGER.error("HTTPS 未登录")
+                _LOGGER.error("HTTPS client is not logged in")
                 return None
 
             if not self.access_token:
-                _LOGGER.error("accessToken 为空")
+                _LOGGER.error("accessToken is empty")
                 return None
 
             url = f"https://{self.api_host}/getDeviceDesc?source=ZhiJia365&lastUpdateTime={last_update_time}&accessToken={self.access_token}"
@@ -349,40 +349,40 @@ class HttpsClient:
                 **HTTP_HEADERS,
             }
 
-            _LOGGER.debug("请求 getDeviceDesc API: host=%s", self.api_host)
+            _LOGGER.debug("Requesting getDeviceDesc API: host=%s", self.api_host)
 
             async with aiohttp.ClientSession(
                 connector=aiohttp.TCPConnector()
             ) as session:
                 async with session.get(url, headers=headers) as response:
                     if response.status != 200:
-                        _LOGGER.error(f"getDeviceDesc API 失败: {response.status}")
+                        _LOGGER.error("getDeviceDesc API failed: %s", response.status)
                         return None
                     
                     data = await response.json()
-                    _LOGGER.info(f"getDeviceDesc API 返回数据类型: {type(data)}")
+                    _LOGGER.info("getDeviceDesc API returned data type: %s", type(data))
                     if isinstance(data, dict):
-                        _LOGGER.info(f"getDeviceDesc 返回键: {list(data.keys())}")
+                        _LOGGER.info("getDeviceDesc returned keys: %s", list(data.keys()))
                         if "devices" in data:
                             devices = data.get("devices", [])
-                            _LOGGER.info(f"设备数量: {len(devices)}")
+                            _LOGGER.info("Device count: %s", len(devices))
                             if len(devices) > 0 and isinstance(devices[0], dict):
-                                _LOGGER.info(f"第一个设备键: {list(devices[0].keys())[:15]}")
+                                _LOGGER.info("First device keys: %s", list(devices[0].keys())[:15])
                         if "status" in data:
                             _LOGGER.info(f"status: {data.get('status')}")
                     
                     return data
         except Exception as e:
-            _LOGGER.error(f"getDeviceDesc API 调用失败: {e}")
+            _LOGGER.error("getDeviceDesc API call failed: %s", e)
             return None
 
     def parse_device_desc(self, device_desc_data: dict) -> Dict[str, Dict[str, Any]]:
-        """解析 getDeviceDesc 返回的数据，提取设备状态"""
+        """Parse getDeviceDesc data and extract device states."""
         device_status_map = {}
         
         devices = device_desc_data.get("deviceDescList", device_desc_data.get("devices", []))
         if not isinstance(devices, list):
-            _LOGGER.warning(f"getDeviceDesc 返回的 deviceDescList 不是列表: {type(devices)}")
+            _LOGGER.warning("getDeviceDesc returned a non-list deviceDescList: %s", type(devices))
             return device_status_map
         
         for device in devices:
@@ -504,18 +504,18 @@ class HttpsClient:
             if ext_addr:
                 status_info["ext_addr"] = ext_addr
             
-            _LOGGER.info(f"解析 getDeviceDesc 设备: deviceId={device_id}, state={status_info.get('state', 'N/A')}, online={status_info.get('online', 'N/A')}, brightness={status_info.get('brightness')}, color_temp={status_info.get('color_temp')}, position={status_info.get('position')}")
+            _LOGGER.info("Parsed getDeviceDesc device: deviceId=%s, state=%s, online=%s, brightness=%s, color_temp=%s, position=%s", device_id, status_info.get("state", "N/A"), status_info.get("online", "N/A"), status_info.get("brightness"), status_info.get("color_temp"), status_info.get("position"))
             
             device_status_map[device_id] = status_info
         
-        _LOGGER.info(f"从 getDeviceDesc 解析到 {len(device_status_map)} 个设备状态")
+        _LOGGER.info("Parsed %s device states from getDeviceDesc", len(device_status_map))
         return device_status_map
 
     def parse_device_status_list(self, device_status_data: dict) -> List[Dict[str, Any]]:
-        """从 /v2/cmd/app/readtable 返回的数据中解析设备列表
+        """Parse a device list from the /v2/cmd/app/readtable response.
 
-        注：内部解析逻辑已迁移到 protocol.py，此处为保持接口兼容的包装。
-        device_status_data 是 fetch_device_status() 返回的 resp["data"]（readtable 的内层 data）。
+        Parsing is implemented in protocol.py; this wrapper preserves the interface.
+        device_status_data is resp["data"] returned by fetch_device_status() (the inner readtable data).
         """
         from .protocol import parse_readtable_devices, device_to_dict
 
@@ -523,24 +523,24 @@ class HttpsClient:
             {"code": 0, "data": device_status_data}
         )]
 
-        # 跳过父开关设备（type=135/136，properties 为空）
+        # Skip parent switch devices (type=135/136 with empty properties)
         filtered = []
         for dev in result:
             dt = dev.get("device_type_raw")
             if dt in (135, 136):
                 props = dev.get("properties", {})
                 if isinstance(props, dict) and len(props) == 0:
-                    _LOGGER.info(f"跳过父开关设备: deviceId={dev['device_id']}, name={dev.get('device_name')}")
+                    _LOGGER.info("Skipping parent switch device: deviceId=%s, name=%s", dev["device_id"], dev.get("device_name"))
                     continue
             filtered.append(dev)
         
-        _LOGGER.info(f"从 device_status 解析到 {len(filtered)} 个设备")
+        _LOGGER.info("Parsed %s devices from device_status", len(filtered))
         return filtered
 
     async def fetch_homepage_data(self) -> Optional[Dict[str, Any]]:
         try:
             if not await self.ensure_login():
-                _LOGGER.error("HTTPS 未登录")
+                _LOGGER.error("HTTPS client is not logged in")
                 return None
 
             ret = HomemateJsonData.get_homepage_data(
@@ -555,12 +555,12 @@ class HttpsClient:
                 _LOGGER.error(resp["message"])
                 return None
             if "data" not in resp:
-                _LOGGER.error("响应包中未找到[data]")
+                _LOGGER.error("Response packet is missing [data]")
                 return None
 
             return resp["data"]
         except Exception as e:
-            _LOGGER.error("获取主页数据失败：%s", e)
+            _LOGGER.error("Failed to fetch homepage data: %s", e)
             return None
 
     def parse_device_list(self, homepage_data: dict) -> List[Dict[str, Any]]:
@@ -603,7 +603,7 @@ class HttpsClient:
                 else None
             )
         if device_type_raw == 10086:
-            # 虚拟灯组尚未完成控制协议真机验证，不创建可控实体。
+            # Do not create controllable entities for virtual light groups until the control protocol is verified on hardware.
             return None
         if device_type_raw == 300:
             return DEVICE_TYPE_CLIMATE if sub_device_type == 481 else DEVICE_TYPE_SENSOR if sub_device_type == 491 else None
@@ -627,7 +627,7 @@ class HttpsClient:
         return None
 
     def _parse_online_status(self, online_value) -> bool:
-        """解析 online 状态，支持多种格式"""
+        """Parse online state in multiple formats."""
         if online_value is None:
             return False
         if isinstance(online_value, bool):

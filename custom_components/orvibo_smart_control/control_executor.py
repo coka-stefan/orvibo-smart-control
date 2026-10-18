@@ -132,7 +132,7 @@ class ControlExecutor:
             if scope != "lan":
                 raise
             _LOGGER.debug(
-                "LAN 控制 %s 失败，回退云端: device=%s error=%s",
+                "LAN control %s failed; falling back to cloud: device=%s error=%s",
                 method_name,
                 device_id,
                 type(error).__name__,
@@ -170,7 +170,7 @@ class ControlExecutor:
         )
 
     def _transport(self, device_id: str) -> tuple[Any, str]:
-        """按能力表 + 网关可达性选择控制通道（LAN 优先 / 云兜底）。"""
+        """Select the control channel using device capabilities and gateway reachability (LAN first, cloud fallback)."""
         device = self.devices.get(device_id) or {}
         device_uid = device.get("uid", "")
         if self._transport_mode != TransportMode.CLOUD_ONLY:
@@ -246,7 +246,7 @@ class ControlExecutor:
         return result
 
     async def set_cover_position(self, device_id: str, position: int) -> bool:
-        device = self._controllable_device(device_id, "窗帘")
+        device = self._controllable_device(device_id, 'Curtain')
         if device is None:
             return False
         client, selected_scope = self._transport(device_id)
@@ -257,7 +257,7 @@ class ControlExecutor:
             current = self.states.get(device_id, {})
             if current.get("angle") != 90:
                 if current.get("position") != 0:
-                    _LOGGER.warning("梦幻帘叶片未居中，拒绝直接设置开合位置: %s", device_id)
+                    _LOGGER.warning("Drapery slats are not centered; refusing to set the opening position directly: %s", device_id)
                     return False
                 centered, selected_scope = await self._invoke_with_fallback(
                     device_id,
@@ -277,7 +277,7 @@ class ControlExecutor:
                     else None
                 )
                 if reported_angle != 90:
-                    _LOGGER.warning("梦幻帘叶片居中未确认，取消位置控制: %s", device_id)
+                    _LOGGER.warning("Drapery slat centering was not confirmed; cancelling position control: %s", device_id)
                     return False
                 if selected_scope == "ssl":
                     client = self._ssl_client()
@@ -318,7 +318,7 @@ class ControlExecutor:
         return result
 
     async def stop_cover(self, device_id: str) -> bool:
-        device = self._controllable_device(device_id, "窗帘")
+        device = self._controllable_device(device_id, 'Curtain')
         if device is None:
             return False
         category = classify_device(device)
@@ -350,11 +350,11 @@ class ControlExecutor:
         return result
 
     async def set_dream_curtain_angle(self, device_id: str, angle: int) -> bool:
-        device = self._controllable_device(device_id, "梦幻帘角度")
+        device = self._controllable_device(device_id, 'Sheer-curtain angle')
         if device is None or classify_device(device) != DeviceCategory.DREAM_CURTAIN:
             return False
         if self.states.get(device_id, {}).get("position") != 0:
-            _LOGGER.warning("梦幻帘仅在完全关闭时允许调节角度: %s", device_id)
+            _LOGGER.warning("Drapery angle adjustment is allowed only when fully closed: %s", device_id)
             return False
         result, _scope = await self._send_selected(
             device_id,
@@ -369,7 +369,7 @@ class ControlExecutor:
         return result
 
     async def dream_curtain_action(self, device_id: str, action: str) -> bool:
-        device = self._controllable_device(device_id, "梦幻帘动作")
+        device = self._controllable_device(device_id, 'Sheer-curtain action')
         if device is None or classify_device(device) != DeviceCategory.DREAM_CURTAIN:
             return False
         result, _scope = await self._send_selected(
@@ -385,7 +385,7 @@ class ControlExecutor:
         return result
 
     async def set_floor_heating_temperature(self, device_id: str, temperature: int) -> bool:
-        device = self._controllable_device(device_id, "地暖温度")
+        device = self._controllable_device(device_id, 'Floor-heating temperature')
         if device is None or classify_device(device) not in {
             DeviceCategory.FLOOR_HEATING,
             DeviceCategory.LEGACY_FLOOR_HEATING,
@@ -418,7 +418,7 @@ class ControlExecutor:
         return result
 
     async def set_brightness(self, device_id: str, brightness: int) -> bool:
-        device = self._controllable_device(device_id, "亮度")
+        device = self._controllable_device(device_id, 'Brightness')
         if device is None:
             return False
         route = brightness_route(
@@ -430,7 +430,7 @@ class ControlExecutor:
         return await self._execute_confirmed_route(device_id, device, route)
 
     async def set_color_temp(self, device_id: str, color_temp_k: int) -> bool:
-        device = self._controllable_device(device_id, "色温")
+        device = self._controllable_device(device_id, 'Color temperature')
         if device is None:
             return False
         route = color_temp_route(
@@ -449,7 +449,7 @@ class ControlExecutor:
     ) -> bool:
         device = self.devices.get(device_id)
         if device is None:
-            _LOGGER.error("找不到设备 %s", device_id)
+            _LOGGER.error("Device not found: %s", device_id)
             return False
         result, _scope = await self._send_selected(
             device_id,
@@ -476,11 +476,11 @@ class ControlExecutor:
             if not await self._wait_if_ssl(device_id, scope):
                 state = self.states.setdefault(device_id, {})
                 if value1 == 0:
-                    state.update({"fan_speed": "慢", "state": True})
+                    state.update({"fan_speed": 'Low', "state": True})
                 elif value1 == 50:
-                    state.update({"fan_speed": "停", "state": False})
+                    state.update({"fan_speed": 'Off', "state": False})
                 elif value1 == 100:
-                    state.update({"fan_speed": "快", "state": True})
+                    state.update({"fan_speed": 'High', "state": True})
                 state["value1"] = value1
                 self.state_store.mark(
                     device_id,
@@ -493,9 +493,9 @@ class ControlExecutor:
     async def set_ventilation_preset_mode(
         self, device_id: str, preset_mode: str
     ) -> bool:
-        value1 = {"停": 50, "慢": 0, "快": 100}.get(preset_mode)
+        value1 = {'Off': 50, 'Low': 0, 'High': 100}.get(preset_mode)
         if value1 is None:
-            _LOGGER.error("无效的新风模式: %s", preset_mode)
+            _LOGGER.error("Invalid ventilation mode: %s", preset_mode)
             return False
         return await self.ventilation_state_update(device_id, value1)
 
@@ -507,14 +507,14 @@ class ControlExecutor:
             return False
         control_field = self.CLOTHES_HORSE_FIELD_MAP.get(feature)
         if control_field is None:
-            _LOGGER.error("未知晾衣架功能: %s", feature)
+            _LOGGER.error("Unknown clothes dryer feature: %s", feature)
             return False
         if (
             feature == "sterilizing"
             and value == "on"
             and self.states.get(device_id, {}).get("position", 0) != 0
         ):
-            _LOGGER.warning("[晾衣架] 拒绝消毒开启命令: 电机未在顶部")
+            _LOGGER.warning("[Clothes dryer] Refusing sterilization command: motor is not at the top")
             return False
 
         client = self._ssl_client()
@@ -545,7 +545,7 @@ class ControlExecutor:
                 )
                 self._on_updated()
             _LOGGER.debug(
-                "[控制成功] %s %s=%s", device_id, control_field, value
+                "[Control succeeded] %s %s=%s", device_id, control_field, value
             )
         return result
 
@@ -566,11 +566,11 @@ class ControlExecutor:
 
     def _connected_device(self, device_id: str) -> dict[str, Any] | None:
         if self._ssl_client() is None and self._lan_adapter() is None:
-            _LOGGER.error("控制通道未初始化")
+            _LOGGER.error("Control channel is not initialized")
             return None
         device = self.devices.get(device_id)
         if device is None:
-            _LOGGER.error("设备不存在: %s", device_id)
+            _LOGGER.error("Device does not exist: %s", device_id)
         return device
 
     def _controllable_device(
@@ -580,7 +580,7 @@ class ControlExecutor:
         if device is None:
             return None
         if get_device_profile(device).registration_only:
-            suffix = f"{control_name}控制" if control_name else "控制"
-            _LOGGER.warning("未知设备仅注册展示，拒绝下发%s: %s", suffix, device_id)
+            suffix = f'{control_name}Control' if control_name else 'Control'
+            _LOGGER.warning("Unknown device is registered for display only; refusing to send %s: %s", suffix, device_id)
             return None
         return device

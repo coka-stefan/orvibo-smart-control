@@ -130,7 +130,7 @@ def _sync_device_registry_names(hass: HomeAssistant, devices: list[dict]) -> int
 
 
 def _device_label(device_id: str, name: str, room: str) -> str:
-    """设备标签：名称 + 房间。"""
+    """Device label: name + room."""
     if room and room != name:
         return f"{name} [{room}]"
     return name or device_id[-8:]
@@ -148,9 +148,9 @@ def _device_option_label(device: dict) -> str:
         profile.registration_only
         and profile.category != DeviceCategory.UNKNOWN
     ):
-        return f"{label}（已识别：{profile.info.label}，暂未支持）"
+        return f"{label} (recognized; not yet supported)"
     if profile.category == DeviceCategory.UNKNOWN:
-        return f"{label}（未识别，暂未支持）"
+        return f"{label} (unrecognized; not yet supported)"
     return label
 
 
@@ -181,7 +181,18 @@ def _device_selection_schema(
             options = [
                 selector.SelectOptionDict(
                     value=group.all_value,
-                    label=f"全部{group.label}",
+                    label="Select all " + {
+                        "lights": "lights",
+                        "switches": "switches",
+                        "curtains": "curtains",
+                        "clothes_horse": "clothes dryers",
+                        "climate": "heating and cooling devices",
+                        "ventilation": "ventilation devices",
+                        "sensors": "sensors",
+                        "locks": "locks",
+                        "cameras": "cameras",
+                        "other": "other devices",
+                    }.get(group.key, "devices"),
                 ),
                 *device_options,
             ]
@@ -209,7 +220,7 @@ async def _fetch_devices(
     family_id: str,
     cloud: CloudEndpoint = CHINA_CLOUD,
 ) -> list[dict]:
-    """拉取设备列表（含房间信息），过滤隐藏类别。"""
+    """Fetch the device list with room information and filter hidden categories."""
     client = None
     try:
         client = HttpsClient(
@@ -225,7 +236,7 @@ async def _fetch_devices(
         data = await client.fetch_device_status()
         devices = client.parse_device_status_list(data) if data else []
     except Exception as e:
-        _LOGGER.debug("获取设备列表失败: %s", e)
+        _LOGGER.debug("Failed to fetch device list: %s", e)
         return []
     finally:
         if client:
@@ -290,7 +301,7 @@ async def _validate_updated_credentials(
             return None
         detected_cloud = client.cloud
     except Exception:
-        _LOGGER.debug("重新登录验证失败", exc_info=True)
+        _LOGGER.debug("Re-login validation failed", exc_info=True)
         return None
     finally:
         if client:
@@ -305,7 +316,7 @@ async def _validate_updated_credentials(
             family_id,
         )
     except Exception:
-        _LOGGER.debug("SSL 重新登录验证失败", exc_info=True)
+        _LOGGER.debug("SSL re-login validation failed", exc_info=True)
         return None
     if not valid:
         return None
@@ -365,7 +376,7 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         lan_password
                     )
 
-                # 临时 client 用于验证登录并获取家庭列表
+                # A temporary client validates the login and retrieves the family list
                 temp_client = None
                 try:
                     self._password_hash = password_hash(password)
@@ -377,15 +388,15 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     success = await temp_client.async_detect_cloud()
 
                     if success:
-                        # 保存数据到 self，后续步骤使用
+                        # Save the data on self for use in later steps
                         self._username = username
                         self._family_list = temp_client.family_list
                         self._family_id = temp_client.family_id
                         self._family_name = temp_client.family_name
                         self._cloud = temp_client.cloud
 
-                        # 前置认证校验：拿到第一个家庭 ID 后立即做 SSL 探针，
-                        # 密码错误时在凭据表单直接提示，不再展示家庭列表
+                        # Pre-authentication check: run an SSL probe as soon as the first family ID is available,
+                        # so password errors appear on the credentials form instead of showing the family list
                         probe_family_id = (
                             str(self._family_list[0]["familyId"])
                             if self._family_list
@@ -400,7 +411,7 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else:
                         errors["base"] = "auth_failed"
                 except Exception as e:
-                    _LOGGER.error(f"登录验证失败: {e}")
+                    _LOGGER.error(f"Login validation failed: {e}")
                     errors["base"] = "auth_failed"
                 finally:
                     if temp_client:
@@ -440,7 +451,7 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_family(self, user_input: Optional[dict] = None) -> FlowResult:
-        """选择家庭步骤"""
+        """Family selection step."""
         errors: dict[str, str] = {}
         
         if user_input is not None:
@@ -453,14 +464,14 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         break
                 return await self.async_step_devices()
 
-        # 构建家庭选择列表
+        # Build the family selection list
         family_choices = {
             f["familyId"]: f"{f['familyName']} ({f['familyId'][:8]}...)"
             for f in self._family_list
         }
         
         if len(family_choices) == 1:
-            # 只有一个家庭，直接使用
+            # Use the only family directly
             self._family_id = list(family_choices.keys())[0]
             return await self.async_step_devices()
 
@@ -478,7 +489,7 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_devices(
         self, user_input: Optional[dict] = None
     ) -> FlowResult:
-        """选择要接入 Home Assistant 的设备。"""
+        """Select the devices to add to Home Assistant."""
         errors: dict[str, str] = {}
         if not self._devices:
             self._devices = await _fetch_devices(
@@ -529,13 +540,13 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: Optional[dict] = None
     ) -> FlowResult:
-        """开始重新认证（凭据失效时由 Home Assistant 自动触发）。"""
+        """Start reauthentication, triggered automatically by Home Assistant when credentials expire."""
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: Optional[dict] = None
     ) -> FlowResult:
-        """输入新密码并更新配置项。"""
+        """Enter a new password and update the config entry."""
         errors: dict[str, str] = {}
         entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         if entry is None:
@@ -584,11 +595,11 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _probe_ssl_login(self, family_id: str) -> bool:
-        """用 SSL 二进制登录校验密码真实有效。
+        """Validate the password with an SSL binary login.
 
-        REST OAuth 不校验密码（任意密码都返回 token），真正的校验点在
-        10002 端口 SSL 登录。仅当服务器明确拒绝（status 非空且非 0）时
-        判定为认证失败；网络/超时类失败不阻塞配置流程。
+        REST OAuth does not validate passwords (it returns a token for any password); the actual check is
+        the SSL login on port 10002. Treat it as an authentication failure only when the server explicitly rejects it (status is non-empty and non-zero).
+        Network and timeout failures do not block the config flow.
         """
         return await _probe_ssl_credentials(
             self.hass,
@@ -599,8 +610,8 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _create_entry(self) -> FlowResult:
-        """创建配置条目"""
-        # 找到家庭列表中的用户ID（临时 client 已关闭，使用暂存数据）
+        """Create the config entry."""
+        # Find the user ID in the family list; the temporary client is closed, so use the staged data
         await self.async_set_unique_id(self._username)
         self._abort_if_unique_id_configured()
         
@@ -624,11 +635,11 @@ class OrviboSmartControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
-    """重新选择接入的设备。"""
+    """Reselect the devices to add."""
 
     def __init__(self, config_entry):
-        # 新版 HA 将 OptionsFlow.config_entry 暴露为只读属性；
-        # 用私有字段保存工厂参数，兼容新旧版本。
+        # Newer HA versions expose OptionsFlow.config_entry as a read-only property;
+        # store factory parameters in a private field for compatibility with older and newer versions.
         self._config_entry = config_entry
         self._devices: list[dict] = []
 
@@ -958,7 +969,7 @@ class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_reauth(self, user_input=None):
-        """主动更新密码，同时保留当前配置项及全部实体设置。"""
+        """Update the password while preserving the current config entry and all entity settings."""
         errors: dict[str, str] = {}
         username = str(self._config_entry.data.get(CONF_USERNAME, ""))
 
@@ -1028,7 +1039,7 @@ class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_lock_users(self, user_input=None):
-        """编辑门锁 userId → 名称 映射（每行 用户ID=名称）。"""
+        """Edit the lock userId -> name mapping (one user ID=name per line)."""
         if user_input is not None:
             options = dict(self._config_entry.options)
             options[CONF_LOCK_USER_NAMES] = parse_lock_user_names(
@@ -1093,7 +1104,7 @@ class OrviboSmartControlOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_devices(self, user_input=None):
-        """重新选择要接入的设备。"""
+        """Reselect the devices to add."""
         errors: dict[str, str] = {}
         if not self._devices:
             self._devices = await _fetch_devices(

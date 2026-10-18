@@ -1,14 +1,14 @@
-"""纯协议层：Orvibo REST API 数据模型与签名/解析函数。
+"""Pure protocol layer: Orvibo REST API data models, signing, and parsing functions.
 
-零外部依赖（仅 Python 标准库），可在无 Home Assistant 环境下独立测试。
+No external dependencies beyond the Python standard library; can be tested without Home Assistant.
 
-包含：
-- OrviboDevice dataclass（标准化设备描述）
-- OrviboFamily dataclass（标准化家庭描述）
-- 签名函数（password_hash / sign_request）
-- 请求构建（build_family_request / build_readtable_request）
-- 响应解析（parse_families / parse_readtable_devices）
-- 二进制协议设备提取（extract_devices）
+Includes:
+- OrviboDevice dataclass (normalized device description)
+- OrviboFamily dataclass (normalized family description)
+- Signing functions (password_hash / sign_request)
+- Request builders (build_family_request / build_readtable_request)
+- Response parsers (parse_families / parse_readtable_devices)
+- Device extraction from the binary protocol (extract_devices)
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ _PASSWORD_HASH_PATTERN: Final = re.compile(r"^[A-F0-9]{32}$")
 
 @dataclass(frozen=True, slots=True)
 class OrviboFamily:
-    """一个 Orvibo 家庭。"""
+    """An Orvibo family."""
 
     family_id: str
     name: str
@@ -35,25 +35,25 @@ class OrviboFamily:
 
 @dataclass(frozen=True, slots=True)
 class OrviboDevice:
-    """标准化设备描述（从 readtable 或 binary 协议提取）。"""
+    """Normalized device description extracted from readtable or the binary protocol."""
 
     uid: str                     # deviceId
     name: str                    # deviceName
     model: str                   # model / modelName
-    device_type: str             # deviceType (字符串)
-    sub_device_type: str         # subDeviceType (字符串)
-    room: str                    # 房间名（从 roomId 映射）
-    parent_uid: str              # 网关 parentId
-    online: bool | None          # 在线状态
-    cloud_uid: str = ""          # uid（硬件 UID，与 deviceId 不同）
+    device_type: str             # deviceType (string)
+    sub_device_type: str         # subDeviceType (string)
+    room: str                    # Room name (mapped from roomId)
+    parent_uid: str              # Gateway parentId
+    online: bool | None          # Online state
+    cloud_uid: str = ""          # Hardware uid (different from deviceId)
     value1: int | None = None
     value2: int | None = None
     value3: int | None = None
     value4: int | None = None
-    class_id: int | None = None  # classId（部分设备通过 classId 识别）
+    class_id: int | None = None  # Some devices are identified by classId
     ui_model: str = ""           # ui.model
-    room_name: str = ""          # 直接从设备条目读取的 roomName（备选）
-    ext_addr: str = ""           # extAddr（Zigbee 地址；旧摄像机中作为 DID）
+    room_name: str = ""          # roomName read directly from the device record (fallback)
+    ext_addr: str = ""           # extAddr (Zigbee address; used as DID by legacy cameras)
     status_id: str = ""
     app_device_id: str = ""
     gateway_id: str = ""
@@ -61,13 +61,13 @@ class OrviboDevice:
     device_flag: int | None = None
     endpoint: int = 0
     properties: Mapping[str, Any] = field(default_factory=dict)
-    camera_type: int | None = None  # CameraInfo.type，与 Device.deviceType 不同
+    camera_type: int | None = None  # CameraInfo.type, distinct from Device.deviceType
     room_id: str = ""
     status: Mapping[str, Any] = field(default_factory=dict)
 
 
 def password_hash(password: str) -> str:
-    """返回 Orvibo 要求的大写 MD5 密码哈希。"""
+    """Return the uppercase MD5 password hash required by Orvibo."""
     return hashlib.md5(password.encode("utf-8")).hexdigest().upper()  # noqa: S324
 
 
@@ -95,7 +95,7 @@ def migrate_password_credentials(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _sign_request(body: Mapping[str, Any]) -> str:
-    """对 Orvibo REST 请求进行 HMAC-SHA256 签名。"""
+    """Sign an Orvibo REST request with HMAC-SHA256."""
     canonical = "&".join(f"{key}={body[key]}" for key in sorted(body))
     canonical = f"{canonical}&key={_HMAC_SECRET}"
     return hmac.new(
@@ -111,7 +111,7 @@ def build_family_request(
     timestamp_ms: int,
     nonce: int,
 ) -> dict[str, str]:
-    """构建带签名的家庭列表请求体。"""
+    """Build a signed family-list request body."""
     body = {
         "accessToken": access_token,
         "userId": user_id,
@@ -132,7 +132,7 @@ def build_readtable_request(
     nonce: str,
     version: str = "5.2.6.302",
 ) -> dict[str, Any]:
-    """构建 /v2/cmd/app/readtable 请求体。"""
+    """Build a /v2/cmd/app/readtable request body."""
     body: dict[str, Any] = {
         "accessToken": access_token,
         "dataType": "all",
@@ -153,7 +153,7 @@ def build_readtable_request(
 
 
 def _first_text(item: Mapping[str, Any], keys: tuple[str, ...]) -> str:
-    """按优先级返回第一个非空字符串字段值。"""
+    """Return the first non-empty string field value by priority."""
     for key in keys:
         value = item.get(key)
         if value not in (None, ""):
@@ -188,7 +188,7 @@ def _parse_room(
     item: Mapping[str, Any],
     room_names: Mapping[str, str],
 ) -> str:
-    """从设备条目中提取房间名（优先 roomName 字段，再按 roomId 映射）。"""
+    """Extract the room name from a device record, preferring roomName and then mapping roomId."""
     room_name = _first_text(item, ("roomName", "room"))
     if room_name:
         return room_name
@@ -199,7 +199,7 @@ def _parse_room(
 
 
 def parse_families(payload: Mapping[str, Any]) -> tuple[OrviboFamily, ...]:
-    """归一化家庭响应解析（兼容多种字段名）。"""
+    """Normalize family response parsing across alternate field names."""
     raw: Any = payload.get("data", [])
     if isinstance(raw, Mapping):
         raw = raw.get("families") or raw.get("familyList") or raw.get("list") or []
@@ -348,9 +348,9 @@ def _readtable_properties(
 def parse_readtable_devices(
     payload: Mapping[str, Any],
 ) -> tuple[OrviboDevice, ...]:
-    """解析 /v2/cmd/app/readtable 响应，返回归一化的设备列表。
+    """Parse a /v2/cmd/app/readtable response and return a normalized device list.
 
-    支持设备、状态、房间表联合查询；cameraInfo[] 只按设备 uid 补充 SDK 类型。
+    Supports combined queries for devices, states, and rooms; cameraInfo[] only adds the SDK type by device uid.
     """
     data = payload.get("data")
     if not isinstance(data, Mapping):
@@ -409,11 +409,11 @@ def parse_readtable_devices(
         if "properties" in status:
             status["properties"] = copy.deepcopy(properties)
 
-        # 提取 ui.model
+        # Extract ui.model
         ui = item.get("ui", {})
         ui_model = ui.get("model", "") if isinstance(ui, dict) else ""
 
-        # 提取 classId（可能在 properties.Descriptor 里）
+        # Extract classId (which may be under properties.Descriptor)
         class_id: int | None = _safe_int(item.get("classId"))
         if class_id is None:
             if isinstance(properties, dict):
@@ -477,12 +477,12 @@ def parse_readtable_devices(
 
 
 def extract_devices(payloads: Any) -> tuple[OrviboDevice, ...]:
-    """从二进制协议（cmd=147/230）递归提取设备列表。
+    """Recursively extract the device list from binary protocol packets (cmd=147/230).
 
-    处理多种 payload 结构：
+    Handles several payload structures:
     - {cmd: 147, tableNameList: [{tableName: "device", dataList: [...]}]}
     - {cmd: 230, deviceList: [...]}
-    - 嵌套根数据
+    - Nested root data
     """
     devices: dict[str, OrviboDevice] = {}
     room_names: dict[str, str] = {}
@@ -660,12 +660,12 @@ def extract_devices(payloads: Any) -> tuple[OrviboDevice, ...]:
     )
 
 
-# --- 兼容函数：将 OrviboDevice 转换为现有 https_client 的 dict 格式 ---
+# --- Compatibility helpers: convert OrviboDevice to the existing https_client dict format ---
 
 def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
-    """将 OrviboDevice 转为 https_client.parse_device_status_list 兼容的 dict。
+    """Convert OrviboDevice to a dict compatible with https_client.parse_device_status_list.
 
-    这样 coordinator 和数据平台层无需改动。
+    This avoids changes to the coordinator and data platform layers.
     """
     _initial_state = _infer_initial_state(device)
     return {
@@ -690,7 +690,7 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
         "position": device.value1 if device.value1 is not None else 0,
         "brightness": device.value2,
         "color_temp": device.value3,
-        "fan_speed": "停",
+        "fan_speed": 'Off',
         "temperature": None,
         "properties": dict(device.properties),
         "endpoint": device.endpoint,
@@ -705,15 +705,15 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
 
 
 def _infer_ha_device_type(device: OrviboDevice) -> str:
-    """根据 device_type 推断 HA 平台类型（兼容 const.DEVICE_TYPE_MAP 逻辑）。
+    """Infer the HA platform from device_type, matching the const.DEVICE_TYPE_MAP logic.
 
-    注：这是一个常量映射的内联版，与 const.DEVICE_TYPE_MAP 保持一致。
-    需要同步更新 const.py 的 DEVICE_TYPE_MAP 时也更新这里。
+    Note: this inline constant map must stay in sync with const.DEVICE_TYPE_MAP.
+    Update this mapping whenever const.py DEVICE_TYPE_MAP changes.
     """
     _DEVICE_TYPE_MAP_INLINE = {
         1: "light", 34: "cover", 35: "cover", 36: "climate", 38: "light",
-        43: "switch",  # COCO智能插线板
-        14: "sensor", 162: "sensor",  # 摄像机/NVR：仅 SDK 诊断
+        43: "switch",  # COCO smart power strip
+        14: "sensor", 162: "sensor",  # Camera/NVR: SDK diagnostics only
         46: "sensor", 52: "clothes_horse",
         25: "sensor", 26: "sensor", 27: "sensor", 56: "sensor",
         54: "sensor", 501: "light", 502: "light",
@@ -742,7 +742,7 @@ def _infer_ha_device_type(device: OrviboDevice) -> str:
             else "unknown"
         )
     if dt == 10086:
-        # 虚拟灯组尚未完成控制协议真机验证，只保留登记信息。
+        # Virtual light groups are listed for discovery only until their control protocol is verified on hardware.
         return "unknown"
     if dt == 300:
         return "climate" if sub == 481 else "sensor" if sub == 491 else "unknown"
@@ -764,28 +764,28 @@ def _infer_ha_device_type(device: OrviboDevice) -> str:
 
 
 def _infer_initial_state(device: OrviboDevice) -> bool:
-    """根据 device_type 和 value1 推断初始开关状态。"""
+    """Infer the initial switch state from device_type and value1."""
     dt = _safe_int(device.device_type)
     v1 = device.value1
     if v1 is None:
         return False
-    if dt in (1, 102, 38, 503, 0, 43):  # 43=COCO插线板 active-low
+    if dt in (1, 102, 38, 503, 0, 43):  # 43=COCO power strip (active-low)
         return int(v1) == 0  # active-low
     if dt in (135, 136, 137, 143, 518):
         return int(v1) == 1  # active-high
     if dt == 112:
         return bool(int(v1) & 0x08)
     if dt in (34, 52):
-        return int(v1) > 0  # 窗帘位置 >0 为开
+        return int(v1) > 0  # Curtain position >0 means open
     return False
 
 
 def parse_readtable_to_device_dicts(
     payload: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    """解析 readtable 返回，直接生成兼容 https_client 的 dict 列表。
+    """Parse a readtable response and produce dicts compatible with https_client.
 
-    这是 https_client.parse_device_status_list() 的纯函数替代。
+    This is a pure-function replacement for https_client.parse_device_status_list().
     """
     devices = parse_readtable_devices(payload)
     return [device_to_dict(d) for d in devices]
@@ -794,7 +794,7 @@ def parse_readtable_to_device_dicts(
 def parse_families_to_dicts(
     payload: Mapping[str, Any],
 ) -> list[dict[str, str]]:
-    """解析家庭列表，返回兼容 https_client.family_list 的 dict 列表。"""
+    """Parse the family list and return dicts compatible with https_client.family_list."""
     families = parse_families(payload)
     return [
         {"familyId": f.family_id, "familyName": f.name} for f in families
@@ -804,7 +804,7 @@ def parse_families_to_dicts(
 def parse_readtable_rooms(
     payload: Mapping[str, Any],
 ) -> dict[str, str]:
-    """从 readtable 响应中提取 roomId → roomName 映射。"""
+    """Extract the roomId -> roomName mapping from a readtable response."""
     data = payload.get("data")
     if not isinstance(data, Mapping):
         return {}

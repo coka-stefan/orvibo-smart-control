@@ -1,4 +1,4 @@
-"""SSL 长连接连通性诊断：逐段测试 DNS/TCP/TLS/HELLO，定位失败环节。"""
+"""Diagnose SSL persistent connectivity by checking DNS, TCP, TLS, and HELLO in sequence."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from core.const import (  # noqa: E402
 
 
 async def main() -> None:
-    print("1) DNS 解析", SSL_HOST)
+    print("1) Resolve DNS", SSL_HOST)
     try:
         print("   ->", socket.gethostbyname(SSL_HOST))
     except Exception as e:
-        print("   ❌ DNS 失败:", repr(e))
+        print("   ❌ DNS lookup failed:", repr(e))
         return
 
     t0 = time.time()
@@ -31,11 +31,11 @@ async def main() -> None:
         r, w = await asyncio.wait_for(
             asyncio.open_connection(SSL_HOST, SSL_PORT), timeout=10
         )
-        print(f"2) TCP 连接 OK（{time.time()-t0:.1f}s）")
+        print(f"2) TCP connected ({time.time()-t0:.1f}s)")
         w.close()
     except Exception as e:
-        print(f"2) ❌ TCP 连接失败（{time.time()-t0:.1f}s）: {e!r}")
-        print("   提示：若此处超时，说明本机到 china.orvibo.com:10002 的网络不通")
+        print(f"2) ❌ TCP connection failed ({time.time()-t0:.1f}s): {e!r}")
+        print("   Note: a timeout here means this machine cannot reach china.orvibo.com:10002")
         return
 
     try:
@@ -52,10 +52,10 @@ async def main() -> None:
             ),
             timeout=12,
         )
-        print(f"3) TLS 握手 OK（{time.time()-t0:.1f}s）")
+        print(f"3) TLS handshake succeeded ({time.time()-t0:.1f}s)")
     except Exception as e:
-        print(f"3) ❌ TLS 握手失败: {e!r}")
-        print("   提示：证书/CA 不匹配，或端口被中间设备拦截")
+        print(f"3) ❌ TLS handshake failed: {e!r}")
+        print("   Note: the certificate/CA may not match, or an intermediary may block the port")
         return
 
     try:
@@ -69,11 +69,11 @@ async def main() -> None:
         ln = HomematePacket.parse_length(hdr)
         body = await asyncio.wait_for(r2.readexactly(ln - 42), timeout=10)
         pkt = HomematePacket(hdr + body, {"": DEFAULT_KEY.encode()})
-        print("4) HELLO 响应:", pkt.json_payload)
+        print("4) HELLO response:", pkt.json_payload)
         w2.close()
-        print("\n[OK] 全部通过：SSL 长连接可用")
+        print("\n[OK] All checks passed: SSL persistent connection is available")
     except Exception as e:
-        print(f"4) [FAIL] HELLO 交互失败: {e!r}")
+        print(f"4) [FAIL] HELLO interaction failed: {e!r}")
 
 
 if __name__ == "__main__":

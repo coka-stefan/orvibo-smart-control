@@ -21,7 +21,7 @@ SPEC.loader.exec_module(control)
 
 
 class ControlTests(unittest.TestCase):
-    # ---- 窗帘 ----
+    # ---- Curtains ----
 
     def test_curtain_positions(self) -> None:
         self.assertEqual(control.curtain_position_command(100).value1, 100)
@@ -32,7 +32,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(control.curtain_position_from_orvibo(0), 0)
         self.assertIsNone(control.curtain_position_from_orvibo(101))
 
-    # ---- 开关（set property） ----
+    # ---- Switches (set property) ----
 
     def test_switch_power(self) -> None:
         on = control.switch_power_command(True)
@@ -41,10 +41,10 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(on.properties, {"onoff": {"status": "on"}})
         self.assertEqual(off.properties, {"onoff": {"status": "off"}})
 
-    # ---- 灯控制（order=on/off） ----
+    # ---- Light control (order=on/off) ----
 
     def test_light_power_mapping_active_low(self) -> None:
-        """验证 active-low 控制：value1=0 开, value1=1 关。"""
+        """Verify active-low control: value1=0 is on; value1=1 is off."""
         on = control.light_power_command(True, 128, 262)
         off = control.light_power_command(False, 128, 262)
         self.assertEqual((on.order, on.value1, on.value2, on.value3),
@@ -72,7 +72,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual((cmd.order, cmd.value1, cmd.value2, cmd.value3),
                          ("fast color temperature", 0, 146, 250))
 
-    # ---- Zigbee 调光灯（type=0, subType=-2） ----
+    # ---- Zigbee dimmable lights (type=0, subType=-2) ----
 
     def test_zigbee_dimmable_light_power(self) -> None:
         on = control.zigbee_dimmable_light_power_command(True, 200)
@@ -90,13 +90,13 @@ class ControlTests(unittest.TestCase):
     def test_zigbee_dimmable_is_on(self) -> None:
         self.assertTrue(control.zigbee_dimmable_is_on(0, -2))
         self.assertFalse(control.zigbee_dimmable_is_on(1, -2))
-        # subType != -2 时 active-high
+        # subType != -2 uses active-high values
         self.assertTrue(control.zigbee_dimmable_is_on(1, 0))
         self.assertFalse(control.zigbee_dimmable_is_on(0, 0))
         self.assertIsNone(control.zigbee_dimmable_is_on(None, -2))
         self.assertIsNone(control.zigbee_dimmable_is_on(2, -2))
 
-    # ---- Fast Move 调光调色灯 ----
+    # ---- Fast Move dimmable color-temperature lights ----
 
     def test_fast_move_light_power(self) -> None:
         on = control.fast_move_light_power_command(True, 128, 250)
@@ -116,7 +116,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual((cmd.order, cmd.value1, cmd.value2, cmd.value3),
                          ("fast color temperature", 0, 128, 250))
 
-    # ---- 色温灯（set property, type=503） ----
+    # ---- Color-temperature lights (set property, type=503) ----
 
     def test_cct_light_power(self) -> None:
         self.assertEqual(control.cct_light_power_command(True).properties,
@@ -133,13 +133,13 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(cmd.properties,
                          {"colorTemp": {"value": 4000}})
 
-    # ---- 可调光灯（type=502） ----
+    # ---- Dimmable lights (type=502) ----
 
     def test_dimmable_light_brightness(self) -> None:
         cmd = control.dimmable_light_brightness_command(75)
         self.assertEqual(cmd.properties, {"brightness": {"percent": 75}})
 
-    # ---- 空调 ----
+    # ---- Air conditioning ----
 
     def test_fan_coil_ac_power(self) -> None:
         on = control.fan_coil_ac_power_command(True, 3, 1, 2500 << 16)
@@ -174,7 +174,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual((cmd.order, cmd.value1, cmd.value2, cmd.value3, cmd.value4),
                          ("wind setting", 0, 3, 1, 2500 << 16))
 
-    # ---- 新风 ----
+    # ---- Ventilation ----
 
     def test_ventilation_command(self) -> None:
         self.assertEqual(control.ventilation_command(0).value1, 0)
@@ -182,12 +182,12 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(control.ventilation_command(100).value1, 100)
 
     def test_ventilation_fan_speed_from_value1(self) -> None:
-        self.assertEqual(control.ventilation_fan_speed_from_value1(0), "慢")
-        self.assertEqual(control.ventilation_fan_speed_from_value1(50), "停")
-        self.assertEqual(control.ventilation_fan_speed_from_value1(100), "快")
+        self.assertEqual(control.ventilation_fan_speed_from_value1(0), "Low")
+        self.assertEqual(control.ventilation_fan_speed_from_value1(50), "Off")
+        self.assertEqual(control.ventilation_fan_speed_from_value1(100), "High")
         self.assertIsNone(control.ventilation_fan_speed_from_value1(None))
 
-    # ---- 色温转换 ----
+    # ---- Color-temperature conversion ----
 
     def test_kelvin_to_mired(self) -> None:
         self.assertEqual(control.kelvin_to_mired(4000), 250)
@@ -222,7 +222,7 @@ class ControlTests(unittest.TestCase):
         self.assertIn("properties", payload)
         self.assertEqual(payload["properties"], {"onoff": {"status": "on"}})
 
-    # ---- 状态解析函数 ----
+    # ---- State parsing ----
 
     def test_light_is_on_from_value1(self) -> None:
         self.assertTrue(control.light_is_on_from_value1(0))
@@ -272,33 +272,33 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(control.clamp_brightness(255, max_val=100), 100)
 
 
-    # ---- 空调控制 order 验证（v0.2.0 修复：对齐抓包 order） ----
+    # ---- Air-conditioning orders (v0.2.0 fix: match captured commands) ----
 
     def test_ac_power_on_uses_order_on(self) -> None:
-        """AC 开机使用 order='on'（非 'set property'）。"""
+        """AC power-on uses order='on' rather than 'set property'."""
         cmd = control.fan_coil_ac_power_command(True, 3, 1, 2500 << 16)
         self.assertEqual(cmd.order, "on")
         self.assertEqual(cmd.value1, 0)
 
     def test_ac_power_off_uses_order_off(self) -> None:
-        """AC 关机使用 order='off'（非 'set property'）。"""
+        """AC power-off uses order='off' rather than 'set property'."""
         cmd = control.fan_coil_ac_power_command(False, 3, 1, 2500 << 16)
         self.assertEqual(cmd.order, "off")
         self.assertEqual(cmd.value1, 1)
 
     def test_ac_mode_setting_order(self) -> None:
-        """AC 切模式使用 order='mode setting'。"""
+        """AC mode changes use order='mode setting'."""
         cmd = control.fan_coil_ac_mode_command(4, 2800 << 16)
         self.assertEqual(cmd.order, "mode setting")
         self.assertEqual(cmd.value2, 4)
 
     def test_ac_temperature_setting_order(self) -> None:
-        """AC 设温使用 order='temperature setting'。"""
+        """AC temperature changes use order='temperature setting'."""
         cmd = control.fan_coil_ac_temperature_command(3, 1, 2500 << 16)
         self.assertEqual(cmd.order, "temperature setting")
 
     def test_ac_fan_speed_setting_order(self) -> None:
-        """AC 风速使用 order='wind setting'。"""
+        """AC fan-speed changes use order='wind setting'."""
         cmd = control.fan_coil_ac_fan_speed_command(3, 2, 2500 << 16)
         self.assertEqual(cmd.order, "wind setting")
         self.assertEqual(cmd.value3, 2)

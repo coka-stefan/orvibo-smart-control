@@ -783,7 +783,7 @@ def _catalog_for_args(
     if not path.exists():
         if required:
             raise ValueError(f"device catalog does not exist: {path}")
-        print(f"提示：未找到设备目录，跳过产品名关联：{path}")
+        print(f"Note: device catalog not found; skipping product name association: {path}")
         return None, ""
     return _load_device_catalog(path), path.name
 
@@ -805,11 +805,11 @@ def enrich_existing(args: argparse.Namespace) -> int:
     report = _public_report(state, catalog, catalog_source=source)
     coverage = report["catalog"]
     print(
-        f"目录关联完成：设备记录={coverage['matched_device_records']}/"
+        f"Catalog association complete: device records={coverage['matched_device_records']}/"
         f"{coverage['matched_device_records'] + coverage['unmatched_device_records']} "
-        f"匹配率={coverage['device_record_match_rate']}%"
+        f"match rate={coverage['device_record_match_rate']}%"
     )
-    print(f"增强清单：{output_dir / 'unsupported-enriched.csv'}")
+    print(f"Enriched inventory: {output_dir / 'unsupported-enriched.csv'}")
     return 0
 
 
@@ -899,7 +899,7 @@ async def run(args: argparse.Namespace) -> int:
             else await client.ensure_login()
         )
         if not logged_in:
-            print("登录失败：请检查账号、密码和云端区域。", file=sys.stderr)
+            print("Login failed: check the account, password, and cloud region.", file=sys.stderr)
             return 2
 
         state_region = state.get("cloud_region")
@@ -922,8 +922,8 @@ async def run(args: argparse.Namespace) -> int:
         completed = set(state.get("processed_family_tags", []))
 
         print(
-            f"区域={active_region} 家庭数={len(families)} "
-            f"已完成={len(completed)} 输出={output_dir}"
+            f"Region={active_region} families={len(families)} "
+            f"completed={len(completed)} output={output_dir}"
         )
         for index, family in enumerate(families):
             family_id = _bounded_text(family.get("familyId"), 256)
@@ -933,7 +933,7 @@ async def run(args: argparse.Namespace) -> int:
                 f"{active_region}:{family_id}", salt, "family"
             )
             if family_tag in completed:
-                print(f"[{index + 1}/{len(families)}] 已跳过 {family_tag}")
+                print(f"[{index + 1}/{len(families)}] Skipped {family_tag}")
                 continue
 
             # A previously failed family is retried on resume; retain only its
@@ -944,7 +944,7 @@ async def run(args: argparse.Namespace) -> int:
                 if item.get("family_tag") != family_tag
             ]
 
-            print(f"[{index + 1}/{len(families)}] 拉取 {family_tag} ...", end=" ", flush=True)
+            print(f"[{index + 1}/{len(families)}] Fetching {family_tag} ...", end=" ", flush=True)
             try:
                 data = await _read_family(
                     client,
@@ -978,12 +978,12 @@ async def run(args: argparse.Namespace) -> int:
                     max_examples=args.max_examples,
                 )
                 if family_record["status"] == "empty":
-                    print("空家庭，已跳过")
+                    print("Empty family, skipped")
                 else:
                     print(
-                        f"设备={analysis['raw_device_count']} "
-                        f"未知/仅登记={analysis['counts'].get('registration_only', 0)} "
-                        f"解析遗漏={analysis['counts'].get('parser_gap', 0)}"
+                        f"devices={analysis['raw_device_count']} "
+                        f"unknown/registration only={analysis['counts'].get('registration_only', 0)} "
+                        f"parser gaps={analysis['counts'].get('parser_gap', 0)}"
                     )
             except Exception as exc:  # keep the multi-family audit moving
                 logging.getLogger(__name__).exception(
@@ -999,7 +999,7 @@ async def run(args: argparse.Namespace) -> int:
                     "normalized_device_count": 0,
                 }
                 state["families"].append(family_record)
-                print(f"失败={type(exc).__name__}")
+                print(f"failed={type(exc).__name__}")
 
             _write_outputs(
                 output_dir,
@@ -1023,22 +1023,22 @@ async def run(args: argparse.Namespace) -> int:
             1 for item in state["families"] if item.get("status") == "empty"
         )
         print(
-            "完成："
-            f"家庭={len(state['processed_family_tags'])} "
-            f"空家庭={empty_families} "
-            f"已验证={totals.get('supported_verified', 0)} "
-            f"未验证={totals.get('supported_unverified', 0)} "
-            f"隐藏={totals.get('hidden', 0)} "
-            f"仅识别={totals.get('recognized_only', 0)} "
-            f"平台不匹配={totals.get('platform_mismatch', 0)} "
-            f"未知/仅登记={totals.get('registration_only', 0)} "
-            f"解析遗漏={totals.get('parser_gap', 0)}"
+            "Complete: "
+            f"families={len(state['processed_family_tags'])} "
+            f"empty families={empty_families} "
+            f"verified={totals.get('supported_verified', 0)} "
+            f"unverified={totals.get('supported_unverified', 0)} "
+            f"hidden={totals.get('hidden', 0)} "
+            f"recognized only={totals.get('recognized_only', 0)} "
+            f"platform mismatch={totals.get('platform_mismatch', 0)} "
+            f"unknown/registration only={totals.get('registration_only', 0)} "
+            f"parser gaps={totals.get('parser_gap', 0)}"
         )
-        print(f"报告：{output_dir / 'report.json'}")
-        print(f"待支持清单：{output_dir / 'unsupported.csv'}")
+        print(f"Report: {output_dir / 'report.json'}")
+        print(f"Unsupported inventory: {output_dir / 'unsupported.csv'}")
         if catalog is not None:
             print(
-                f"目录增强清单：{output_dir / 'unsupported-enriched.csv'}"
+                f"Enriched inventory: {output_dir / 'unsupported-enriched.csv'}"
             )
         return 0
     finally:
@@ -1047,19 +1047,19 @@ async def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="自动切换所有家庭并审计 ORVIBO 设备支持情况。"
+        description="Switch through all families and audit ORVIBO device support."
     )
-    parser.add_argument("--username", help="账号；建议改用环境变量")
+    parser.add_argument("--username", help="Account name; environment variables are recommended.")
     parser.add_argument(
-        "--username-env", default="ORVIBO_USERNAME", help="账号环境变量名"
+        "--username-env", default="ORVIBO_USERNAME", help="Environment variable containing the account name."
     )
     parser.add_argument(
-        "--password-env", default="ORVIBO_PASSWORD", help="明文密码环境变量名"
+        "--password-env", default="ORVIBO_PASSWORD", help="Environment variable containing the plaintext password."
     )
     parser.add_argument(
         "--password-hash-env",
         default="ORVIBO_PASSWORD_HASH",
-        help="32 位协议密码摘要环境变量名，存在时优先使用",
+        help="Environment variable containing the 32-character protocol password digest; takes precedence when set.",
     )
     parser.add_argument(
         "--cloud", choices=("auto", "china", "global"), default="auto"
@@ -1071,17 +1071,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--device-catalog",
         type=Path,
         default=DEFAULT_DEVICE_CATALOG,
-        help="device_catalog.json 路径；存在时自动关联产品名",
+        help="Path to device_catalog.json; product names are associated when present.",
     )
     parser.add_argument(
         "--no-device-catalog",
         action="store_true",
-        help="禁用设备目录关联",
+        help="Disable device catalog association.",
     )
     parser.add_argument(
         "--enrich-existing",
         action="store_true",
-        help="仅补全已有输出，不登录或重新拉取家庭",
+        help="Only enrich existing output; do not log in or fetch families again.",
     )
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--retry-delay", type=float, default=1.0)
@@ -1090,7 +1090,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-families",
         type=int,
-        help="仅用于小规模试跑；默认处理全部家庭",
+        help="Use for a small trial; processes all families by default.",
     )
     parser.add_argument(
         "--log-level",
@@ -1117,15 +1117,15 @@ def main() -> int:
             return enrich_existing(args)
         return asyncio.run(run(args))
     except KeyboardInterrupt:
-        print("\n已中断；下次使用同一输出目录会从断点继续。", file=sys.stderr)
+        print("\nInterrupted; rerun with the same output directory to resume.", file=sys.stderr)
         return 130
     except (OSError, ValueError) as exc:
-        print(f"错误：{exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
     except ModuleNotFoundError as exc:
         if exc.name == "aiohttp":
             print(
-                "错误：缺少 aiohttp。请在用于运行脚本的 Python 环境中安装项目依赖："
+                "Error: aiohttp is missing. Install project dependencies in the Python environment used to run this script:"
                 " python -m pip install aiohttp",
                 file=sys.stderr,
             )

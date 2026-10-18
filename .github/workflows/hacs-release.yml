@@ -35,6 +35,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Check English-only text and compatibility exceptions
+        run: python tools/check_english.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
 

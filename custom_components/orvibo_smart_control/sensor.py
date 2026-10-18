@@ -1,12 +1,12 @@
-"""Orvibo 传感器平台。
+"""Orvibo sensor platform.
 
-支持设备类别：
-- MOTION_SENSOR (deviceType=26) 人体传感器
-- SMOKE_SENSOR (deviceType=27) 烟雾传感器
-- EMERGENCY_BUTTON (deviceType=56) 紧急按钮
-- DOOR_LOCK (deviceType=300) 智能门锁
-- TEMP_HUMIDITY_SENSOR (deviceType=300 subType=491) 温湿度传感器
-- DOOR_WINDOW_SENSOR (deviceType=46) 门窗传感器
+Supported device categories:
+- MOTION_SENSOR (deviceType=26) motion sensor
+- SMOKE_SENSOR (deviceType=27) smoke sensor
+- EMERGENCY_BUTTON (deviceType=56) emergency button
+- DOOR_LOCK (deviceType=300) smart lock
+- TEMP_HUMIDITY_SENSOR (deviceType=300 subType=491) temperature/humidity sensor
+- DOOR_WINDOW_SENSOR (deviceType=46) door/window sensor
 """
 import logging
 from typing import Optional
@@ -111,10 +111,10 @@ class OrviboSensorBase(CoordinatorEntity, SensorEntity):
 
 
 class OrviboDoorLockSensorBase(OrviboSensorBase):
-    """门锁状态类传感器。
+    """Lock state sensor.
 
-    门锁云端设备列表经常省略或错误填充 ``online``，但协调器仍能通过
-    SSL/云端收到状态。锁状态、电池和开锁事件应继续显示最近一次有效值。
+    The cloud device list often omits or misreports ``online``, but the coordinator can still receive updates through
+    SSL/cloud. Lock state, battery, and unlock events should keep showing the latest valid value.
     """
 
     @property
@@ -203,12 +203,12 @@ class OrviboCameraSdkSensor(OrviboSensorBase):
 
 
 class OrviboMotionBatterySensor(OrviboSensorBase):
-    """人体传感器 - 电量（deviceType=26）。"""
+    """Motion sensor battery level (deviceType=26)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_motion_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -224,12 +224,12 @@ class OrviboMotionBatterySensor(OrviboSensorBase):
 
 
 class OrviboTemperatureSensor(OrviboSensorBase):
-    """温湿度传感器 - 温度（deviceType=300 subType=491）。"""
+    """Temperature/humidity sensor temperature (deviceType=300 subType=491)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_temp_{self._device_id}"
-        self._attr_name = "温度"
+        self._attr_name = 'Temperature'
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "°C"
@@ -245,12 +245,12 @@ class OrviboTemperatureSensor(OrviboSensorBase):
 
 
 class OrviboHumiditySensor(OrviboSensorBase):
-    """温湿度传感器 - 湿度（deviceType=300 subType=491）。"""
+    """Temperature/humidity sensor humidity (deviceType=300 subType=491)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_humidity_{self._device_id}"
-        self._attr_name = "湿度"
+        self._attr_name = 'Humidity'
         self._attr_device_class = SensorDeviceClass.HUMIDITY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -266,12 +266,12 @@ class OrviboHumiditySensor(OrviboSensorBase):
 
 
 class OrviboBatterySensor(OrviboSensorBase):
-    """温湿度传感器 - 电量（deviceType=300 subType=491）。"""
+    """Temperature/humidity sensor battery level (deviceType=300 subType=491)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -287,12 +287,12 @@ class OrviboBatterySensor(OrviboSensorBase):
 
 
 class OrviboDoorWindowBatterySensor(OrviboSensorBase):
-    """门窗传感器 - 电量（deviceType=46）。"""
+    """Door/window sensor battery level (deviceType=46)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_door_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -308,12 +308,12 @@ class OrviboDoorWindowBatterySensor(OrviboSensorBase):
 
 
 class OrviboSmokeBatterySensor(OrviboSensorBase):
-    """烟雾传感器 - 电量（deviceType=27）。"""
+    """Smoke sensor battery level (deviceType=27)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_smoke_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -329,12 +329,12 @@ class OrviboSmokeBatterySensor(OrviboSensorBase):
 
 
 class OrviboEmergencyButtonBatterySensor(OrviboSensorBase):
-    """紧急按钮 - 电量（deviceType=56）。"""
+    """Emergency button battery level (deviceType=56)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_emergency_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -350,12 +350,12 @@ class OrviboEmergencyButtonBatterySensor(OrviboSensorBase):
 
 
 class OrviboWaterLeakBatterySensor(OrviboSensorBase):
-    """水浸探测器 - 电量（deviceType=54）。"""
+    """Water leak detector battery level (deviceType=54)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_water_leak_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -371,12 +371,12 @@ class OrviboWaterLeakBatterySensor(OrviboSensorBase):
 
 
 class OrviboGasBatterySensor(OrviboSensorBase):
-    """可燃气体探测器 - 电量（deviceType=25）。"""
+    """Combustible gas detector battery level (deviceType=25)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_gas_battery_{self._device_id}"
-        self._attr_name = "电量"
+        self._attr_name = 'Battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -413,12 +413,12 @@ class OrviboDoorLockBatterySensorBase(OrviboDoorLockSensorBase):
 
 
 class OrviboDoorLockDryBatterySensor(OrviboDoorLockBatterySensorBase):
-    """智能门锁 - 干电池电量（deviceType=522）。"""
+    """Smart lock disposable battery level (deviceType=522)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_door_lock_dry_battery_{self._device_id}"
-        self._attr_name = "干电池电量"
+        self._attr_name = 'Primary battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -443,12 +443,12 @@ class OrviboDoorLockDryBatterySensor(OrviboDoorLockBatterySensorBase):
 
 
 class OrviboDoorLockLithiumBatterySensor(OrviboDoorLockBatterySensorBase):
-    """智能门锁 - 锂电池电量（deviceType=522）。"""
+    """Smart lock lithium battery level (deviceType=522)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_door_lock_lithium_battery_{self._device_id}"
-        self._attr_name = "锂电池电量"
+        self._attr_name = 'Rechargeable battery'
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -473,7 +473,7 @@ class OrviboDoorLockLithiumBatterySensor(OrviboDoorLockBatterySensorBase):
 
 
 class OrviboDoorLockStateSensor(OrviboDoorLockSensorBase):
-    """智能门锁 - 锁状态（已上锁/未上锁/门内已反锁/异常，绑定门磁）。"""
+    """Smart lock state (locked/unlocked/deadbolted from inside/inconsistent, with a bound door contact)."""
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["locked", "unlocked", "inside_locked", "abnormal"]
@@ -482,7 +482,7 @@ class OrviboDoorLockStateSensor(OrviboDoorLockSensorBase):
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_door_lock_state_{self._device_id}"
-        self._attr_name = "锁状态"
+        self._attr_name = 'Lock state'
         self._attr_icon = "mdi:lock"
 
     @property
@@ -502,12 +502,12 @@ class OrviboDoorLockStateSensor(OrviboDoorLockSensorBase):
 
 
 class OrviboDoorLockUnlockSensor(OrviboDoorLockSensorBase):
-    """智能门锁 - 开锁事件（状态直接显示"xxx开门"）。"""
+    """Smart lock unlock event (state displays "xxx door opened")."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_door_lock_unlock_{self._device_id}"
-        self._attr_name = "开锁事件"
+        self._attr_name = 'Unlock event'
         self._attr_icon = "mdi:key"
 
     @property
@@ -516,7 +516,7 @@ class OrviboDoorLockUnlockSensor(OrviboDoorLockSensorBase):
 
         state = self.coordinator.get_device_state(self._device_id)
         if not state:
-            return "无"
+            return 'None'
         user_id = state.get("unlock_user_id")
         name = self.coordinator.lock_user_name(self._device_id, user_id, state.get("unlock_method"))
         return format_unlock_label(

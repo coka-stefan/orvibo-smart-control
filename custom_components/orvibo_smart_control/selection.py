@@ -1,7 +1,7 @@
 """Device selection and area mapping helpers for Orvibo config entries.
 
-参照 orvibo-cloud 的设计，支持用户在配置流程中选择要暴露的设备，
-并自动将 ORVIBO 房间映射到 Home Assistant 区域。
+Based on the orvibo-cloud design, this lets users choose which devices to expose in the config flow,
+and automatically maps ORVIBO rooms to Home Assistant areas.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ def parse_hidden_device_name_patterns(value: object) -> list[str]:
     """Normalize newline/comma-separated name patterns without duplicates."""
 
     if isinstance(value, str):
+        # Accept full-width comma and semicolon separators used in localized user input.
         candidates = re.split(r"[\r\n,，;；]+", value)
     elif isinstance(value, (list, tuple, set)):
         candidates = [str(item) for item in value]
@@ -99,7 +100,7 @@ def selected_device_ids(
 
 
 def device_is_selected(options: Mapping[str, Any], device_id: str) -> bool:
-    """检查某个设备是否被选中。"""
+    """Check whether a device is selected."""
     if CONF_SELECTED_DEVICE_IDS not in options:
         return True
     configured = options.get(CONF_SELECTED_DEVICE_IDS)
@@ -109,7 +110,7 @@ def device_is_selected(options: Mapping[str, Any], device_id: str) -> bool:
 
 
 def configured_device_areas(options: Mapping[str, Any]) -> dict[str, str | None]:
-    """返回配置的区域映射，过滤无效值。"""
+    """Return the configured area mapping, filtering invalid values."""
     configured = options.get(CONF_DEVICE_AREAS)
     if not isinstance(configured, Mapping):
         return {}

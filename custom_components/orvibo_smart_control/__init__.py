@@ -51,8 +51,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ("switch", "light", "cover", "sensor", "binary_sensor", "climate", "fan", "camera")
 
-# 本集成仅通过配置项使用，不读取 configuration.yaml。
-# 新版 HA 要求 empty_config_schema 传入 domain 参数。
+# This integration is configured through config entries and does not read configuration.yaml.
+# Newer HA versions require the domain argument for empty_config_schema.
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 
@@ -63,7 +63,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         migrated_data = migrate_password_credentials(entry.data)
     except ValueError:
-        _LOGGER.error("配置项缺少可迁移的 ORVIBO 登录凭据")
+        _LOGGER.error("Config entry is missing migratable ORVIBO login credentials")
         return False
     if entry.version < 3 or migrated_data != dict(entry.data):
         hass.config_entries.async_update_entry(
@@ -75,7 +75,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
-    """设置服务"""
+    """Set up services."""
     await async_register_card_resources(hass)
     await async_register_services(hass)
     return True
@@ -130,13 +130,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     )
 
     try:
-        _LOGGER.info("开始设置 Orvibo Mesh...")
+        _LOGGER.info("Setting up Orvibo Mesh...")
         await coordinator._async_setup()
-        _LOGGER.info("Coordinator 设置完成")
+        _LOGGER.info("Coordinator setup complete")
     except ConfigEntryAuthFailed:
         raise
     except Exception as e:
-        _LOGGER.error(f"Coordinator 设置失败: {e}", exc_info=True)
+        _LOGGER.error(f"Coordinator setup failed: {e}", exc_info=True)
         raise ConfigEntryNotReady from e
 
     detected_region = coordinator.https_client.cloud.region.value
@@ -147,7 +147,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
-    _LOGGER.info("Coordinator 已注册到 hass.data")
+    _LOGGER.info("Coordinator registered in hass.data")
 
     selected = selected_device_ids(options, coordinator.devices)
     if options.get(CONF_AVAILABILITY_NOTIFICATIONS, False):
@@ -189,13 +189,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         )
         entry.async_on_unload(update_task.cancel)
 
-    # 历史记录自动清理：保留 7 天，每周执行；卸载时取消定时任务
+    # Automatically clean up history: retain seven days, run weekly, and cancel the task on unload
     coordinator.start_history_cleanup()
     entry.async_on_unload(coordinator.stop_history_cleanup)
     coordinator.start_temp_password_cleanup()
     entry.async_on_unload(coordinator.stop_temp_password_cleanup)
 
-    # 使用 async_forward_entry_setups 一次性加载所有平台
+    # Load all platforms at once with async_forward_entry_setups
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     removed_registry_devices = sync_selected_device_registries(
@@ -203,12 +203,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     )
     if removed_registry_devices:
         _LOGGER.info(
-            "已从 Home Assistant 注册表移除 %s 个未选设备",
+            "Removed %s unselected devices from the Home Assistant registry",
             removed_registry_devices,
         )
 
     async def _apply_after_refresh():
-        """等待 coordinator 第一次刷新完成后再应用区域映射。"""
+        """Wait for the coordinator's first refresh before applying area mappings."""
         if not coordinator.last_update_success:
             await coordinator.async_refresh()
         await _async_assign_areas(hass, entry)
@@ -219,20 +219,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    _LOGGER.info("Orvibo Mesh 设置完成")
+    _LOGGER.info("Orvibo Mesh setup complete")
     return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry):
-    """当配置条目更新时重新应用区域映射。"""
-    _LOGGER.info("配置条目已更新，重新应用设备区域映射")
+    """Reapply area mappings when the config entry is updated."""
+    _LOGGER.info("Config entry updated; reapplying device area mappings")
     await _async_assign_areas(hass, entry)
     await _apply_device_areas(hass, entry)
     await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _async_assign_areas(hass: HomeAssistant, entry: ConfigEntry):
-    """将云端房间自动映射为 Home Assistant 区域（orvibo-lan 同款）。"""
+    """Automatically map cloud rooms to Home Assistant areas, as in orvibo-lan."""
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not coordinator:
         return
@@ -256,13 +256,13 @@ async def _async_assign_areas(hass: HomeAssistant, entry: ConfigEntry):
 
 
 async def _apply_device_areas(hass: HomeAssistant, entry: ConfigEntry):
-    """将配置的区域映射应用到 HA 设备注册表。"""
+    """Apply configured area mappings to the HA device registry."""
     device_areas = entry.options.get(CONF_DEVICE_AREAS, {})
     if not device_areas:
-        _LOGGER.debug("未配置设备区域映射")
+        _LOGGER.debug("No device area mappings configured")
         return
 
-    _LOGGER.debug(f"应用设备区域映射: {device_areas}")
+    _LOGGER.debug(f"Applying device area mappings: {device_areas}")
     
     device_registry = dr.async_get(hass)
     
@@ -272,29 +272,29 @@ async def _apply_device_areas(hass: HomeAssistant, entry: ConfigEntry):
         
         device = device_registry.async_get_device(identifiers={(DOMAIN, device_id)})
         if device:
-            _LOGGER.info(f"设置设备 {device_id} 的区域为 {area_id}")
+            _LOGGER.info(f"Setting area for device {device_id} to {area_id}")
             device_registry.async_update_device(
                 device.id,
                 area_id=area_id,
             )
         else:
-            _LOGGER.warning(f"未找到设备: {device_id}")
+            _LOGGER.warning(f"Device not found: {device_id}")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    _LOGGER.info("开始卸载 Orvibo Mesh...")
+    _LOGGER.info("Unloading Orvibo Mesh...")
     
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    _LOGGER.info(f"卸载结果: {unload_ok}")
+    _LOGGER.info(f"Unload result: {unload_ok}")
 
     if unload_ok:
         coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
         if coordinator:
             await async_cancel_video_probes(coordinator)
             await coordinator.async_cleanup()
-            _LOGGER.info("Coordinator 清理完成")
+            _LOGGER.info("Coordinator cleanup complete")
         hass_data = hass.data.get(DOMAIN, {})
         hass_data.pop(entry.entry_id, None)
-        _LOGGER.info("已从 hass.data 移除")
+        _LOGGER.info("Removed from hass.data")
 
     return unload_ok

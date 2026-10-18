@@ -34,12 +34,12 @@ class CapabilityRegistryTests(unittest.TestCase):
                 self.assertFalse(cap.controllable)
 
     def test_type300_follows_verified_cloud_device_semantics(self) -> None:
-        # 300/491 温湿度传感器：只读、不云专属
+        # 300/491 temperature and humidity sensor: read-only, not cloud-only.
         sensor = self.cap.capability_for_type(300, 491)
         self.assertTrue(sensor.status_only)
         self.assertFalse(sensor.cloud_only)
         self.assertEqual(sensor.channels, frozenset())
-        # 300/481 地暖：可云控、不云专属（云端实测定义）
+        # 300/481 underfloor heating: cloud-controllable, not cloud-only (confirmed by cloud testing).
         heating = self.cap.capability_for_type(300, 481)
         self.assertFalse(heating.status_only)
         self.assertFalse(heating.cloud_only)

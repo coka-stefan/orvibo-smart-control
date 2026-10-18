@@ -118,7 +118,7 @@ class StatusUpdateDispatcher:
         """Apply one inbound status packet and notify coordinator listeners."""
 
         _LOGGER.debug(
-            "收到状态更新(source=%s): device=%s cmd=%s",
+            "Received state update (source=%s): device=%s cmd=%s",
             source.name,
             self._device_label(incoming_device_id),
             raw_status.get("cmd"),
@@ -137,7 +137,7 @@ class StatusUpdateDispatcher:
         device_id = self.resolve_device_id(incoming_device_id, raw_status)
         if device_id is None:
             _LOGGER.debug(
-                "SSL 推送设备 %s 未匹配本地设备",
+                "SSL push for device %s did not match a local device",
                 self._device_label(incoming_device_id),
             )
             return

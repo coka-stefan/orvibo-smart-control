@@ -1,10 +1,10 @@
-"""门锁事件历史归档：截图/视频统一落盘到 media 目录，供回溯浏览。
+"""Lock event history archive: save snapshots and videos under the media directory for later review.
 
-目录结构：
-  config/media/orvibo_smart_control/<device_id>/<kind>_<时间戳>.(jpg|h264|mp4)
+Directory structure:
+  config/media/orvibo_smart_control/<device_id>/<kind>_<timestamp>.(jpg|h264|mp4)
 
-HA 媒体浏览器按目录/文件名自然形成时间倒序的历史列表；list_events
-服务动态扫描目录返回结构化记录，供自动化与自定义卡片使用。
+The HA media browser naturally sorts history in reverse chronological order by directory and filename; list_events
+scans the directory dynamically and returns structured records for automations and custom cards.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _entries(directory: Path) -> list[tuple[int, Path]]:
 
 
 def history_dir(media_root: Path, device_id: str) -> Path:
-    """返回设备归档目录（自动创建）。"""
+    """Return the device archive directory, creating it if needed."""
     safe = _device_name(device_id)
     d = Path(media_root) / "orvibo_smart_control" / safe
     d.mkdir(parents=True, exist_ok=True)
@@ -53,7 +53,7 @@ def history_dir(media_root: Path, device_id: str) -> Path:
 def snapshot_path(
     history_dir: Path, kind: str, ts: int | str, object_key: str | None = None,
 ) -> Path:
-    """截图路径；可选对象身份后缀区分同秒事件，旧命名仍兼容。"""
+    """Return the snapshot path; an optional object identity suffix distinguishes events in the same second. Legacy names remain supported."""
     kind = re.sub(r"[^A-Za-z0-9_]", "_", str(kind)) or "event"
     timestamp = int(ts)
     if timestamp < 0:
@@ -72,7 +72,7 @@ def save_snapshot(
     image_bytes: bytes,
     object_key: str | None = None,
 ) -> Path:
-    """保存事件截图；同事件已存在则跳过，返回实际路径。"""
+    """Save an event snapshot, skipping it if the same event already exists, and return the actual path."""
     dest = snapshot_path(history_dir, kind, ts, object_key)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.stat().st_size > 0:
@@ -133,9 +133,9 @@ def list_history(
     limit: int = 100,
     media_type: str | None = None,
 ) -> list[dict[str, str]]:
-    """扫描归档目录，按时间倒序返回历史记录。
+    """Scan the archive directory and return history in reverse chronological order.
 
-    每条记录：{device_id, kind, time, type, file, media_id}。
+    Each record contains: {device_id, kind, time, type, file, media_id}.
     """
     root = Path(media_root) / "orvibo_smart_control"
     if not root.is_dir():
@@ -178,10 +178,10 @@ def cleanup(
     max_entries: Optional[int] = None,
     snapshot_limit: Optional[int] = None,
 ) -> int:
-    """清理历史归档：删除超过 keep_days 天的文件，可选按条数裁剪。
+    """Clean up history archives by deleting files older than keep_days, optionally trimming by entry count.
 
-    按文件名时间戳判断（<kind>_<ts>.<ext>）；空目录一并删除。
-    返回删除的文件数。
+    Age is determined from the filename timestamp (<kind>_<ts>.<ext>); empty directories are also removed.
+    Return the number of deleted files.
     """
     root = Path(media_root) / "orvibo_smart_control"
     if not root.is_dir():
@@ -199,7 +199,7 @@ def cleanup(
         if snapshot_limit is not None:
             pictures = [path for _ts, path in entries if path.suffix.lower() == ".jpg"]
             protected = set(pictures[:max(1, int(snapshot_limit))])
-        # 超过 keep_days 的删除
+        # Delete files older than keep_days
         for ts, f in entries:
             if ts < cutoff and f not in protected:
                 try:
@@ -207,7 +207,7 @@ def cleanup(
                     removed += 1
                 except OSError:
                     pass
-        # 按条数裁剪（保留最近 max_entries 条）
+        # Trim by entry count, keeping the latest max_entries entries
         entries = [(ts, f) for ts, f in entries if f.exists()]
         if max_entries and len(entries) > max_entries:
             for ts, f in entries[max_entries:]:
@@ -218,7 +218,7 @@ def cleanup(
                     removed += 1
                 except OSError:
                     pass
-        # 删除空目录
+        # Remove empty directories
         try:
             if not any(d.iterdir()):
                 d.rmdir()

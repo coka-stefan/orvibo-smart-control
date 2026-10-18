@@ -1,60 +1,42 @@
-# Meari 实时摄像头
+# Meari Live Camera
 
-从 `0.2.6b4` 起，选中的 ORVIBO 摄像机/录像机可以通过厂商云授权、XTS P2P/中继链路
-接入 HA 的 `camera` 实体。仅限实际返回 iotType=3、p2p=2 的 IPC(devTypeID=2) 或
-NVR(devTypeID=11)，默认 hostKey 鉴权；其他 SDK、独立视频密码和声音未接入。
+Starting with `0.2.6b4`, selected ORVIBO cameras/NVRs can use the vendor cloud authorization and XTS P2P/relay connection through HA `camera` entities. This applies only to IPC (`devTypeID=2`) or NVR (`devTypeID=11`) devices that actually report `iotType=3` and `p2p=2`, using default hostKey authentication. Other SDKs, separate video passwords, and audio are not supported.
 
-## 使用
+## Use
 
-1. HACS 更新到 `v0.2.6b5`，重启 HA；该版本是普通 Release。
-2. 在集成设备选择中勾选录像机/摄像机，然后打开其设备页面。
-3. 打开新增的“通道 1”“通道 3”或“实时画面”摄像头实体。诊断传感器不显示画面。
+1. Update to `v0.2.6b5` in HACS and restart HA; this version is an ordinary Release.
+2. Select the NVR/camera in the integration's device selection, then open its device page.
+3. Open the new “Channel 1,” “Channel 3,” or “Live View” camera entity. Diagnostic sensors do not show video.
 
-仪表盘可使用 HA 自带的图片概览卡片（替换示例实体）：
+The HA built-in picture glance card can be used on a dashboard (replace the example entity):
 
 ```yaml
 type: picture-glance
-title: 录像机
+title: NVR
 camera_image: camera.your_nvr_channel_1
 camera_view: live
 entities: []
 ```
 
-首次授权、P2P 协商和首帧需要数十秒。缩略图请求本身有较短超时；已建立的预连接
-供下一次打开复用，未被播放请求使用的连接会自动释放。通道清单在平台加载时发现，
-插拔摄像头改变清单后请重新加载集成。纯 LAN 模式无法提供必要的厂商授权。
+Initial authorization, P2P negotiation, and the first frame may take tens of seconds. The thumbnail request itself has a shorter timeout; a prepared connection is reused the next time the camera opens, and connections unused by a playback request are released automatically. The channel list is discovered when the platform loads. Reload the integration if connecting or disconnecting a camera changes that list. Pure LAN mode cannot provide the required vendor authorization.
 
-HAOS 自带 FFmpeg；本集成声明 `ffmpeg` 与 `stream` 依赖，不需要额外的视频服务。
-每个正在播放的通道使用一个协议子进程和一个 FFmpeg 进程；HEVC 软件转码会占用 CPU。
+HAOS includes FFmpeg; this integration declares `ffmpeg` and `stream` dependencies, so no separate video service is needed. Each channel being played uses one protocol subprocess and one FFmpeg process; software HEVC transcoding uses CPU.
 
-## 媒体与生命周期
+## Media and lifecycle
 
-- 平台按 App 的 Device.uid == CameraInfo.deviceID 匹配选中的设备，按真实通道编号
-  建立实体。每次开流重新获取会话、库存和通道；库存排序变化不会切到另一台设备。
-- 协议子进程通过 stdin 收取私有会话，通过有长度限制的 J/V 管道输出固定状态和
-  Annex-B 视频。视频只在收到参数集和关键帧后输出；原先的首帧诊断模式继续保留。
-- FFmpeg 从管道解码 HEVC/H.264，以 H.264/yuv420p 输出 MPEG-TS。HA Stream 从随机
-  localhost 地址读取，再生成前端 HLS；浏览器不直接连接私有厂商协议。
-- 仅绑定 `127.0.0.1`，禁用访问日志。云账号、hostKey 不出现在 URL、命令行、诊断
-  返回或视频文件中。不会自动存储视频；HA 用户主动调用录像功能属于独立操作。
-- 同一实体共用 HA Stream，缩略图也复用其解码关键帧。客户端断开、无媒体、超时、
-  平台移除或 HA 关闭时回收协议和转码进程，包括进程生成期间取消的情况。
-- 未使用的预连接20秒后回收；首个转码输出最多等待55秒，连续媒体无输出30秒退出，
-  每个连接最多运行1小时，之后由 HA 正常重连。HA HLS 自身会保留短暂缓冲，关闭
-  前端后释放不一定立即发生；开启 HA“预加载”会按该设置持续保持流。
+- The platform matches selected devices by `App Device.uid == CameraInfo.deviceID` and creates entities by actual channel number. Each stream start refreshes the session, inventory, and channels; a change in inventory ordering will not switch to another device.
+- The protocol subprocess receives the private session through stdin and emits fixed status fields and Annex-B video through a length-limited J/V pipe. Video is emitted only after parameter sets and a keyframe arrive. The existing first-frame diagnostic mode remains available.
+- FFmpeg decodes HEVC/H.264 from the pipe and outputs H.264/yuv420p as MPEG-TS. HA Stream reads from a random localhost address and generates frontend HLS; the browser never connects directly to the private vendor protocol.
+- The service binds only to `127.0.0.1` and disables access logging. Cloud account details and hostKey do not appear in URLs, command lines, diagnostic responses, or video files. Video is not stored automatically; recording explicitly requested by an HA user is a separate action.
+- HA Stream is shared by viewers of the same entity, and thumbnails reuse its decoded keyframe. Protocol and transcoding processes are reclaimed when a client disconnects, media stops, a timeout occurs, the platform is removed, or HA shuts down, including cancellation while a process is starting.
+- Unused prepared connections are reclaimed after 20 seconds. The first transcoded output is allowed up to 55 seconds; a continuous stream with no output exits after 30 seconds. Each connection runs for at most one hour, after which HA reconnects normally. HA HLS keeps a brief buffer, so closing the frontend may not release it immediately; HA “preload” keeps the stream active according to that setting.
 
-`video_stage` 是固定连接阶段，`streaming` 仅表示转码器已输出数据。静态 SDK 诊断
-不能判断每台设备是否通过动态校验；实体是否生成以实际库存、身份匹配和通道能力为准。
+`video_stage` is a fixed connection stage; `streaming` means only that the transcoder has emitted data. Static SDK analysis cannot tell whether each device passes dynamic validation; entity creation depends on the actual inventory, identity match, and channel capabilities.
 
-## 验证边界
+## Validation limits
 
-用户已确认真实 NVR 1 号通道可以观看；3号通道加载慢，稍后可观看。曾收到
-153,474字节 HEVC 关键帧和参数集；现有用户验证确认实时播放。硬盘录像结果尚未收到。
+The user confirmed that the real NVR's channel 1 is viewable; channel 3 loads slowly but becomes viewable after waiting. A 153,474-byte HEVC keyframe and parameter sets were received; current user validation confirms live playback. No hard-drive recording result has been received.
 
-本地测试包含真实 FFmpeg 合成 HEVC → H.264 MPEG-TS → 强制 H.264 解码，并覆盖
-身份匹配、通道选择、会话刷新、进程超时、断开和取消清理。这些离线结果不能替代
-真实画面和浏览器播放验证。当前无音频；帧时间按接收时钟建立，尚未移植设备音视频
-时间戳及同步。网络抖动下的时序精度仍需实际验证。
+Local tests include actual FFmpeg synthesis of HEVC → H.264 MPEG-TS → forced H.264 decoding, and cover identity matching, channel selection, session refresh, process timeouts, disconnect cleanup, and cancellation cleanup. Offline results do not replace validation of real video and browser playback. There is currently no audio; frame timing is based on the receive clock, and the device's audio/video timestamps and synchronization have not been ported. Timing accuracy under network jitter still needs real-world validation.
 
-硬盘历史使用另一组查询/回放指令，不能用实时关键帧结果确认。日历、片段、回放入口
-已加入 `0.2.6b5`，尚待真实设备验证；操作见 [硬盘录像说明](meari-hdd-playback.md)。
+Hard-drive history uses a different set of search and playback commands; a live keyframe does not validate it. Calendar, clip, and playback controls were added in `0.2.6b5` and still need validation on real devices. See [Hard-Drive Recording Playback](meari-hdd-playback.md) for instructions.

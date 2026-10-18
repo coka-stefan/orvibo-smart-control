@@ -1,12 +1,12 @@
-"""电池推送探针：监听 SSL 推送，记录每个包的 cmd 与 batteryManager 字段。
+"""Battery push probe: listen for SSL pushes and record each packet's cmd and batteryManager fields.
 
-用途：确认门锁电池状态通过什么命令、以什么频率推送（App 端实测电池
-反馈接近实时，需要核对服务器推送规律）。
+Purpose: identify which command reports door lock battery state and how often; app observations
+suggest the state updates nearly in real time, so verify the server's push pattern.
 
-用法：
-  python tests/battery_probe.py [监听秒数，默认 180]
+Usage:
+  python tests/battery_probe.py [duration in seconds, default 180]
 
-环境变量：ORVIBO_USERNAME / ORVIBO_PASSWORD
+Environment variables: ORVIBO_USERNAME / ORVIBO_PASSWORD
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ async def main() -> int:
     username = os.environ.get("ORVIBO_USERNAME") or ""
     password = os.environ.get("ORVIBO_PASSWORD") or ""
     if not username or not password:
-        print("请设置环境变量 ORVIBO_USERNAME / ORVIBO_PASSWORD")
+        print("Set ORVIBO_USERNAME and ORVIBO_PASSWORD environment variables")
         return 2
     duration = int(sys.argv[1]) if len(sys.argv) > 1 else 180
 
@@ -40,22 +40,22 @@ async def main() -> int:
 
     api = Https(username, password)
     if not await api.login():
-        print("登录失败")
+        print("Login failed")
         return 1
     fs = await api.families()
     if not fs:
-        print("无家庭")
+        print("No families found")
         return 1
     fid = fs[0].get("familyId", "")
-    print(f"家庭: {fid}")
+    print(f"Family: {fid}")
 
     sslc = Ssl(username, password, fid)
     if not await sslc.connect():
-        print("SSL 连接失败")
+        print("SSL connection failed")
         await api.close()
         return 1
 
-    print(f"监听 {duration} 秒，请在 App 打开门锁电量页面 / 操作门锁触发推送...")
+    print(f"Listening for {duration} seconds. Open the lock battery page in the app or operate the lock to trigger a push...")
     start = time.time()
     battery_seen = 0
     while time.time() - start < duration:
@@ -66,7 +66,7 @@ async def main() -> int:
         except asyncio.TimeoutError:
             continue
         except (asyncio.IncompleteReadError, ConnectionError, OSError):
-            print("连接断开")
+            print("Connection closed")
             break
         try:
             pkt = HomematePacket(
@@ -92,7 +92,7 @@ async def main() -> int:
 
     await sslc.close()
     await api.close()
-    print(f"监听结束，共 {battery_seen} 个包含电池的包")
+    print(f"Listening ended; received {battery_seen} packets containing battery data")
     return 0
 
 

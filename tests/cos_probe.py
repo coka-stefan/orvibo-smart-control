@@ -1,15 +1,15 @@
-"""腾讯云 COS 门锁媒体模拟探针（对照智家365 App 逆向结论）。
+"""Probe Tencent Cloud COS door lock media using behavior observed in the Smart Home 365 app.
 
-背景（来自 APK jadx 反编译）：
-- 门锁事件里的 videoUrl/url（如 /uid/videoPicklockEvent/xxx.h264）是腾讯云 COS 对象键；
-- App 先调 REST 接口 v2/cosToken/getCosToken 换取 STS 临时凭证
-  （secretId/secretKey/sessionToken + bucket/region/expiration）；
-- 再用 COS 签名 v5（HMAC-SHA1 + q-sign-time）拼出可访问 URL 下载。
+Background (from APK decompilation):
+- videoUrl/url in door lock events (such as /uid/videoPicklockEvent/xxx.h264) is a Tencent COS object key.
+- The app first calls REST endpoint v2/cosToken/getCosToken to obtain temporary STS credentials.
+  (secretId/secretKey/sessionToken + bucket/region/expiration);
+- It then builds a downloadable URL using COS signature v5 (HMAC-SHA1 + q-sign-time).
 
-本脚本仅用于本地验证，凭据只从环境变量读取：
+This script is for local verification only. Credentials are read only from environment variables:
   ORVIBO_USERNAME / ORVIBO_PASSWORD
 
-用法：
+Usage:
   python tests/cos_probe.py --list --capture lock_capture_xxx.jsonl
   python tests/cos_probe.py --object-key /uid/videoPicklockEvent/xxx.h264 --save out.h264
   python tests/cos_probe.py --selftest
@@ -29,7 +29,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-SIGN_KEY = "nQ45RjPtOws96jmH"  # 与集成 const.SIGN_KEY 相同（来自 APK）
+SIGN_KEY = "nQ45RjPtOws96jmH"  # Same as const.SIGN_KEY in the integration (from the APK).
 DEFAULT_HOST = "china.orvibo.com"
 
 
@@ -38,7 +38,7 @@ def _hmac_hex(key: str, msg: str, algo) -> str:
 
 
 def create_sign(params: Dict[str, Any], key: str = SIGN_KEY) -> str:
-    """与 App HMHttpRequest 相同：排序 k=v&... 追加 key=，HmacSHA256 大写 hex。"""
+    """Match the app's HMHttpRequest: sort k=v pairs, append key=, then use uppercase HmacSHA256 hex."""
     parts = []
     for k in sorted(params):
         v = str(params[k])
@@ -71,8 +71,8 @@ def login(host: str, username: str, password: str) -> Dict[str, Any]:
     resp = http_json(url)
     data = resp.get("data") or {}
     if "access_token" not in data:
-        raise RuntimeError(f"登录失败: {resp.get('message') or resp}")
-    print(f"[1/4] 登录成功 user_id={redact(data.get('user_id'), 6)}")
+        raise RuntimeError(f"Login failed: {resp.get('message') or resp}")
+    print(f"[1/4] Login succeeded user_id={redact(data.get('user_id'), 6)}")
     return data
 
 
@@ -93,10 +93,10 @@ def fetch_family(host: str, access_token: str, user_id: str) -> str:
     if isinstance(families, dict):
         families = families.get("familyList") or families.get("list") or [families]
     if not families:
-        raise RuntimeError(f"未找到家庭: {json.dumps(resp, ensure_ascii=False)[:300]}")
+        raise RuntimeError(f"No family found: {json.dumps(resp, ensure_ascii=False)[:300]}")
     fam = families[0]
     family_id = fam.get("familyId") or fam.get("family_id")
-    print(f"[2/4] 家庭: {fam.get('familyName') or family_id} ({redact(family_id, 6)})")
+    print(f"[2/4] Family: {fam.get('familyName') or family_id} ({redact(family_id, 6)})")
     return str(family_id)
 
 
@@ -112,9 +112,9 @@ def fetch_cos_token(host: str, access_token: str, user_id: str, family_id: str) 
     resp = http_json(f"https://{host}/v2/cosToken/getCosToken", json.dumps(data))
     token = resp.get("data") or {}
     if not token.get("bucket"):
-        raise RuntimeError(f"获取 COS 凭证失败: {json.dumps(resp, ensure_ascii=False)[:300]}")
+        raise RuntimeError(f"Failed to get COS credentials: {json.dumps(resp, ensure_ascii=False)[:300]}")
     print(
-        "[3/4] COS 凭证 "
+        "[3/4] COS credentials "
         f"bucket={token.get('bucket')} region={token.get('region')} "
         f"secretId={redact(token.get('secretId'))} expiration={token.get('expiration')}"
     )
@@ -131,14 +131,14 @@ def cos_authorization(
     end: int,
     query_params: Optional[Dict[str, str]] = None,
 ) -> str:
-    """COS 签名 v5（q-sign-algorithm=sha1）。
+    """COS signature v5 (q-sign-algorithm=sha1).
 
-    query_params 参与签名（如 response-content-type），按 URL 编码后的
-    参数名排序；签名参数自身与 x-cos-security-token 不参与计算。
+    Query parameters are signed (such as response-content-type), sorted by their
+    URL-encoded names. The signature parameters and x-cos-security-token are excluded.
     """
     key_time = f"{start};{end}"
     sign_key = _hmac_hex(secret_key, key_time, hashlib.sha1)
-    # 注意：单 header 时末尾不带 &（服务端 FormatString 实测确认）
+    # A single header has no trailing ampersand (confirmed from the server FormatString).
     query_part = ""
     q_url_param_list = ""
     if query_params:
@@ -150,8 +150,8 @@ def cos_authorization(
         query_part = "&".join(f"{k}={v}" for k, v in items)
         q_url_param_list = ";".join(k for k, _ in items)
     http_string = f"{method.lower()}\n{path}\n{query_part}\nhost={host}\n"
-    # COS 官方算法：StringToSign = "sha1\n{key_time}\n{sha1(HttpString)}\n"
-    # 注意末尾必须带换行（SignatureDoesNotMatch 错误体与官方文档双重确认）
+    # Official COS algorithm: StringToSign = "sha1\n{key_time}\n{sha1(HttpString)}\n"
+    # The trailing newline is required (confirmed by the error body and official docs).
     string_to_sign = (
         f"sha1\n{key_time}\n{hashlib.sha1(http_string.encode()).hexdigest()}\n"
     )
@@ -185,20 +185,20 @@ def build_download(
 
 
 def download(token: Dict[str, Any], object_key: str, save: str) -> None:
-    print(f"[4/4] 下载 {object_key}")
+    print(f"[4/4] Downloading {object_key}")
     variants = [
-        ("原始", build_download(token, object_key)),
-        ("双斜杠路径", build_download(token, object_key, double_slash=True)),
-        ("缩短签名窗口", build_download(token, object_key, end_delta=600)),
+        ("Original", build_download(token, object_key)),
+        ("Double-slash path", build_download(token, object_key, double_slash=True)),
+        ("Shorter signature window", build_download(token, object_key, end_delta=600)),
     ]
     body: bytes = b""
     for label, (url, headers) in variants:
-        print(f"      尝试[{label}] {url}")
+        print(f"      Trying [{label}] {url}")
         req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 body = resp.read()
-            print(f"      [{label}] 成功: {len(body)} 字节")
+            print(f"      [{label}] succeeded: {len(body)} bytes")
             break
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", "replace")
@@ -206,10 +206,10 @@ def download(token: Dict[str, Any], object_key: str, save: str) -> None:
             if e.code != 403:
                 raise
     else:
-        raise SystemExit(f"所有变体均被拒绝，见上方错误详情")
+        raise SystemExit("All variants were rejected; see the errors above")
     with open(save, "wb") as f:
         f.write(body)
-    print(f"      保存: {len(body)} 字节 -> {save} "
+    print(f"      Saved {len(body)} bytes -> {save} "
           f"(magic={body[:8].hex() if body else 'empty'})")
 
 
@@ -230,7 +230,7 @@ def list_capture_keys(capture: str, redact_uid: bool) -> List[str]:
 
 
 def selftest() -> None:
-    """离线校验：签名结构、确定性、时间参数。"""
+    """Offline checks for signature structure, determinism, and time parameters."""
     token = {
         "bucket": "orvibo-test-1250000000",
         "region": "ap-guangzhou",
@@ -246,16 +246,16 @@ def selftest() -> None:
     for part in ("q-sign-algorithm=sha1", "q-ak=AKIDEXAMPLE", "q-header-list=host"):
         assert part in auth, part
     sig = auth.rsplit("q-signature=", 1)[1]
-    assert len(sig) == 40, "签名应为 40 位 sha1 hex"
-    # 确定性：同参数两次结果一致
+    assert len(sig) == 40, "Signature should be 40-character SHA-1 hex"
+    # Determinism: identical parameters must produce the same result.
     assert headers["Authorization"] == build_download(token, key)[1]["Authorization"]
-    # 时间不同则签名不同
+    # Different times must produce different signatures.
     url2, headers2 = build_download(token, "/77c139c4d27f4fa6a20e1f459849aa47/videoPicklockEvent/y.h264")
     assert headers2["Authorization"] != auth
-    # create_sign 与集成 packet.create_sign 同方案（可离线复算校验格式）
+    # create_sign uses the same approach as the integration's packet.create_sign.
     assert len(create_sign({"a": "1", "b": "2"})) == 64
-    # 用服务器错误体中的真实 FormatString 反推校验 HttpString 构造
-    # （cffc68e3... 即服务端给出的 sha1(HttpString)）
+    # Use the actual FormatString from the server error body to validate HttpString construction.
+    # cffc68e3... is the server-provided sha1(HttpString).
     path = "/77c139c4d27f4fa6a20e1f459849aa47/picturePicklockEvent/picklockEvent_1785652830.jpg"
     host = "familypic-cn-1251222210.cos.ap-guangzhou.myqcloud.com"
     http_string = f"get\n{path}\n\nhost={host}\n"
@@ -263,31 +263,31 @@ def selftest() -> None:
         hashlib.sha1(http_string.encode()).hexdigest()
         == "cffc68e3aba2b1e672f079faffc9895fa3702d48"
     )
-    # StringToSign 三段式格式自检
+    # Check the three-part StringToSign format.
     auth2 = cos_authorization(
         "AKIDEXAMPLE", "x" * 40, "get", path, host, 1785667760, 1785797360
     )
     assert "q-sign-time=1785667760;1785797360" in auth2
-    # 服务器错误体 StringToSign 完整还原（含尾部换行）：
+    # Reconstructed StringToSign from the server error body, including its trailing newline:
     # sha1\n1785667865;1785797465\ncffc68e3aba2b1e672f079faffc9895fa3702d48\n
-    _hmac_args = _hmac_hex("", "", hashlib.sha1)  # noqa: 仅确保函数可调用
+    _hmac_args = _hmac_hex("", "", hashlib.sha1)  # noqa: ensure the function is callable
     expected_sts = "sha1\n1785667865;1785797465\ncffc68e3aba2b1e672f079faffc9895fa3702d48\n"
     key_time = "1785667865;1785797465"
     sign_key = _hmac_hex("x" * 40, key_time, hashlib.sha1)
     sig = _hmac_hex(sign_key, expected_sts, hashlib.sha1)
     assert len(sig) == 40
-    print("selftest OK: COS 签名 v5 结构/确定性校验通过")
+    print("Self-test passed: COS signature v5 structure and determinism checks passed")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="COS 门锁媒体模拟探针")
-    parser.add_argument("--host", default=DEFAULT_HOST, help="API 主机（默认 china.orvibo.com）")
-    parser.add_argument("--capture", help="从抓包 jsonl 提取对象键")
-    parser.add_argument("--list", action="store_true", help="仅列出对象键（不联网）")
-    parser.add_argument("--no-redact", action="store_true", help="列出对象键时不脱敏 uid")
-    parser.add_argument("--object-key", help="要下载的对象键（如 /uid/videoPicklockEvent/x.h264）")
-    parser.add_argument("--save", default="cos_download.bin", help="下载保存路径")
-    parser.add_argument("--selftest", action="store_true", help="离线自检签名算法")
+    parser = argparse.ArgumentParser(description="COS door lock media probe")
+    parser.add_argument("--host", default=DEFAULT_HOST, help="API host (default: china.orvibo.com)")
+    parser.add_argument("--capture", help="Extract an object key from packet capture JSONL")
+    parser.add_argument("--list", action="store_true", help="List object keys only; do not connect")
+    parser.add_argument("--no-redact", action="store_true", help="Do not redact UIDs when listing object keys")
+    parser.add_argument("--object-key", help="Object key to download (such as /uid/videoPicklockEvent/x.h264)")
+    parser.add_argument("--save", default="cos_download.bin", help="Path for the downloaded file")
+    parser.add_argument("--selftest", action="store_true", help="Run offline signature checks")
     args = parser.parse_args()
 
     if args.selftest:
@@ -295,11 +295,11 @@ def main() -> int:
         return 0
     if args.capture:
         keys = list_capture_keys(args.capture, redact_uid=not args.no_redact)
-        print("抓包中的对象键：")
+        print("Object keys in the packet capture:")
         for k in keys:
             print(f"  {k}")
         if not args.object_key and keys and not args.no_redact:
-            print("\n提示：下载请用 --object-key 传入原始键（含真实 uid）")
+            print("\nTo download, pass the original key (including the real UID) with --object-key")
         return 0
     if not args.object_key:
         parser.print_help()
@@ -308,7 +308,7 @@ def main() -> int:
     username = os.environ.get("ORVIBO_USERNAME", "")
     password = os.environ.get("ORVIBO_PASSWORD", "")
     if not username or not password:
-        print("缺少凭据：请先设置环境变量 ORVIBO_USERNAME / ORVIBO_PASSWORD")
+        print("Credentials missing: set ORVIBO_USERNAME and ORVIBO_PASSWORD first")
         return 3
 
     auth = login(args.host, username, password)

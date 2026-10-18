@@ -24,7 +24,7 @@ cos_media = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = cos_media
 SPEC.loader.exec_module(cos_media)
 
-# 实机 cmd=313 响应样本（2026-08-02，字段已脱敏处理但保留结构）
+# Physical-device cmd=313 response sample (2026-08-02; fields are redacted, structure retained).
 SAMPLE_SECURITY = {
     "status": 0,
     "pageNum": 1,
@@ -98,15 +98,15 @@ class SignedUrlTests(unittest.TestCase):
         self.assertIn("q-sign-time=", url)
         self.assertIn("q-signature=", url)
         self.assertIn("x.jpg", url)
-        # STS 临时凭证必须带 x-cos-security-token，浏览器才能直接访问
+        # STS temporary credentials must include x-cos-security-token for direct browser access.
         self.assertIn("x-cos-security-token=", url)
         self.assertIn("QeIhfJn0wdBI45nD3VbQcchmkhFxYHqadf45e2f789d5a3469de9046a99add69d", url)
-        # COS 存储 Content-Type 为 text/html，必须用 response-content-type 覆盖
+        # COS may store Content-Type as text/html, so override it with response-content-type.
         self.assertIn("response-content-type=image%2Fjpeg", url)
         self.assertIn("q-url-param-list=response-content-type", url)
 
     def test_query_signature_matches_manual(self) -> None:
-        """手工按腾讯 COS 规则重算签名，确认 query 参数参与签名。"""
+        """Recompute the signature using Tencent COS rules and verify that query parameters are signed."""
         secret_id = "AKIDTEST"
         secret_key = "secret-key"
         host = "p20-doorlock-1251222210.cos.ap-guangzhou.myqcloud.com"
@@ -117,7 +117,7 @@ class SignedUrlTests(unittest.TestCase):
             secret_id, secret_key, "get", path, host, start, end, query_params=query_params
         )
 
-        # 独立重算
+        # Recompute independently.
         key_time = f"{start};{end}"
         http_string = "get\n/a/b.jpg\nresponse-content-type=image%2Fjpeg\nhost=p20-doorlock-1251222210.cos.ap-guangzhou.myqcloud.com\n"
         string_to_sign = f"sha1\n{key_time}\n{hashlib.sha1(http_string.encode()).hexdigest()}\n"
@@ -175,7 +175,7 @@ class CredentialCacheTests(unittest.TestCase):
             async def send_cos_auth(self, user_id, device_id, device_uid):
                 calls.append(1)
                 resp = make_response()
-                # 返回即将过期的凭证
+                # Return credentials that are about to expire.
                 inner = json.loads(resp["response"])
                 inner["security"]["expiration"] = 1
                 inner["security"]["systemCurrentTime"] = int(time.time() * 1000)
@@ -199,7 +199,7 @@ class CredentialCacheTests(unittest.TestCase):
                 return make_response()
 
         manager = cos_media.CosMediaManager(FakeSsl(), "u_1", "f_1")
-        # 无缓存：返回 None
+        # With no cache, return None.
         self.assertIsNone(
             manager.try_signed_url("w-lock", "lock-uid", "/a/b.jpg")
         )

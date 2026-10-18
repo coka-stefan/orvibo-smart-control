@@ -1,7 +1,7 @@
 """Local-area transport for the fused ORVIBO integration (Stage 1).
 
-从 LAN 源实现移植：UDP 网关发现、TCP 网关连接、网关生命周期管理、
-严格封包编解码与日志脱敏。当前只接入"状态接收"链路，控制路由在阶段 2 接入。
+Ported from the LAN source implementation: UDP gateway discovery, TCP gateway connections, gateway lifecycle management,
+strict packet encoding/decoding, and log redaction. Currently only the state-receive path is connected; control routing will follow in phase 2.
 """
 
 from .control_adapter import LanControlAdapter

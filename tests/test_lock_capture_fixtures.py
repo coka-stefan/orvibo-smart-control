@@ -73,7 +73,7 @@ class CaptureFixtureTests(unittest.TestCase):
         self.assertEqual(len(kinds), 18)
 
     def test_real_state_sequences_are_consistent(self) -> None:
-        """doorLock 的 lockState=on 表示已解锁（locked=False）。"""
+        """doorLock lockState=on means unlocked (locked=False)."""
         locked = lock_status.normalize_door_lock_properties(
             {"doorLock": {"doorState": "off", "lockState": "on"}}
         )

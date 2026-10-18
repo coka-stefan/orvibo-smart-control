@@ -1,10 +1,10 @@
-"""Orvibo 门锁截图 camera 平台。
+"""Orvibo lock snapshot camera platform.
 
-每把门锁一个 camera 实体，显示最近一次事件截图（门铃/撬锁/离家告警等）。
-事件到达时 coordinator 后台下载图片并推送到实体，前端门锁卡片直接显示。
+One camera entity per lock, showing its latest event snapshot (doorbell, tampering, away alert, etc.).
+When an event arrives, the coordinator downloads the image in the background and pushes it to the entity for display in the lock card.
 
-Meari XTS 摄像机和录像机通过私有视频桥接输出 H.264，供 HA Stream 播放。
-门锁仍只提供事件快照；旧摄像机的 SEP2P 分支不能证明门锁猫眼协议。
+Meari XTS cameras and NVRs output H.264 through a private video bridge for playback in HA Stream.
+Locks still provide event snapshots only; the legacy camera SEP2P branch does not establish the lock peephole protocol.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ async def async_setup_entry(
             descriptions = await bootstrap.discover(video_devices)
         except (ValueError, OSError, TimeoutError):
             # Raise before adding entities so a platform retry cannot duplicate locks.
-            raise PlatformNotReady("摄像机设备或录像机通道清单暂时不可用，将自动重试") from None
+            raise PlatformNotReady('Camera or recorder channels are temporarily unavailable; retrying automatically') from None
         binary = get_ffmpeg_manager(hass).binary
         for description in descriptions:
             live = OrviboLiveCamera(
@@ -85,7 +85,7 @@ async def async_setup_entry(
 
 
 class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
-    """门锁事件截图摄像头（静态快照，无实时流）。"""
+    """Lock event snapshot camera (static snapshots, no live stream)."""
 
     _attr_icon = "mdi:cctv"
 
@@ -95,7 +95,7 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_camera_{self._device_id}"
-        self._attr_name = "门锁截图"
+        self._attr_name = 'Door-lock snapshot'
         self._attr_device_class = None
         self._image: bytes | None = None
         self._snapshot_revision = 0
@@ -104,11 +104,11 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
     def camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """返回最近一次事件截图；无截图时显示默认占位图。"""
+        """Return the latest event snapshot, or the default placeholder when no snapshot is available."""
         return self._image if self._image is not None else _PLACEHOLDER_IMAGE
 
     async def async_set_image(self, image: bytes | None) -> None:
-        """事件到达时由 coordinator 推送最新截图。"""
+        """Receive the latest snapshot pushed by the coordinator when an event arrives."""
         self._image = image
         self._snapshot_revision += 1
         if getattr(self, "hass", None) is not None:
@@ -128,7 +128,7 @@ class OrviboLockSnapshotCamera(CoordinatorEntity, Camera):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """关联到门锁设备（与其他平台实体一致）。"""
+        """Associate this entity with its lock device, consistent with other platform entities."""
         return {
             "identifiers": {(DOMAIN, self._device_id)},
             "name": self._device.get("device_name", "Orvibo Door Lock"),
@@ -159,8 +159,8 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             f"orvibo_smart_control_live_{description.device_id}_{description.channel_id}"
         )
         self._attr_name = (
-            f"{device.get('device_name') or '录像机'} 通道 {description.channel_id}"
-            if description.is_nvr else f"{device.get('device_name') or '摄像机'} 实时画面"
+            f"{device.get('device_name') or 'Recorder'} Channel {description.channel_id}"
+            if description.is_nvr else f"{device.get('device_name') or 'Camera'} Live view"
         )
         self._bridge = MeariVideoBridge(
             ffmpeg_binary, lambda: bootstrap.context(description),
@@ -189,7 +189,7 @@ class OrviboLiveCamera(CoordinatorEntity, Camera):
             # Establish slow P2P signaling before either of those clocks starts.
             await self._bridge.async_prepare()
         except (ValueError, OSError, RuntimeError, TimeoutError):
-            raise HomeAssistantError("摄像机暂时无法建立视频连接，请稍后重试") from None
+            raise HomeAssistantError('Could not connect to camera video; try again later') from None
         return await super().async_create_stream()
 
     async def stream_source(self) -> str | None:
@@ -264,8 +264,8 @@ class OrviboHddCamera(OrviboLiveCamera):
         storage = "hdd" if description.is_nvr else "sd"
         self._attr_unique_id = f"orvibo_smart_control_{storage}_{description.device_id}_{description.channel_id}"
         self._attr_name = (
-            f"{device.get('device_name') or '录像机'} 通道 {description.channel_id} 硬盘回放"
-            if description.is_nvr else f"{device.get('device_name') or '摄像机'} 存储卡回放"
+            f"{device.get('device_name') or 'Recorder'} Channel {description.channel_id} Disk playback"
+            if description.is_nvr else f"{device.get('device_name') or 'Camera'} Memory-card playback"
         )
         self._bootstrap = bootstrap
         self._ffmpeg_binary = ffmpeg_binary
@@ -353,7 +353,7 @@ class OrviboHddCamera(OrviboLiveCamera):
         try:
             await bridge.async_prepare()
         except (ValueError, OSError, RuntimeError, TimeoutError):
-            raise HomeAssistantError("录像回放暂时无法连接，请重新选择录像片段") from None
+            raise HomeAssistantError('Could not connect to playback; select the recording again') from None
         async with self._selection_lock:
             if self._closed or self._position is None or self._bridge is not bridge:
                 return None

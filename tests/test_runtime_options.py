@@ -108,7 +108,7 @@ class RuntimeOptionTests(unittest.IsolatedAsyncioTestCase):
         notifier = self.module.AvailabilityNotifier(
             hass,
             "entry",
-            {"device": {"device_name": "客厅灯"}},
+            {"device": {"device_name": "Living Room Light"}},
             states,
             {"device"},
         )
@@ -123,7 +123,7 @@ class RuntimeOptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(hass.services.calls), 1)
         domain, service, data, blocking = hass.services.calls[0]
         self.assertEqual((domain, service), ("persistent_notification", "create"))
-        self.assertIn("客厅灯", data["message"])
+        self.assertIn("Living Room Light", data["message"])
         self.assertFalse(blocking)
 
     async def test_update_checker_notifies_for_newer_stable_release(self):

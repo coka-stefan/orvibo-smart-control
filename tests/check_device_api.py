@@ -1,4 +1,4 @@
-"""查看设备的完整描述信息和可能控制方式"""
+"""Inspect a device's full description and possible control methods."""
 import hashlib, json, asyncio, aiohttp, sys, time
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 USER = os.environ.get("ORVIBO_USERNAME", "")
 PASSWORD = os.environ.get("ORVIBO_PASSWORD", "")
 if not USER or not PASSWORD:
-    sys.exit("请先设置环境变量 ORVIBO_USERNAME 和 ORVIBO_PASSWORD")
+    sys.exit("Set the ORVIBO_USERNAME and ORVIBO_PASSWORD environment variables first")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "custom_components"))
 _init = Path(sys.path[0]) / "orvibo_smart_control" / "__init__.py"
@@ -24,9 +24,9 @@ async def main():
                        headers={**HTTP_HEADERS, "Accept":"*/*"}, ssl=False)
         j = json.loads(await r.text())
         token, uid = j["data"]["access_token"], j["data"]["user_id"]
-        print(f"✅ 登录成功")
+        print("✅ Login succeeded")
 
-        # 1. 获取设备的完整描述
+        # 1. Get the full device description.
         print(f"\n📋 getDeviceDesc...")
         url = f"https://{HTTPS_HOST}/getDeviceDesc?source=ZhiJia365&lastUpdateTime=0&accessToken={token}"
         async with s.get(url, headers=HTTP_HEADERS, ssl=False) as r:
@@ -34,7 +34,7 @@ async def main():
             desc = json.loads(text)
             print(json.dumps(desc, ensure_ascii=False)[:3000])
 
-        # 2. 查看插线板的设备配置信息
+        # 2. Inspect the power strip device configuration.
         print(f"\n📋 queryDeviceById...")
         tid = int(time.time() * 1000)
         url = f"https://{HTTPS_HOST}/v2/device/queryDeviceById"
@@ -43,10 +43,10 @@ async def main():
             text = await r.text()
             print(json.dumps(json.loads(text), ensure_ascii=False)[:2000])
 
-        # 3. 试试通过 gateway 接口控制
-        print(f"\n📋 尝试 v2/device/send...")
+        # 3. Try the gateway control endpoint.
+        print("\n📋 Try v2/device/send...")
         url = f"https://{HTTPS_HOST}/v2/device/send"
-        # COCO插线板可能用的是旧版协议 - order=on/off 走 value1=1/0
+        # The COCO power strip may use the legacy protocol: order=on/off uses value1=1/0.
         for order, v1 in [("on", 1), ("off", 0)]:
             ts = int(time.time() * 1000)
             rd = generate_uuid()
@@ -71,8 +71,8 @@ async def main():
                 resp = json.loads(await r.text())
                 print(f"  {order}(v1={v1}): {json.dumps(resp, ensure_ascii=False)}")
 
-        # 4. 试试旧版 API /v2/cmd/app/write
-        print(f"\n📋 尝试 v2/cmd/app/write...")
+        # 4. Try the legacy API.
+        print("\n📋 Try v2/cmd/app/write...")
         url = f"https://{HTTPS_HOST}/v2/cmd/app/write"
         for order, v1 in [("on", 1), ("off", 0)]:
             ts = int(time.time() * 1000)

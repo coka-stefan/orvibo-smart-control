@@ -72,7 +72,7 @@ class ListHistoryTests(unittest.TestCase):
             (d / "picklock_1785652830.h264").write_bytes(b"c")
             (d / "unlock_1785672400.jpg").write_bytes(b"d")
             entries = history.list_history(root, "w-lock", limit=10)
-            # ring 图 / picklock mp4 / picklock h264 / unlock 图 = 4 条
+            # Ring image / picklock MP4 / picklock H264 / unlock image = four items.
             self.assertEqual(len(entries), 4)
             self.assertEqual(entries[0]["kind"], "unlock")
             self.assertEqual(entries[0]["time"], "1785672400")

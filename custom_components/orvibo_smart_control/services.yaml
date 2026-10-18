@@ -1,300 +1,332 @@
 refresh_devices:
-  name: 刷新设备快照
-  description: 立即刷新指定配置项的云端设备库存和状态快照
+  name: Refresh device snapshots
+  description: Refresh the cloud device inventory and state snapshot for the specified
+    configuration.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 需要刷新的 ORVIBO Smart Control 配置项 ID
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: true
-      example: "0123456789abcdef"
-
+      example: 0123456789abcdef
 set_lock_user_name:
-  name: 设置门锁用户名称
-  description: 把门锁 userId 映射为可读名称；传入空名称可清除映射
+  name: Set lock user name
+  description: Map a lock user ID to a readable name. An empty name clears the mapping.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选；有多个配置项时建议提供）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID（如 w-xxxx，可在设备信息中查看）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: true
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     user_id:
-      name: 用户 ID
-      description: 门锁用户编号（来自 unlockEvent 的 unlock_user_id）
+      name: User ID
+      description: Lock user number from unlockEvent.unlock_user_id.
       required: true
-      example: "2"
+      example: '2'
     name:
-      name: 用户名称
-      description: 用户名称（留空清除）
+      name: User name
+      description: Readable user name. Leave empty to clear a mapping; temporary authorizations
+        generate a default name.
       required: true
-      example: "张三"
-
+      example: Guest
 fetch_video:
-  name: 归档门锁事件录像
-  description: 下载 H.264 事件录像并在可用时转封装为 MP4；响应只返回媒体 ID
+  name: Archive lock event video
+  description: Download H.264 event video and remux it to MP4 when available. The
+    response contains only a media ID.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选；有多个配置项时建议提供）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID（如 w-xxxx，可在设备信息中查看）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: true
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     object_key:
-      name: 录像对象键
-      description: 事件里的 video_url（如 /uid/videoPicklockEvent/xxx.h264）
+      name: Video object key
+      description: The event video_url, for example /uid/videoPicklockEvent/xxx.h264.
       required: true
-      example: "/example-device-id/videoPicklockEvent/picklockEvent_1700000000.h264"
-
+      example: /example-device-id/videoPicklockEvent/picklockEvent_1700000000.h264
 list_events:
-  name: 列出门锁媒体历史
-  description: 按时间倒序列出已归档的截图和录像，并返回媒体浏览器引用
+  name: List lock media history
+  description: List archived snapshots and videos, newest first, with media-browser
+    references.
   target: {}
   fields:
     media_type:
-      name: 媒体类型
-      description: 可选 image（抓拍）或 video（录像），筛选后再应用返回条数
+      name: Media type
+      description: Filter by image or video before applying the result limit.
       required: false
       selector:
         select:
           options:
-            - image
-            - video
+          - image
+          - video
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选；有多个配置项时建议提供）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID（留空查询所有门锁）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: false
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     limit:
-      name: 返回条数
-      description: 最多返回的记录数（默认 100）
+      name: Result limit
+      description: Maximum number of returned records; default 100.
       required: false
       example: 50
-
 cleanup_history:
-  name: 清理门锁媒体历史
-  description: 按保留天数和可选条数限制删除旧截图与录像
+  name: Clean up lock media history
+  description: Delete old snapshots and videos according to the retention period and
+    optional record limit.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选；有多个配置项时建议提供）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     keep_days:
-      name: 保留天数
-      description: 保留最近 N 天的记录（默认 7）
+      name: Retention (days)
+      description: Keep records from the last N days; default 7.
       required: false
       example: 7
     device_id:
-      name: 设备 ID
-      description: 只清理指定门锁（留空清理所有）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: false
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     max_entries:
-      name: 最大条数
-      description: 每个设备最多保留的记录数（可选，按时间裁剪最旧的）
+      name: Maximum records
+      description: Optional maximum records per device; the oldest records are removed
+        first.
       required: false
       example: 500
-
 grant_temp_password:
-  name: 创建临时门锁授权
-  description: 创建限时或临时授权；密码只在本次服务响应中返回
+  name: Create temporary lock authorization
+  description: Create a temporary or time-limited authorization. The password is returned
+    only in this response.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选；有多个配置项时建议提供）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID（留空自动选第一把门锁）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: false
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     type:
-      name: 授权类型
-      description: "1=限时（start_time/end_time 或 minutes） 2=临时（minutes+number，默认）"
+      name: Authorization type
+      description: '1: time-limited (start_time/end_time or minutes). 2: temporary
+        (minutes and number; default).'
       required: false
       example: 2
     minutes:
-      name: 有效期（分钟）
-      description: 相对时长（默认 1440=24 小时）
+      name: Validity (minutes)
+      description: Relative duration; default 1440 minutes (24 hours).
       required: false
       example: 1440
     number:
-      name: 可用次数
-      description: "0=不限次；type=2 默认 1"
+      name: Usage limit
+      description: 0 means unlimited uses; default 1 for type=2.
       required: false
       example: 1
     name:
-      name: 临时用户名
-      description: 显示名称（默认自动生成"临时用户 MMddHHmm"）
+      name: User name
+      description: Readable user name. Leave empty to clear a mapping; temporary authorizations
+        generate a default name.
       required: false
-      example: "快递员"
+      example: Guest
     phone:
-      name: 手机号
-      description: 可选：下发时同步短信通知该手机号
+      name: Phone number
+      description: Optional SMS recipient when creating an authorization.
       required: false
-      example: "13800138000"
+      example: '13800138000'
     start_time:
-      name: 开始时间
-      description: Unix 秒时间戳（type=1 限时用；默认当前时间）
+      name: Start time
+      description: Unix timestamp in seconds for type=1; defaults to the current time.
       required: false
       example: 1785805200
     end_time:
-      name: 结束时间
-      description: Unix 秒时间戳（type=1 限时用；默认 now+minutes）
+      name: End time
+      description: Unix timestamp in seconds for type=1; defaults to now plus minutes.
       required: false
       example: 1785978000
-
 revoke_temp_password:
-  name: 撤销临时门锁授权
-  description: 按 authorizedId 撤销指定门锁的临时授权
+  name: Revoke temporary lock authorization
+  description: Revoke a lock authorization by authorized_id.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: true
-      example: "w-example-door-lock-id"
+      example: w-example-door-lock-id
     authorized_id:
-      name: 授权 ID
-      description: 下发响应或 list_temp_passwords 里的 authorized_id
+      name: Authorization ID
+      description: authorized_id returned by creation or list_temp_passwords.
       required: true
       example: 101
-
 list_temp_passwords:
-  name: 列出临时门锁授权
-  description: 查询服务器端临时授权元数据和过期状态；不返回密码明文
+  name: List temporary lock authorizations
+  description: Query authorization metadata and expiry status without returning plaintext
+    passwords.
   target: {}
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 集成配置项 ID（可选）
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       required: false
-      example: "0123456789abcdef"
+      example: 0123456789abcdef
     device_id:
-      name: 设备 ID
-      description: 门锁设备 ID（留空查询所有）
+      name: Device ID
+      description: Door-lock device ID, available in device information. If optional,
+        leave empty to use the default device selection.
       required: false
-      example: "w-example-door-lock-id"
-
+      example: w-example-door-lock-id
 inspect_video_session:
-  name: 检查录像机厂商会话
-  description: 复用已连接的欧瑞博云会话检查 Meari 授权，仅返回脱敏诊断；不播放视频。
+  name: Inspect video vendor session
+  description: Use the existing cloud session to inspect Meari authorization. Returns
+    redacted diagnostics without playing video.
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 只有一个欧瑞博配置项时可留空。
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       selector:
-        text:
+        text: null
     country_code:
-      name: 国家代码
+      name: Country code
       default: CN
       selector:
-        text:
+        text: null
+      description: Country code matching the video session; default CN.
     phone_code:
-      name: 电话区号
-      default: "86"
+      name: Calling code
+      default: '86'
       selector:
-        text:
+        text: null
+      description: Country calling code; default 86.
     language:
-      name: 语言
+      name: Language
       default: zh
       selector:
         select:
           options:
-            - zh
-            - en
-
+          - zh
+          - en
+      description: zh or en; protocol default zh.
 inspect_video_devices:
-  name: 检查录像机厂商设备列表
-  description: 获取 Meari 会话并请求厂商设备列表，返回数量和能力字段诊断；不连接设备、不播放视频。
+  name: Inspect video vendor devices
+  description: Query Meari device counts and capabilities. Does not connect to devices
+    or play video.
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 只有一个欧瑞博配置项时可留空。
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       selector:
-        text:
+        text: null
     country_code:
-      name: 国家代码
+      name: Country code
       default: CN
       selector:
-        text:
+        text: null
+      description: Country code matching the video session; default CN.
     phone_code:
-      name: 电话区号
-      default: "86"
+      name: Calling code
+      default: '86'
       selector:
-        text:
+        text: null
+      description: Country calling code; default 86.
     language:
-      name: 语言
+      name: Language
       default: zh
       selector:
         select:
           options:
-            - zh
-            - en
-
+          - zh
+          - en
+      description: zh or en; protocol default zh.
 inspect_video_channels:
-  name: 检查录像机通道
-  description: 获取 Meari 会话、设备列表及 NVR 云端通道快照，返回脱敏编号、状态和能力码；尚不播放实时或硬盘录像。
+  name: Inspect recorder channels
+  description: Query Meari devices and recorder channel snapshots, returning redacted
+    identifiers, states and capabilities without playing video.
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 只有一个欧瑞博配置项时可留空。
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
       selector:
-        text:
+        text: null
     country_code:
-      name: 国家代码
+      name: Country code
       default: CN
       selector:
-        text:
+        text: null
+      description: Country code matching the video session; default CN.
     phone_code:
-      name: 电话区号
-      default: "86"
+      name: Calling code
+      default: '86'
       selector:
-        text:
+        text: null
+      description: Country calling code; default 86.
     language:
-      name: 语言
+      name: Language
       default: zh
       selector:
         select:
           options:
-            - zh
-            - en
-
+          - zh
+          - en
+      description: zh or en; protocol default zh.
 probe_video_stream:
-  name: 测试指定通道的视频连接
-  description: 限时连接一个 XTS 设备通道并检查编码关键帧；完成或超时后停止进程，不保存画面。此动作不提供播放或硬盘回放。
+  name: Test channel video connection
+  description: Connect briefly to an XTS channel and inspect keyframes. Stops after
+    completion or timeout without saving video or starting playback.
   fields:
     entry_id:
-      name: 配置项 ID
-      description: 多个欧瑞博配置项时必须指定
-      example: "0123456789abcdef"
+      name: Configuration entry ID
+      description: Integration configuration entry ID; specify it when multiple entries
+        exist.
+      example: 0123456789abcdef
     device_index:
-      name: 设备序号
-      description: inspect_video_devices 返回的 index；设备列表变化后请重新确认
+      name: Device index
+      description: Index returned by inspect_video_devices; verify it after the device
+        list changes.
       required: true
       example: 2
       selector:
@@ -303,8 +335,9 @@ probe_video_stream:
           max: 512
           mode: box
     channel_id:
-      name: 通道编号
-      description: inspect_video_channels 返回的 channel_id；普通 IPC 使用 0
+      name: Channel ID
+      description: channel_id returned by inspect_video_channels; use 0 for an ordinary
+        IP camera.
       required: true
       example: 1
       selector:
@@ -313,8 +346,9 @@ probe_video_stream:
           max: 128
           mode: box
     timeout_seconds:
-      name: 媒体连接时限
-      description: 10 至 60 秒，默认 35 秒；获取云授权和设备列表另需时间
+      name: Connection timeout
+      description: 10–60 seconds; default 35. Cloud authorization and discovery take
+        additional time.
       example: 35
       selector:
         number:
@@ -322,73 +356,78 @@ probe_video_stream:
           max: 60
           mode: box
     country_code:
-      name: 国家代码
-      description: 与已有视频会话诊断一致，默认 CN
-      example: "CN"
+      name: Country code
+      description: Country code matching the video session; default CN.
+      example: CN
     phone_code:
-      name: 电话区号
-      description: 默认 86
-      example: "86"
+      name: Calling code
+      description: Country calling code; default 86.
+      example: '86'
     language:
-      name: 语言
-      description: zh 或 en，默认 zh
-      example: "zh"
-
+      name: Language
+      description: zh or en; protocol default zh.
+      example: zh
 search_hdd_recordings:
-  name: 查询硬盘或存储卡录像
-  description: 按设备日历查询硬盘或存储卡当月有录像的日期或当天片段；首次 P2P 连接可能需要约一分钟
+  name: Find disk or memory-card recordings
+  description: Find recording days or clips using the device calendar. The first P2P
+    connection may take about a minute.
   fields:
     entity_id:
-      name: 录像回放实体
-      description: 选择名称含“硬盘回放”或“存储卡回放”的摄像头实体
+      name: Playback entity
+      description: Select a camera entity named Disk playback or Memory-card playback.
       required: true
       selector:
         entity:
           integration: orvibo_smart_control
           domain: camera
     operation:
-      name: 查询范围
+      name: Search scope
       default: day
       selector:
         select:
           options:
-            - month
-            - day
+          - month
+          - day
+      description: Search recording days in a month or clips on a day.
     date:
-      name: 设备日历日期
-      description: 月查询用 YYYYMM，日查询用 YYYYMMDD，不转换 HA 时区
+      name: Device date/time
+      description: 'Use the device calendar: YYYYMM for month, YYYYMMDD for day, or
+        YYYYMMDDHHmmss for playback. No time-zone conversion is applied.'
       required: true
-      example: "20261015"
+      example: '20261015'
       selector:
-        text:
-
+        text: null
 start_hdd_playback:
-  name: 选择硬盘或存储卡回放时间
-  description: 选择起始时间后打开对应录像回放 camera 播放；重新选时会关闭上一段连接
+  name: Select disk or memory-card playback time
+  description: Select a start time, then open the playback camera entity. Selecting
+    a new time closes the previous connection.
   fields:
     entity_id:
-      name: 录像回放实体
+      name: Playback entity
       required: true
       selector:
         entity:
           integration: orvibo_smart_control
           domain: camera
+      description: Select a camera entity named Disk playback or Memory-card playback.
     date:
-      name: 设备回放时间
-      description: 设备日历时间 YYYYMMDDHHmmss；不会转换 HA 时区
+      name: Device date/time
+      description: 'Use the device calendar: YYYYMM for month, YYYYMMDD for day, or
+        YYYYMMDDHHmmss for playback. No time-zone conversion is applied.'
       required: true
-      example: "20261015090000"
+      example: '20261015090000'
       selector:
-        text:
-
+        text: null
 stop_hdd_playback:
-  name: 停止硬盘或存储卡回放
-  description: 关闭指定实体的录像回放和转码进程；实时画面使用独立实体
+  name: Stop disk or memory-card playback
+  description: Close playback and transcoding for the selected entity. Live video
+    uses a separate entity.
   fields:
     entity_id:
-      name: 录像回放实体
+      name: Playback entity
       required: true
       selector:
         entity:
           integration: orvibo_smart_control
           domain: camera
+      description: Select a camera entity named Disk playback or Memory-card playback.

@@ -30,11 +30,11 @@ async def async_setup_entry(
         if device.get("device_type") == DEVICE_TYPE_SWITCH:
             entities.append(OrviboSwitch(coordinator, device))
         elif device.get("device_type") == DEVICE_TYPE_CLOTHES_HORSE:
-            # 晾衣架：主开关 / 消毒 / 风干 / 热干
-            entities.append(OrviboClothesHorseSwitch(coordinator, device, "main_switch", "主开关", "mdi:power"))
-            entities.append(OrviboClothesHorseSwitch(coordinator, device, "sterilizing", "消毒", "mdi:shield-sun"))
-            entities.append(OrviboClothesHorseSwitch(coordinator, device, "wind_drying", "风干", "mdi:fan"))
-            entities.append(OrviboClothesHorseSwitch(coordinator, device, "heat_drying", "热干", "mdi:heat-wave"))
+            # Clothes dryer: main switch / sterilize / air dry / heat dry
+            entities.append(OrviboClothesHorseSwitch(coordinator, device, "main_switch", 'Power', "mdi:power"))
+            entities.append(OrviboClothesHorseSwitch(coordinator, device, "sterilizing", 'Disinfection', "mdi:shield-sun"))
+            entities.append(OrviboClothesHorseSwitch(coordinator, device, "wind_drying", 'Air drying', "mdi:fan"))
+            entities.append(OrviboClothesHorseSwitch(coordinator, device, "heat_drying", 'Heated drying', "mdi:heat-wave"))
 
     async_add_entities(entities)
 
@@ -77,7 +77,7 @@ class OrviboSwitch(CoordinatorEntity, SwitchEntity):
 
 
 class OrviboClothesHorseSwitch(CoordinatorEntity, SwitchEntity):
-    """晾衣架的一个开关子实体（主开关/消毒/风干/热干）。"""
+    """A clothes dryer switch sub-entity (main switch / sterilize / air dry / heat dry)."""
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict, feature: str, name: str, icon: str):
@@ -100,7 +100,7 @@ class OrviboClothesHorseSwitch(CoordinatorEntity, SwitchEntity):
         state = self.coordinator.get_device_state(self._device_id)
         if not state or not state.get("online", False):
             return False
-        # 消毒开关只有在电机在顶部时才可用（已开启时保持可用，允许关闭）
+        # The sterilize switch is available only when the motor is at the top; keep it available while on so it can be turned off
         if self._feature == "sterilizing":
             position = state.get("position", 0)
             is_on = self.is_on

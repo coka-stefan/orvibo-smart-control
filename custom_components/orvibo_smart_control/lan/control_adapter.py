@@ -1,5 +1,5 @@
-"""LAN control adapter：复用 HomeMate 云端 HomemateJsonData payload 构造器，
-仅把发送通道从 SSL 换成网关 TCP（ADR-3：统一控制语义）。
+"""LAN control adapter that reuses the HomeMate cloud HomemateJsonData payload builder,
+changing only the transport from SSL to gateway TCP (ADR-3: unified control semantics).
 """
 
 from __future__ import annotations
@@ -12,14 +12,14 @@ from .privacy import mask_identifier
 
 _LOGGER = logging.getLogger(__name__)
 
-# SSL 专属字段：云端报文带这些字段，LAN 网关/固件不识别，需剥离（真机验证）
+# SSL-only fields included in cloud packets must be stripped because LAN gateways/firmware do not recognize them (verified on hardware).
 _SSL_ONLY_FIELDS = frozenset(
     ("groupId", "qualityOfService", "defaultResponse", "propertyResponse", "debugInfo")
 )
 
 
 class LanControlAdapter:
-    """与 ssl_client.send_control_* 同名同参的控制方法集，走网关发送。"""
+    """Control methods matching ssl_client.send_control_* names and arguments, sent through the gateway."""
 
     def __init__(self, username: str, gateway_manager: Any) -> None:
         self._username = username
@@ -33,14 +33,14 @@ class LanControlAdapter:
         }
         uid = lan_payload.get("uid", "")
         _LOGGER.debug(
-            "LAN 控制发送 device=%s cmd=%s",
+            "Sending LAN control: device=%s cmd=%s",
             mask_identifier(lan_payload.get("deviceId", "")),
             lan_payload.get("cmd"),
         )
         try:
             response = await self._gateway_manager.send(uid, lan_payload, timeout=8.0)
         except Exception as error:  # noqa: BLE001
-            _LOGGER.debug("LAN 控制发送失败: %s", type(error).__name__)
+            _LOGGER.debug("LAN control send failed: %s", type(error).__name__)
             return False
         if response is None:
             return False
@@ -55,7 +55,7 @@ class LanControlAdapter:
             # Some gateway firmware acknowledges cmd=15 without a status field.
             status_ok = True
         _LOGGER.debug(
-            "LAN 控制响应 device=%s status=%s",
+            "LAN control response: device=%s status=%s",
             mask_identifier(lan_payload.get("deviceId", "")),
             status if isinstance(status, int) and not isinstance(status, bool) else "legacy",
         )
@@ -235,8 +235,8 @@ class LanControlAdapter:
         colortemp_mired: int = 0,
     ) -> bool:
         if state and (brightness is None or int(brightness or 0) <= 0):
-            # LAN 旧协议（type 0/1/38）开灯必须带满亮度 value2=255，
-            # 否则设备开灯即亮度 0 熄灭（lan-control light_on 实测语义）
+            # The legacy LAN protocol (types 0/1/38) requires value2=255 when turning on a light,
+            # or it turns on at brightness 0 and immediately goes dark (observed lan-control light_on behavior).
             brightness = 255
         return await self._send(
             HomemateJsonData.ssl_control_light(

@@ -160,7 +160,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             return {**result, "entity_id": entity.entity_id}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
             return {"stage": "hdd_query_failed",
-                    "error": "查询失败，请选择硬盘或存储卡回放实体并检查日期；连接失败时稍后重试"}
+                    "error": 'Query failed. Select a disk or memory-card playback entity and check the date; retry later if the connection fails'}
 
     async def handle_start_hdd(call: ServiceCall) -> dict[str, Any]:
         try:
@@ -170,7 +170,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                     "date": call.data["date"], "device_calendar_time": True}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
             return {"stage": "hdd_playback_failed",
-                    "error": "回放未启动，请选择硬盘或存储卡回放实体和有效的录像时间"}
+                    "error": 'Playback did not start. Select a disk or memory-card playback entity and a valid recording time'}
 
     async def handle_stop_hdd(call: ServiceCall) -> dict[str, Any]:
         try:
@@ -178,13 +178,13 @@ async def async_register_services(hass: HomeAssistant) -> None:
             await entity.async_stop_recording()
             return {"stage": "playback_stopped", "entity_id": entity.entity_id}
         except (ValueError, TypeError, OSError, RuntimeError, TimeoutError):
-            return {"stage": "hdd_playback_failed", "error": "未找到可用的硬盘或存储卡回放实体"}
+            return {"stage": "hdd_playback_failed", "error": 'No available disk or memory-card playback entity found'}
 
     async def handle_refresh(call: ServiceCall) -> None:
         entry_id = str(call.data.get("entry_id") or "")
         targets = _targets(hass, entry_id)
         if not entry_id or not targets:
-            _LOGGER.error("refresh_devices 需要有效的 entry_id")
+            _LOGGER.error("refresh_devices requires a valid entry_id")
             return
         await targets[0].async_request_refresh()
 
@@ -194,14 +194,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
         user_id = str(raw_user_id).strip() if raw_user_id is not None else ""
         name = str(call.data.get("name") or "").strip()[:64]
         if not device_id or not user_id:
-            _LOGGER.error("set_lock_user_name 需要 device_id 和 user_id")
+            _LOGGER.error("set_lock_user_name requires device_id and user_id")
             return
         updated = False
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if _is_lock(coordinator, device_id):
                 updated |= coordinator.set_lock_user_name(device_id, user_id[:64], name)
         if not updated:
-            _LOGGER.warning("未找到对应门锁或配置项")
+            _LOGGER.warning("No matching lock or config entry found")
 
     async def handle_fetch_video(call: ServiceCall) -> dict[str, Any]:
         device_id = str(call.data.get("device_id") or "").strip()
@@ -209,7 +209,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             str(call.data.get("object_key") or "")
         )
         if not device_id or object_key is None:
-            return {"error": "需要有效的门锁 device_id 和事件录像对象键"}
+            return {"error": 'A valid door-lock device_id and event video object key are required'}
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if not _is_lock(coordinator, device_id):
                 continue
@@ -219,14 +219,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
                     "ok": True,
                     "media_id": result.get("media_id", ""),
                 }
-        return {"error": "未找到门锁配置项或录像拉取失败"}
+        return {"error": 'Door-lock configuration not found or video retrieval failed'}
 
     async def handle_list_events(call: ServiceCall) -> dict[str, Any]:
         device_id = str(call.data.get("device_id") or "").strip()
         limit = _bounded_int(call.data.get("limit"), 100, 1, 500)
         media_type = call.data.get("media_type")
         if media_type not in (None, "image", "video"):
-            return {"error": "media_type 必须为 image 或 video"}
+            return {"error": 'media_type must be image or video'}
         events: list[dict[str, Any]] = []
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if device_id and not _is_lock(coordinator, device_id):
@@ -267,16 +267,16 @@ async def async_register_services(hass: HomeAssistant) -> None:
         name = str(call.data.get("name") or "").strip()[:64]
         phone = str(call.data.get("phone") or "").strip()[:32]
         if phone and not re.fullmatch(r"\+?[0-9]{6,20}", phone):
-            return {"error": "phone 必须为 6 到 20 位电话号码"}
+            return {"error": 'phone must contain 6 to 20 digits'}
         start_time = call.data.get("start_time")
         end_time = call.data.get("end_time")
         try:
             start = int(start_time) if start_time not in (None, "") else None
             end = int(end_time) if end_time not in (None, "") else None
         except (TypeError, ValueError):
-            return {"error": "start_time/end_time 必须为 Unix 秒时间戳"}
+            return {"error": 'start_time/end_time must be Unix timestamps in seconds'}
         if start is not None and end is not None and end <= start:
-            return {"error": "end_time 必须晚于 start_time"}
+            return {"error": 'end_time must be later than start_time'}
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if not device_id:
                 device_id = next(
@@ -299,19 +299,19 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 start_time=start,
                 end_time=end,
             )
-        return {"error": "未找到可用的配置项或门锁设备"}
+        return {"error": 'No available configuration or door-lock device found'}
 
     async def handle_revoke_temp_password(call: ServiceCall) -> dict[str, Any]:
         device_id = str(call.data.get("device_id") or "").strip()
         authorized_id = _bounded_int(call.data.get("authorized_id"), 0, 0, 2**31 - 1)
         if not device_id or authorized_id <= 0:
-            return {"error": "需要门锁 device_id 和有效的 authorized_id"}
+            return {"error": 'A door-lock device_id and valid authorized_id are required'}
         for coordinator in _targets(hass, call.data.get("entry_id")):
             if _is_lock(coordinator, device_id):
                 return await coordinator.async_revoke_temp_password(
                     device_id, authorized_id
                 )
-        return {"error": "未找到门锁设备或配置项"}
+        return {"error": 'Door-lock device or configuration not found'}
 
     async def handle_list_temp_passwords(call: ServiceCall) -> dict[str, Any]:
         device_id = str(call.data.get("device_id") or "").strip()

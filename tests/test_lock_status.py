@@ -24,9 +24,9 @@ SPEC.loader.exec_module(lock_status)
 
 
 class DoorLockPropertyTests(unittest.TestCase):
-    """形态 A：properties.doorLock（type=522 / classId=463）。
+    """Shape A: properties.doorLock (type=522 / classId=463).
 
-    V5 Eyes 实机语义：lockState="on"=已解锁，lockState="off"=已锁定。
+    V5 Eyes observed device behavior: lockState="on" means unlocked; "off" means locked.
     """
 
     def test_doorlock_morphology_unlocked_and_open(self) -> None:
@@ -41,7 +41,7 @@ class DoorLockPropertyTests(unittest.TestCase):
         )
         self.assertIs(result["locked"], False)
         self.assertIs(result["door_open"], True)
-        # 实机反锁语义：insideLockState="off"=反锁中（181826 抓包验证）
+        # Observed inside-lock behavior: insideLockState="off" means locked from inside (verified in capture 181826).
         self.assertIs(result["inside_locked"], True)
         self.assertIsNone(result["child_locked"])
 
@@ -316,7 +316,7 @@ class BatteryTests(unittest.TestCase):
         self.assertIs(result["lithium_battery_setup"], True)
 
     def test_uninstalled_battery_reports_unknown_level(self) -> None:
-        # isSetupBattery=off 表示电池被取出（实测：扣电池触发推送），level 置未知
+        # isSetupBattery=off means the battery was removed (observed when removing it triggered a push); level becomes unknown.
         result = lock_status.normalize_battery_properties(
             {"batteryManager": {"level": 0, "isSetupBattery": "off"}}
         )
@@ -530,7 +530,7 @@ class LockEventTests(unittest.TestCase):
         )
         self.assertIsNone(result["locked"])
         self.assertIsNone(result["door_open"])
-        # 实机反锁语义：insideLockState="on"=反锁解除
+        # Observed inside-lock behavior: insideLockState="on" means the inside lock is released.
         self.assertIs(result["inside_locked"], False)
 
 
@@ -546,14 +546,14 @@ class MessageEventTests(unittest.TestCase):
                     '"subDeviceType":463,"time":1785651770,'
                     '"deviceId":"w-lock-0001"}'
                 ),
-                "text": "14:22 门锁(客厅):2 用指纹打开门锁",
+                "text": "14:22 Door Lock (Living Room): 2 unlocked with a fingerprint",
             }
         )
         self.assertEqual(event["kind"], "message")
         self.assertEqual(event["device_id"], "w-lock-0001")
         self.assertEqual(event["uid"], "lock-uid-1")
         self.assertEqual(event["is_alarm"], 0)
-        self.assertEqual(event["text"], "14:22 门锁(客厅):2 用指纹打开门锁")
+        self.assertEqual(event["text"], "14:22 Door Lock (Living Room): 2 unlocked with a fingerprint")
 
     def test_doorbell_visitor_message(self) -> None:
         event = lock_status.normalize_message_event(
@@ -566,7 +566,7 @@ class MessageEventTests(unittest.TestCase):
                     '"isAlarm":0,"subDeviceType":463,"time":1785652288,'
                     '"deviceId":"w-lock-0001","doorbell_local_Ip":"192.168.1.20"}'
                 ),
-                "text": "14:31 门锁(客厅):有客人来访",
+                "text": "14:31 Door Lock (Living Room): A visitor arrived",
             }
         )
         self.assertEqual(event["kind"], "message")
@@ -583,7 +583,7 @@ class MessageEventTests(unittest.TestCase):
                     '{"deviceType":522,"uid":"lock-uid-1","isAlarm":1,'
                     '"subDeviceType":463,"time":1785652328,"deviceId":"w-lock-0001"}'
                 ),
-                "text": "14:32 门锁(客厅):开锁身份多次验证失败，门锁暂时被锁定，请确认现场情况！",
+                "text": "14:32 Door Lock (Living Room): multiple unlock checks failed; lock temporarily disabled; check the situation.",
             }
         )
         self.assertEqual(event["is_alarm"], 1)
@@ -596,7 +596,7 @@ class MessageEventTests(unittest.TestCase):
                     "cmd": 82,
                     "infoType": 1,
                     "data": '{"deviceType":1,"uid":"light-1"}',
-                    "text": "灯已打开",
+                    "text": "Light is on",
                 }
             )
         )
@@ -669,32 +669,32 @@ class LockStatusDerivationTests(unittest.TestCase):
 
 class UnlockLabelTests(unittest.TestCase):
     def test_named_user(self) -> None:
-        self.assertEqual(lock_status.format_unlock_label(2, "张三"), "张三开门")
+        self.assertEqual(lock_status.format_unlock_label(2, "Alex"), "Alex opened")
 
     def test_unnamed_user_falls_back_to_id(self) -> None:
-        self.assertEqual(lock_status.format_unlock_label(2, None), "用户2开门")
+        self.assertEqual(lock_status.format_unlock_label(2, None), "User 2 opened")
 
     def test_no_event_yet(self) -> None:
-        self.assertEqual(lock_status.format_unlock_label(None, None), "无")
+        self.assertEqual(lock_status.format_unlock_label(None, None), "None")
 
 
 class LockUserMappingTests(unittest.TestCase):
     def test_parse_equals_and_colon(self) -> None:
         result = lock_status.parse_lock_user_names(
-            "1=张三\n2:李四\n\nbad line\n3= 王五 "
+            "1=Alex\n2:Jordan\n\nbad line\n3= Taylor "
         )
-        self.assertEqual(result, {"1": "张三", "2": "李四", "3": "王五"})
+        self.assertEqual(result, {"1": "Alex", "2": "Jordan", "3": "Taylor"})
 
     def test_parse_empty(self) -> None:
         self.assertEqual(lock_status.parse_lock_user_names(""), {})
         self.assertEqual(lock_status.parse_lock_user_names(None), {})
 
     def test_format_roundtrip(self) -> None:
-        text = lock_status.format_lock_user_names({"2": "李四", "1": "张三"})
-        self.assertEqual(text, "1=张三\n2=李四")
+        text = lock_status.format_lock_user_names({"2": "Jordan", "1": "Alex"})
+        self.assertEqual(text, "1=Alex\n2=Jordan")
         self.assertEqual(
             lock_status.parse_lock_user_names(text),
-            {"1": "张三", "2": "李四"},
+            {"1": "Alex", "2": "Jordan"},
         )
 
     def test_format_invalid_input(self) -> None:

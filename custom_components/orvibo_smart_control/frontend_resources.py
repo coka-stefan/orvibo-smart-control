@@ -82,7 +82,7 @@ async def async_register_card_resources(hass) -> None:
                     hass.http.register_static_path(BASE_URL, str(directory), cache_headers=True)
                 state["static"] = True
         except Exception:
-            _LOGGER.exception("欧瑞博卡片静态资源注册失败")
+            _LOGGER.exception("Failed to register Orvibo card static resources")
             return
 
         from homeassistant.components import frontend
@@ -90,8 +90,8 @@ async def async_register_card_resources(hass) -> None:
             try:
                 frontend.add_extra_js_url(hass, url)
             except Exception:
-                _LOGGER.exception("欧瑞博卡片前端模块注册失败: %s", urlsplit(url).path)
+                _LOGGER.exception("Failed to register Orvibo card frontend module: %s", urlsplit(url).path)
         try:
             await _async_lovelace_resources(hass, urls)
         except Exception:
-            _LOGGER.exception("欧瑞博卡片仪表盘资源注册失败；可在仪表盘资源中手动添加 JavaScript 模块")
+            _LOGGER.exception("Failed to register Orvibo card dashboard resource; add the JavaScript module manually in dashboard resources")

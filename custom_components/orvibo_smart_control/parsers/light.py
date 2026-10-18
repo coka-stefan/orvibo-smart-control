@@ -38,11 +38,11 @@ def _legacy_brightness(raw_status: Mapping[str, Any]) -> int | None:
     if brightness is None:
         raw_brightness = props.get("brightness")
         if isinstance(raw_brightness, dict):
-            # 属性型亮度可能是 {"percent": 0-100} / {"value": 0-255} / {"level": ...}
+            # Attribute-based brightness may use percent (0-100), value (0-255), or level.
             percent = raw_brightness.get("percent")
             if normalize_brightness(percent, 100) is not None:
                 try:
-                    # type=38 量纲为 0-255，percent 换算后钳制
+                    # type=38 uses a 0-255 scale; clamp after converting from percent.
                     brightness = normalize_brightness(float(percent) * 255 / 100)
                 except (TypeError, ValueError, OverflowError):
                     brightness = None

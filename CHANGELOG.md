@@ -2,539 +2,533 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Translate UI labels, entity names, notifications, service descriptions, cards,
+  product catalog descriptions, documentation, comments, logs, and developer tools into English.
+- Keep vendor model identities, protocol commands, service names, and entity unique IDs unchanged.
+- Preserve and document only the Chinese inputs required for vendor-name matching,
+  incoming notification classification, and protocol-fixture coverage.
+- Add an English-only CI check with exact, explained compatibility exceptions.
+
 ## [0.2.6b14] - 2026-10-16
 
 ### Fixed
 
-- 修复升级后 JavaScript 资源地址可能被启动期间的延迟加载恢复为旧版本、需要删除重加的问题；启动完成后再次原地核对资源与全局模块，保留资源 ID 和卡片配置，静态注册首次失败也会重试。
-- 修复门锁卡片抓拍无法加载：解析请求改用 Home Assistant 要求的 `media_content_id`，图片与录像统一使用集成独立的鉴权媒体源。原有 `config/media` 归档可继续读取，不依赖用户的 `media_dirs` 设置。
-- 修复 `fetch_video` 服务和已归档录像缓存返回旧媒体引用的问题，与历史查询使用相同的媒体源路径。
+- Fixed JavaScript resource URLs reverting to an older version after delayed loading during startup, which previously required users to remove and re-add the resource. After startup, the integration checks and updates the URL and global module in place, preserves the resource ID and card configuration, and retries if initial static registration fails.
+- Fixed door-lock snapshots failing to load: media parsing now uses Home Assistant's required `media_content_id`, and images and recordings share the integration's authenticated media source. Existing archives under `config/media` remain readable without relying on the user's `media_dirs` setting.
+- Fixed the `fetch_video` service and archived recording cache returning an old media reference; they now use the same media-source path as history queries.
 
 ### Verification
 
-- Python 3.12 完整离线测试 787 项，跳过 2 项，整体通过；覆盖启动资源回退与重试、严格媒体解析参数、已有抓拍目录、归档路径边界和缓存录像引用。
-- 模拟 Home Assistant 的浏览器验证 8 组通过，无浏览器错误；已对照 HA 媒体源和签名接口源码核对调用格式。
+- Full Python 3.12 offline suite passed: 787 tests, 2 skipped. Coverage includes startup resource rollback and retries, strict media parsing parameters, existing snapshot directories, archive path boundaries, and cached recording references.
+- Eight simulated Home Assistant browser-check groups passed with no browser errors. Call formats were checked against HA media-source and signed-URL interface source.
 
 ### Limitations
 
-- 在 HACS 更新到 `v0.2.6b14`，重启 Home Assistant 后强制刷新页面；已有 JavaScript 资源、卡片配置和本地抓拍可保留，每把锁默认保留 30 张，可配置 1–500 张。
-- 本地启动竞争复现和模拟验证已通过，真实 HA 升级后的资源更新、鉴权媒体读取及云端新抓拍仍需设备确认。
+- Update to `v0.2.6b14` in HACS, restart Home Assistant, and force-refresh the page. Existing JavaScript resources, card configuration, and local snapshots can remain; 30 snapshots per lock are kept by default, configurable to 1–500.
+- Local startup-race reproduction and simulated validation passed. Resource updates, authenticated media reads, and new cloud snapshots after an actual HA upgrade still need device confirmation.
 
 ## [0.2.6b13] - 2026-10-16
 
 ### Changed
 
-- 优化门锁总览卡片：集中显示主锁、门磁、反锁及有效电池电量；突出最近开门人、内外开方向、开锁方式和时间。未上锁使用警示色，未知状态单独展示，内开不显示旧的外开人员或凭据。
-- 猫眼抓拍增加最新图片预览和可横滑的历史缩略图，支持键盘操作、大图上一张/下一张、Escape 关闭及焦点恢复；适配手机窄卡片、深浅色主题和减少动态效果设置。
+- Improved the door-lock overview card: shows the main lock, door contact, deadbolt, and valid battery level together; highlights the most recent person, inside/outside direction, unlock method, and time. Unlocked state uses a warning color, unknown state is shown separately, and inside openings do not show the previous outside person's identity or credential.
+- Added a preview of the newest door-view snapshot and horizontally scrollable history thumbnails. Supports keyboard use, previous/next in large view, Escape to close and restore focus; adapts to narrow phone cards, light/dark themes, and reduced-motion settings.
 
 ### Fixed
 
-- 抓拍地址最多 4 个并发解析并保持顺序；刷新失败保留已显示的图片，单张解析失败保留同一图片已有地址，并显示重试提示。切换配置后丢弃旧抓拍请求的结果。
-- 无关 Home Assistant 状态更新不再重建门锁卡片；相关状态刷新时保留表单草稿、输入焦点、光标和历史图片滚动位置。临时密码与授权折叠区支持键盘及展开状态提示。
+- Resolve up to four snapshot URLs concurrently while preserving order. Failed refreshes retain displayed images; a failed single-image lookup keeps that image's existing URL and shows a retry prompt. Results from old snapshot requests are discarded after changing config.
+- Unrelated Home Assistant state updates no longer rebuild the door-lock card. Relevant refreshes preserve form drafts, input focus, cursor, and history-image scroll position. Temporary-password and authorization sections support keyboard interaction and indicate their expanded state.
 
 ### Verification
 
-- Python 3.12 完整离线测试 775 项，跳过 2 项，整体通过；新增有效电量、内开身份清除、图片并发顺序、失败保留、旧请求丢弃和无关状态更新回归。
-- 模拟 Home Assistant 的浏览器验证覆盖 320–1440px 布局、44px 操作目标、输入与焦点保留、大图键盘操作、图片失败恢复、空图库及独立密码卡片，8 组检查通过，无浏览器错误。
+- Full Python 3.12 offline suite passed: 775 tests, 2 skipped. New regressions cover valid battery levels, clearing identity for inside openings, concurrent image ordering, retaining images on failure, discarding stale requests, and unrelated state updates.
+- Eight simulated Home Assistant browser-check groups passed with no browser errors, covering 320–1440px layouts, 44px action targets, input/focus retention, keyboard control in large view, image-failure recovery, empty gallery, and the standalone password card.
 
 ### Limitations
 
-- 在 HACS 更新到 `v0.2.6b13`，重启 Home Assistant 后强制刷新浏览器，以载入新卡片脚本；原卡片配置可继续使用。
-- 浏览器验证使用模拟状态与图片；真实 Home Assistant 的主题、手机显示、云端抓拍和临时密码操作仍需设备确认。
+- Update to `v0.2.6b13` in HACS, restart Home Assistant, and force-refresh the browser to load the new card script; existing card configuration can remain.
+- Browser validation used simulated state and images. The actual HA theme, phone display, cloud snapshots, and temporary-password operation still need device confirmation.
 
 ## [0.2.6b12] - 2026-10-16
 
 ### Fixed
 
-- 修复旧式门锁仅上报 `properties.battery_power` 时干电池电量未知的问题，覆盖 `deviceType=300`、`subDeviceType=400` 的 5 号电池门锁；电量来自设备实际百分比，不使用 `value4` 事件码推测。
-- 有效电池管理器数据及明确未安装标记仍优先于旧字段；0% 有效，缺失或无效的局部电量更新保留最近读数。没有有效数据的锂电池项继续隐藏，已有实体 ID 与用户手动隐藏设置不变。
-- 修复全家诊断超过 50 台设备时遗漏后续设备的问题；门锁诊断增加库存与最新状态的原始属性和数值来源，逐设备保留大小限制并继续脱敏秘密及标识。
+- Fixed unknown dry-cell battery levels on legacy locks reporting only `properties.battery_power`, covering five-battery locks with `deviceType=300`, `subDeviceType=400`. The value comes from the actual percentage reported by the device; it is not inferred from the `value4` event code.
+- Valid battery-manager data and an explicit not-installed marker still take precedence over legacy fields. 0% is valid, while missing/invalid partial updates preserve the latest reading. Lithium-battery entries without valid data remain hidden; existing entity IDs and user-hidden settings remain unchanged.
+- Fixed whole-home diagnostics omitting devices after the 50th. Lock diagnostics now include raw inventory and latest-state properties and their numeric source, with per-device size limits and continued redaction of secrets and identifiers.
 
 ### Verification
 
-- 回放用户门锁诊断中的库存及 6 次实时推送，干电池均为 60%，状态为门关闭、主锁已上锁、未反锁，无锂电池读数；未提交用户原始诊断文件。
-- Python 3.12 完整离线测试 769 项，跳过 2 项，整体通过；新增旧式电量全链路、边界值、管理器优先级、实体恢复、86 台设备诊断和脱敏回归，独立审查未发现发布阻塞。
+- Replayed the user's lock inventory and six live pushes: dry-cell battery was 60% in each; door closed, main lock engaged, deadbolt not engaged, no lithium reading. The user's original diagnostic file was not committed.
+- Full Python 3.12 offline suite passed: 769 tests, 2 skipped. New regressions cover the complete legacy battery path, boundary values, manager priority, entity restoration, and diagnostics/redaction for 86 devices. Independent review found no release blockers.
 
 ### Limitations
 
-- 在 HACS 更新到 `v0.2.6b12` 后重启 Home Assistant，等待云端快照或实时推送。诊断回放已确认字段解析，升级后的真实实体显示仍需设备确认。
+- After updating to `v0.2.6b12` in HACS, restart Home Assistant and wait for a cloud snapshot or live push. Diagnostic replay confirmed field parsing; entity display after upgrade still needs device confirmation.
 
 ## [0.2.6b11] - 2026-10-16
 
 ### Fixed
 
-- 门锁电池和锁状态兼容 App 属性表的 `batteryManager_level`、`batteryManager1_level`、`doorLock_lockState` 等扁平字段，继续支持实时推送的嵌套字段，修复漏读数据导致电量未知、锁状态不符的问题。
-- 主锁与反锁分别解析：旧式 `handle` 表示主锁，`reverse_lock` 表示独立反锁；未反锁不再覆盖主锁的已上锁状态。
-- 不含电量或电量无效的局部更新保留最近有效读数；明确未安装时仍清空该来源，已安装电池的 0% 为有效值。云端局部快照缺少锁状态时保留最近状态。
-- 自动隐藏没有有效电量的干电池或锂电池实体，收到有效读数后恢复显示；保留现有实体 ID 和用户手动隐藏设置。
+- Door-lock battery and state parsing now supports flat fields in the App property table such as `batteryManager_level`, `batteryManager1_level`, and `doorLock_lockState`, while continuing to support nested live-push fields. Fixes missed data that caused unknown battery levels or incorrect lock state.
+- Parses the main lock and deadbolt separately: legacy `handle` represents the main lock and `reverse_lock` the independent deadbolt. “Not deadbolted” no longer overwrites an engaged main lock.
+- Partial updates with missing or invalid battery levels preserve the latest valid reading; an explicit not-installed marker still clears that source, and 0% is valid for an installed battery. A partial cloud snapshot with missing lock state preserves the latest state.
+- Automatically hides dry-cell or lithium battery entities without a valid reading and restores them when a valid reading arrives, preserving existing entity IDs and user-hidden settings.
 
 ### Verification
 
-- Python 3.12 完整离线测试 755 项，跳过 2 项，整体通过；覆盖属性表到初始化和周期更新、60% 干电池样本、主锁与反锁组合、局部电量更新、无效值及实体隐藏/恢复生命周期。
+- Full Python 3.12 offline suite passed: 755 tests, 2 skipped. Coverage includes property-table initialization and periodic updates, a 60% dry-cell sample, main-lock/deadbolt combinations, partial battery updates, invalid values, and entity hide/restore lifecycle.
 
 ### Limitations
 
-- 本次依据 HomeMate 5.2.6.307 静态逆向和合成协议回归验证；实际电量、门磁、主锁和反锁显示仍需用户设备确认。
-- 更新后重启 Home Assistant，并等待云端快照或实时推送提供有效读数。门关闭本身不作为主锁已上锁的依据。
+- This change was validated using static reverse engineering of HomeMate 5.2.6.307 and synthetic protocol regressions. Actual battery, door-contact, main-lock, and deadbolt display still need confirmation on the user's device.
+- After updating, restart Home Assistant and wait for a valid cloud snapshot or live push. A closed door alone does not mean the main lock is engaged.
 
 ## [0.2.6b10] - 2026-10-16
 
 ### Changed
 
-- 按四类凭据规则判断方向：密码（含临时密码）、指纹、钥匙和卡片判外开，其他开锁方式及未匹配到四类凭据的门磁开门统一判内开；内开不复用外开用户。
+- Determine opening direction using four credential categories: password (including temporary password), fingerprint, key, and card mean outside; all other unlock methods and door-contact openings unmatched to these credentials mean inside. Inside openings do not reuse an outside user.
 
 ### Verification
 
-- Python 3.12 完整离线测试 747 项，跳过 2 项，整体通过；覆盖四类外开及临时/胁迫凭据、其他方式内开、无凭据门磁内开、内开身份清除、重复和过期事件及三行姓名映射。
+- Full Python 3.12 offline suite passed: 747 tests, 2 skipped. Coverage includes the four outside credentials and temporary/duress credentials, inside openings by other methods or door contact without a credential, clearing identity for inside openings, duplicate/expired events, and three-line name mappings.
 
 ### Limitations
 
-- 内开属于用户指定的方向推断策略：人脸、其他/未知方式以及未匹配四类凭据的门磁开门均归内开，不表示固件明确确认了方向；内开人员显示未知。
-- 门锁真实事件时序、姓名授权编号及抓拍效果仍需设备验证。
+- Inside-opening classification is the direction-inference strategy requested by the user: face recognition, other/unknown methods, and door-contact openings unmatched to the four credentials are treated as inside. This does not mean firmware explicitly confirmed the direction; the person is shown as unknown.
+- Real lock event timing, name authorization numbers, and snapshot behavior still need device validation.
 
 ## [0.2.6b9] - 2026-10-15
 
 ### Added
 
-- 门锁事件和总览卡片显示内开、外开及开锁人；兼容新旧事件和管理员编号 0，支持按设备、凭据方式、授权编号映射姓名。
-- 新增“门锁抓拍保留数量”选项，每把锁默认保留最近 30 张，可配置为 1–500 张；卡片默认展示 30 张并支持 `history_limit`。
-- `list_events` 服务支持按图片或录像筛选，筛选后再计算条数，避免录像挤占抓拍展示数量。
+- Door-lock events and overview card now show inside/outside direction and unlocker identity; support old and new events, administrator number 0, and name mappings by device, credential method, and authorization number.
+- Added “Door Lock Snapshot Retention Count”; keeps the latest 30 images per lock by default, configurable to 1–500. The card displays 30 by default and supports `history_limit`.
+- `list_events` can filter images or recordings before applying the limit, so recordings do not take up the snapshot display count.
 
 ### Fixed
 
-- 密码、指纹、钥匙和卡片等凭据开锁优先判为外开；明确内开不会继承上次外开人员。重复、过期和乱序旧事件不再污染当前归属，一次开锁只关联一次开门。
-- 抓拍立即尝试下载，失败后重新签名并重试；原子保存成功后再裁剪。同秒不同图片分别保存，迟到旧图归档但不覆盖最新画面。
-- 重启恢复最新本地抓拍，摄像头更新会触发卡片刷新；自动 7 天录像清理不再删除保留中的图片，并发保存、清理和卸载共用受控生命周期。
+- Credential unlocks using password, fingerprint, key, or card are classified as outside; explicit inside openings never inherit the previous outside person's identity. Duplicate, expired, and out-of-order old events no longer corrupt current attribution, and one unlock is linked to only one opening.
+- Snapshot downloads are attempted immediately and retried with a new signature on failure; pruning occurs only after atomic save succeeds. Different images from the same second are saved separately; a late old image is archived without replacing the latest image.
+- The latest local snapshots are restored after restart, and camera updates refresh the card. Automatic 7-day recording cleanup no longer removes retained images; concurrent save, cleanup, and unload share a controlled lifecycle.
 
 ### Verification
 
-- Python 3.12 完整离线测试 744 项，跳过 2 项，整体通过；包含开门归属、管理员 0、姓名隔离、抓拍重试/并发/数量裁剪/恢复及卡片交互回归。
-- 独立发布前审查未发现阻塞问题。
+- Full Python 3.12 offline suite passed: 744 tests, 2 skipped. Coverage includes opening attribution, administrator 0, name scoping, snapshot retry/concurrency/retention/restoration, and card interaction regressions.
+- Independent pre-release review found no blockers.
 
 ### Limitations
 
-- 依据 HomeMate 5.2.6.307 静态逆向证据实现，尚未经过门锁实机验证。固件若仅上报门磁、没有明确方向或用户编号，开门方向及人员保留未知。
-- 开锁姓名需要配置“锁用户映射”；服务临时改名仅在本次运行有效，持久映射请保存到集成选项。猫眼抓拍依赖云端事件和对象可下载，不提供猫眼实时视频。
+- Implemented from static reverse-engineering evidence for HomeMate 5.2.6.307; not yet validated on a real lock. If firmware reports only the door contact without direction or user number, direction and person remain unknown.
+- Configure “Lock User Mapping” for unlocker names; service-based temporary renaming lasts only for the current run, while persistent mappings belong in integration options. Door-view snapshots depend on cloud events and downloadable objects; live door-view video is not provided.
 
 ## [0.2.6b8] - 2026-10-15
 
 ### Added
 
-- 为已选中并匹配 Meari XTS/p2p=2 的巨目 2K 智能摄像机 S1 等 IPC 新增独立“存储卡回放”实体，支持 SD/TF 卡月/日录像查询、按时间播放和停止。
-- 视频 worker 接受已支持 IPC 的通道 0 存储卡查询/回放；保持 NVR 实体唯一 ID、通道及现有回放命令不变，不开放未验证的其他设备类型。
-- “欧瑞博录像回放”卡片同时列出存储卡和硬盘实体，保留原自定义类型、紧凑布局和服务名；新增通用回放实体关联及存储来源属性。
+- Added a separate “SD Card Playback” entity for selected, matched Meari XTS/p2p=2 IPC devices such as the Jumu 2K Smart Camera S1. Supports month/day SD/TF recording search, playback by time, and stop.
+- The video worker accepts channel 0 storage-card search/playback for supported IPCs. Existing NVR entity unique IDs, channels, and playback commands remain unchanged; unverified device types are not enabled.
+- The “ORVIBO Recording Playback” card lists both storage-card and hard-drive entities while retaining its custom type, compact layout, and service names; adds generic playback-entity associations and a storage-source attribute.
 
 ### Verification
 
-- 新增 S1 实体创建、SD 通道校验、月/日及开始/停止字节、模拟隧道录像流和卸载清理回归；卡片覆盖硬盘切换至存储卡后查询、播放及停止。
-- 修复独立运行回放隧道测试时依赖其他测试类初始化的缺陷，测试不再依赖运行顺序。
+- Added regressions for S1 entity creation, SD channel validation, month/day and start/stop bytes, simulated tunnel recording streams, and unload cleanup. Card tests cover switching from hard-drive to storage-card search, playback, and stop.
+- Fixed playback tunnel tests depending on initialization performed by another test class; tests no longer depend on execution order.
 
 ### Limitations
 
-- 依据官方 App 静态协议和离线模拟实现；真实 S1 存储卡录像查询与播放仍需设备验证。官方 App 能回放只证明卡中存在录像，不能代替 HA 回放验证。
-- 仅普通时间回放，无云录像、record_id 模式、音频、暂停及倍速；首次连接可能需要约一分钟。
+- Implemented from static protocol analysis of the official App and offline simulation; actual S1 storage-card search and playback still need device validation. Playback in the official App proves only that recordings exist on the card, not that HA playback works.
+- Supports ordinary time-based playback only; no cloud recordings, `record_id` mode, audio, pause, or variable speed. Initial connection may take about a minute.
 
 ## [0.2.6b7] - 2026-10-15
 
 ### Changed
 
-- 回放卡片使用紧凑布局和自动高度，通道/日期并排；当月查询和指定时间收进“更多选项”。
-- 录像片段用限高120px的滚动列表展示，播放后自动收起片段及更多选项；播放器位于列表上方，保持16:9并限制宽度。
-- 移除空状态提示区预留高度和过大的默认网格行数；窄屏单列布局避免横向溢出，录像片段按钮保留无障碍播放描述。
-- 真实无头浏览器对比320/430/820px视口，覆盖256条片段：空闲、结果和播放状态高度均下降；查询/播放/停止交互回归通过。
+- Playback card now uses a compact layout and automatic height, with channel/date side by side and month search/specified time under “More Options.”
+- Recording clips appear in a scrollable list capped at 120px; clips and additional options collapse after playback starts. The player is above the list, maintains 16:9, and has a maximum width.
+- Removed reserved height for empty-state hints and overly large default grid rows. Narrow screens use one column to avoid horizontal overflow; clip buttons retain accessible playback descriptions.
+- Compared a real headless browser at 320/430/820px with 256 clips. Idle, result, and playback states are all shorter; search/play/stop interaction regressions passed.
 
 ### Limitations
 
-- 浏览器布局测试使用模拟 HA 服务与播放器区域，不能代替用户 HA 中的视频和真实硬盘录像验证。
+- Browser-layout tests use simulated HA services and player area; they do not replace video validation in the user's HA or real hard-drive recording tests.
 
 ## [0.2.6b6] - 2026-10-15
 
 ### Fixed
 
-- 补齐内嵌卡片的 Lovelace 模块资源自动注册，更新已存在的旧资源地址，避免只依赖全局附加脚本；保留 YAML 资源配置。
-- 使用脚本内容哈希刷新资源缓存；前端单个卡片注册失败不再跳过另一张卡片，仪表盘尚未就绪时在 HA 启动后重试。
-- 录像卡片允许同页重复加载，避免旧资源和手动添加的地址同时存在时发生顶层标识符冲突。
-- 增加静态 HTTP 路由、JavaScript MIME、懒加载资源集合、注册幂等和失败隔离测试；独立无头 Edge 验证 HTTP 模块加载、组件注册、重复导入和查询片段显示。
+- Completed automatic Lovelace module-resource registration for embedded cards and updated existing old resource URLs, avoiding reliance only on a global extra script while retaining YAML resource configuration.
+- Refreshes resource cache using the script-content hash. Failure to register one frontend card no longer skips the other; retries after HA startup if the dashboard is not ready.
+- Recording card now allows repeated loads on one page, avoiding top-level identifier conflicts when old and manually added resource URLs coexist.
+- Added tests for static HTTP routes, JavaScript MIME, lazy resource collections, idempotent registration, and failure isolation. A standalone headless Edge test verified HTTP module loading, component registration, repeated imports, and clip display after search.
 
 ### Limitations
 
-- 未连接用户 HA 环境；本次只修复前端资源入口。硬盘查询及回放的真实设备验证仍待用户反馈。
+- The user's HA environment was not connected; this change fixes only the frontend resource entry point. Real-device hard-drive search and playback still await user feedback.
 
 ## [0.2.6b5] - 2026-10-15
 
 ### Added
 
-- 新增欧瑞博 NVR 硬盘录像卡片、独立回放 camera 实体和有限月/日片段查询；回放按录像机日历选点，结束后不从原时间自动重播。
-- 连通 App 硬盘查询及普通时间回放协议，通过序号匹配隧道回复、识别录像媒体/结束标记；回放不复用实时流。
-- 增加 `search_hdd_recordings`、`start_hdd_playback`、`stop_hdd_playback` 服务和脱敏连接诊断。
-- 清理失败的实时预连接，并在实时画面断线后有限退避预热，以便 HA 慢重试复用正在建立的连接。
+- Added the ORVIBO NVR hard-drive recording card, separate playback camera entity, and bounded month/day clip search. Playback positions use the NVR calendar and do not automatically restart from the original time after ending.
+- Implemented the App's hard-drive search and ordinary time-based playback protocol, matching tunnel replies by sequence and recognizing recording media/end markers. Playback does not reuse the live stream.
+- Added `search_hdd_recordings`, `start_hdd_playback`, and `stop_hdd_playback` services and redacted connection diagnostics.
+- Cleans up failed live prepared connections and applies bounded backoff warmup after live-video disconnects so HA's slow retry can reuse a connection being established.
 
 ### Verification
 
-- Python 3.12 全量离线测试686项通过，含真实 FFmpeg/PyAV 合成流、P2P 协议、回放实体/服务生命周期、卡片 DOM 交互。
-- 用户确认真实录像机通道1可看；通道3加载慢、等待后恢复。
+- Full Python 3.12 offline suite passed, 686 tests, including real FFmpeg/PyAV synthetic streams, P2P protocol, playback entity/service lifecycle, and card DOM interactions.
+- The user confirmed that real NVR channel 1 is viewable; channel 3 loads slowly but recovers after waiting.
 
 ### Limitations
 
-- 硬盘搜索和录像回放尚未经过真实设备验证；`playback_selected` 仅表示设置时间，收到回放视频仍需设备实测。没有音频、暂停和倍速。
-- 只实现普通时间选择回放，未实现 record_id 模式；时钟采用录像机日历时间，不转换 HA 时区。新录像通道仍需重新加载集成。
+- Hard-drive search and recording playback have not been validated on a real device. `playback_selected` means only that a time was set; receipt of playback video still needs device testing. No audio, pause, or variable speed.
+- Implements ordinary time-selected playback only; `record_id` mode is not implemented. Uses the NVR calendar without converting to the HA time zone. Reload the integration when new recording channels appear.
 
 ## [0.2.6b4] - 2026-10-15
 
 ### Added
 
-- 为选中并精确匹配的 Meari XTS/p2p=2 IPC 和 NVR 在线通道创建实时 camera 实体，按稳定厂商 ID 每次重新取得授权和通道，避免库存排序变化切错设备。
-- 连续协议 worker 通过有限 J/V 管道输出 Annex-B，FFmpeg 转为 H.264 MPEG-TS，再由 HA Stream 提供前端播放；缩略图共用 HA 解码关键帧，HAOS 无需独立视频服务。
-- 预连接绕过 HA 较短的视频源打开时限；无消费者的预连接过期回收，断开、无帧、超时、重复取消、平台移除和 HA 关闭时回收协议/转码进程。
-- 连续收流加入 TURN 续期及加密 I/P 帧回归；CI 安装 FFmpeg/PyAV 执行实际视频验证。
+- Created live camera entities for selected, precisely matched online channels on Meari XTS/p2p=2 IPCs and NVRs. Refreshes authorization and channels on each start using stable vendor IDs, so inventory order changes cannot switch to the wrong device.
+- Continuous protocol worker emits Annex-B through a bounded J/V pipe; FFmpeg converts it to H.264 MPEG-TS, then HA Stream provides frontend playback. Thumbnails reuse HA's decoded keyframe, so HAOS needs no separate video service.
+- Prepared connections bypass HA's shorter video-source startup deadline; unused preparations expire. Protocol/transcoding processes are reclaimed on disconnect, no frames, timeout, repeated cancellation, platform removal, and HA shutdown.
+- Continuous streaming adds TURN renewal and encrypted I/P-frame regressions; CI installs FFmpeg/PyAV for actual video validation.
 
 ### Verification
 
-- 用户真实 NVR 1 号通道已接收 HEVC 参数集与关键帧153,474字节、144包；此证据不等同于解码或连续播放。
-- Python3.12 完整离线647项测试通过，新增55项，含真实 HEVC→H.264 MPEG-TS→解码及持续10fps视频通过PyAV解码测试。
+- The user's real NVR channel 1 delivered HEVC parameter sets and a 153,474-byte keyframe over 144 packets; this does not establish decoding or continuous playback.
+- Full Python 3.12 offline suite passed, 647 tests with 55 new tests, including real HEVC → H.264 MPEG-TS → decoding and PyAV decoding of continuous 10-fps video.
 
 ### Limitations
 
-- 真实设备连续画面、3号通道、多通道同时播放和网络抖动下时序仍需用户验证。无声音，尚未开放硬盘历史检索/播放/定位；仅支持默认 hostKey 鉴权。
-- 新设备/通道在平台加载时发现，云端通道变化需重新加载；连接依赖云授权。GitHub 按普通 Release / Latest 发布 bN 版本。
+- Continuous video on a real device, channel 3, simultaneous multi-channel playback, and timing under network jitter still need user validation. No audio; hard-drive history search/playback/seeking are not available. Supports default hostKey authentication only.
+- New devices/channels are discovered when the platform loads; reload after cloud channel changes. Connection requires cloud authorization. GitHub publishes `bN` versions as ordinary Releases / Latest.
 
 ## [0.2.6b3] - 2026-10-15
 
 ### Added
 
-- 新增 `probe_video_stream`：获取新会话与库存后，实际尝试 MsgSvr/TURN/ICE/KCP/VVP 到指定通道的编码首帧；返回固定阶段和有限媒体统计，不保存画面。
-- 同一配置项只允许一次探测；子进程在结束、超时、取消、卸载和 HA 关闭时停止并回收，包括阻塞 DNS 工作。
-- 复用固定 MIT 协议实现，保留归属；按 App 原生证据修正鉴权、最终 VVP 头及 NVR 通道传递，支持 HA 依赖目录。
+- Added `probe_video_stream`: obtains a fresh session and inventory, then actually attempts MsgSvr/TURN/ICE/KCP/VVP through the encoded first frame for a specified channel. Returns fixed stages and bounded media statistics without saving video.
+- Allows one probe per config entry. Stops and reclaims the subprocess on completion, timeout, cancellation, unload, and HA shutdown, including blocked DNS work.
+- Reuses the pinned MIT protocol implementation with attribution preserved; corrected authentication, final VVP header, and NVR channel passing based on native App evidence; supports HA dependency directories.
 
 ### Verification
 
-- 用户已证实 b2 云通道查询成功：NVR 共 8 路，1、3 号 state=1、p2p=2；这是云端快照而非媒体播放证据。
-- Python 3.12 完整离线测试 592 项通过，含49项新增协议向量、模拟信令至首帧、慢速 TCP、STUN 无关报文、HEVC IRAP、空 NAL 过滤、真实子进程超时和重复取消回收测试。
+- The user confirmed that b2 cloud channel lookup succeeded: 8 NVR channels, with channel 1 and 3 state=1, p2p=2. This is a cloud snapshot, not evidence of media playback.
+- Full Python 3.12 offline suite passed, 592 tests, including 49 new protocol vectors, simulated signaling through first frame, slow TCP, unrelated STUN packets, HEVC IRAP, empty-NAL filtering, actual subprocess timeout, and repeated-cancellation cleanup.
 
 ### Limitations
 
-- 编码首帧只检查必要参数集和关键 NAL 的基本结构，尚未通过解码器和真实设备媒体验证。实时播放出口及硬盘历史检索、播放、定位仍未实现。
-- 客户端 Android 版本后缀和参考发现协议版本仍需真实环境验证；仅尝试默认 hostKey 鉴权，不盲试独立视频密码。
+- Encoded first-frame detection checks only basic structure of required parameter sets and key NALs; it has not been validated by a decoder or real-device media. Live playback output and hard-drive history search/playback/seeking are not implemented yet.
+- The Android client version suffix and reference discovery-protocol version still need real-environment validation. Only default hostKey authentication is tried; separate video-password combinations are not guessed.
 
 ## [0.2.6b2] - 2026-10-15
 
 ### Added
 
-- 新增 `inspect_video_channels` 动作：取得欧瑞博外部会话及厂商设备列表后，通过 App 的 HTTPS 批量接口查询 NVR 通道快照，返回通道编号、原始状态/类型及有限能力码。
-- 区分最大通道数、返回通道数、缺失状态、无效行及输出截断；不返回账号、token、SN、设备名称、密钥、地址或原始响应。
+- Added the `inspect_video_channels` action: after obtaining the ORVIBO external session and vendor device list, queries NVR channel snapshots through the App's HTTPS batch API and returns channel number, raw state/type, and bounded capability codes.
+- Distinguishes maximum channel count, returned channel count, missing state, invalid rows, and output truncation. Does not return account, token, SN, device name, key, address, or raw response.
 
 ### Fixed
 
-- 厂商签名提取为通用构造器，NVR 批量 GET 对路径及 `snIdentifier` 重新签名；保持已验证的设备库存请求格式。
-- 保留 `bN` 诊断版本号，GitHub 按普通 Release 发布并设为 Latest；修复已有版本的 Pre-release 标记及安装说明，不移动已有标签或替换已上传的安装包。
+- Extracted vendor signing into a generic builder; NVR batch GET re-signs the path and `snIdentifier`, preserving the verified device-inventory request format.
+- Retained `bN` diagnostic versions and published them as ordinary GitHub Releases / Latest. Fixed existing versions' Pre-release flags and installation instructions without moving existing tags or replacing uploaded packages.
 
 ### Limitations
 
-- 通道数据来自厂商云端快照，可能缺失或滞后；尚未验证本批量接口的真实设备结果。实时取流、录像机硬盘片段检索、播放及定位仍未实现。
+- Channel data comes from vendor cloud snapshots and may be missing or stale. Results of this batch API have not yet been verified on a real device. Live streaming and NVR hard-drive clip search, playback, and seeking are not implemented.
 
 ### Verification
 
-- Python 3.12 完整离线单元测试：543 项通过，包含 22 项新增 NVR 通道请求/解析、独立签名向量、脱敏及完整动作链回归；尚未进行真实通道或媒体播放验证。
+- Full Python 3.12 offline unit suite passed, 543 tests, including 22 new NVR channel request/parsing, independent signature-vector, redaction, and full action-chain regressions. Real-channel and media playback validation has not been done.
 
 ## [0.2.6b1] - 2026-10-15
 
 ### Added
 
-- 新增 `inspect_video_devices` 动作，获取欧瑞博外部会话后按 App 的表单签名及请求头签名，向会话下发的 HTTPS API 查询 Meari 设备列表。
-- 返回固定分类计数、连接参数存在状态和有限的原始能力码；过滤账号、token、设备标识、密钥、地址及原始响应。限制响应大小、请求时长、输出条数，禁止跟随重定向。
+- Added `inspect_video_devices`, which obtains an ORVIBO external session, signs the request body and headers as the App does, and queries the Meari device list at the HTTPS API provided by the session.
+- Returns fixed category counts, connection-parameter presence, and bounded raw capability codes. Filters accounts, tokens, device identifiers, keys, addresses, and raw responses. Bounds response size, request duration, and output count; redirects are not followed.
 
 ### Limitations
 
-- 设备列表诊断尚需真实账号验证；NVR 通道参数查询、实时画面与硬盘历史回放尚未实现。能力码不能作为视频支持验证。
+- Device-list diagnostics still need validation with a real account. NVR channel-parameter lookup, live video, and hard-drive history playback are not implemented. Capability codes do not verify video support.
 
 ### Verification
 
-- Python 3.11 和 3.12 完整离线单元测试：各 520 项通过，包含 21 项厂商设备请求、独立签名向量、响应脱敏及异常边界测试。
+- Full Python 3.11 and 3.12 offline unit suites passed, 520 tests each, including 21 vendor device-request, independent signature-vector, response-redaction, and error-boundary tests.
 
 ## [0.2.6b0] - 2026-10-14
 
 ### Added
 
-- 新增 `inspect_video_session` 动作，复用已连接的欧瑞博云会话检查 Meari 外部授权，返回字段是否存在及请求阶段；不输出账号、token、API 地址或原始授权响应。
-- 为录像机会话请求增加超时、并发隔离、取消清理和响应关联检查，并提供 HACS beta 安装及脱敏诊断指南。
-- 发布工作流支持 `bN` 版本，按标签提交打包，保持 GitHub 预发布标记。
+- Added `inspect_video_session` to check Meari external authorization over the existing ORVIBO cloud session. Returns field presence and request stage; omits account, token, API address, and raw authorization response.
+- Added timeout, concurrency isolation, cancellation cleanup, and response-correlation checks for NVR session requests, with HACS beta installation and redacted diagnostic instructions.
+- Release workflow supports `bN` versions, packages the tagged commit, and retains the GitHub prerelease marker.
 
 ### Limitations
 
-- 此版本仅用于诊断，尚未实现实时画面或录像机硬盘历史回放；厂商会话和视频协议尚未经过真实账号、设备验证。
+- This version is for diagnostics only and does not implement live video or NVR hard-drive history playback. Vendor session and video protocols have not been validated with a real account/device.
 
 ### Verification
 
-- 完整离线单元测试：499 项通过，包含录像机会话和 beta 发布恢复回归。
+- Full offline unit suite passed, 499 tests, including NVR-session and beta-release recovery regressions.
 
 ## [0.2.5] - 2026-10-14
 
 ### Fixed
 
-- 统一 readtable 数组/字典库存及主页后备解析，保留房间、状态值和控制定位字段，过滤已删除状态及空父开关；网关 IP 提取支持字符串设备类型和畸形行。
-- 根据 APK `5.2.6.307` 补充独立 `devicePropertyStatus` 属性表解析，按业务设备 ID 与属性关联，支持复合 JSON、数字时间比较及快照内删除标记。
-- LAN/SSL 部分推送只更新本次赋值字段的来源保护，避免只报开关时挡住云端亮度/色温；缺省开关、普通状态与晾衣机字段保留最近值。
-- 移除 HTTPS 客户端重复的主页方法定义，避免后定义覆盖库存解析逻辑。
+- Unified array/dictionary readtable inventory and homepage fallback parsing, retaining room, state-value, and control-location fields while filtering deleted statuses and empty parent switches. Gateway IP extraction now handles string device types and malformed rows.
+- Added parsing for the separate `devicePropertyStatus` table based on APK `5.2.6.307`, associating properties by business device ID and property. Supports compound JSON, numeric timestamp comparison, and deletion markers within a snapshot.
+- Partial LAN/SSL pushes update source protection only for fields assigned in the current update, so a switch-only push does not block cloud brightness/color-temperature data. Missing switch, ordinary state, and dryer fields retain their latest values.
+- Removed duplicate homepage method definitions from the HTTPS client, preventing later definitions from overriding inventory parsing.
 
 ### Verification
 
-- Python 3.11 完整离线单元测试：477 项通过，包含 16 项新增加载/状态回归；新增逆向依据文档。设备与固件尚未经过本轮真机验证。
+- Full Python 3.11 offline unit suite passed, 477 tests, including 16 new loading/state regressions. Added reverse-engineering basis documentation. Devices and firmware were not tested on real hardware in this round.
 
 ## [0.2.4] - 2026-10-14
 
 ### Added
 
-- 摄像机 `deviceType=14` 和 NVR `deviceType=162` 现在可在“摄像头”分组中选择，并提供传输通道和厂商 SDK 识别诊断传感器；设备离线时仍可查看库存信息，云端刷新后同步更新 SDK 提示。
-- 根据摄像头附表类型显示 Danale、Meari、萤石或未知提示，并提供中英文翻译和诊断导出；仅支持只读识别，暂不提供实时视频流或 SDK 控制。
+- Cameras with `deviceType=14` and NVRs with `deviceType=162` can now be selected in the “Cameras” group and expose Transport Path and vendor SDK recognition diagnostic sensors. Inventory information remains available offline; SDK hints update after cloud refresh.
+- Displays Danale, Meari, EZVIZ, or unknown hints based on the camera supplementary-table type, with English/Chinese translations and diagnostic export. Supports read-only recognition only; no live video or SDK control.
 
 ### Fixed
 
-- 摄像头附表按硬件 UID 关联，避免与业务设备 ID、设备类型或商品类型混淆；附表不会生成额外设备，摄像头分类优先于名称关键词，已删除设备不会从字典格式库存重新出现。
-- 丢弃摄像头附表中的 SDK 凭据，诊断数据新增 `tokenSecret` 脱敏及 `extAddr` 标识指纹化。
+- Camera supplementary data is joined by hardware UID to avoid confusion with business device ID, device type, or product type. The table does not create extra devices; camera classification takes precedence over name keywords, and deleted devices do not reappear from dictionary-format inventory.
+- Discards SDK credentials from camera supplementary data. Diagnostics now redact `tokenSecret` and fingerprint the `extAddr` identifier.
 
 ### Verification
 
-- Python 3.12 完整单元测试：461 项通过。
-- Python 编译、门锁卡片 JavaScript 语法和 Git 补丁格式检查通过；摄像机/NVR 尚未经过真机验证。
+- Full Python 3.12 unit suite passed, 461 tests.
+- Python compilation, door-lock card JavaScript syntax, and Git patch-format checks passed. Cameras/NVRs have not yet been verified on real devices.
 
 ## [0.2.3] - 2026-10-10
 
 ### Fixed
 
-- 修复灯光亮度显示为 −1%：忽略负数及畸形亮度，保留最近有效值；云端灯光快照复用实时状态解析，避免旧字段覆盖正确的属性亮度。实体输出和开灯/调色温时复用的亮度也增加有效性检查。
+- Fixed lights displaying −1% brightness: ignores negative/malformed values and retains the last valid reading. Cloud light snapshots reuse live-state parsing so old fields do not overwrite correct property brightness. Added validity checks for entity output and brightness reused when turning on/changing color temperature.
 
 ### Verification
 
-- 完整单元测试：443 项通过。
-- 覆盖无效亮度、云端刷新、部分状态推送、实体百分比显示及控制指令回归。
-- Python 编译、门锁卡片 JavaScript 语法和 Git 补丁格式检查通过。
+- Full unit suite passed, 443 tests.
+- Covers invalid brightness, cloud refresh, partial state pushes, entity percentage display, and control-command regressions.
+- Python compilation, door-lock card JavaScript syntax, and Git patch-format checks passed.
 
 ## [0.2.2] - 2026-10-10
 
 ### Fixed
 
-- 修复灯具长时间没有实时推送后，读取状态或执行开关控制时被误标为“不可用”的问题；不再以 10 分钟未推送推断离线，保留云端快照及实时上报确定的在线状态。
+- Fixed lights being incorrectly marked “unavailable” when state was read or a switch was controlled after a long period without live pushes. No longer infers offline from 10 minutes without a push; retains availability determined by cloud snapshots and live reports.
 
 ### Verification
 
-- 完整单元测试：428 项通过。
-- Python 编译、门锁卡片 JavaScript 语法和 Git 补丁格式检查通过。
+- Full unit suite passed, 428 tests.
+- Python compilation, door-lock card JavaScript syntax, and Git patch-format checks passed.
 
 ## [0.2.1] - 2026-10-09
 
 ### Fixed
 
-- 统一 HACS 发布入口：每次 `main` 推送通过验证后按 manifest 版本补建 tag，并重试缺失的 Release/ZIP；支持注解标签，按标签提交打包，上传完成后才公开新 Release。
-- 移除 manifest 中重复声明的 Home Assistant 内置依赖 `aiohttp` 和 `cryptography`，修复 hassfest requirements 校验失败。
-- 修复云端 TLS 断线后仍被标记为已连接、监听停止却不重新登录的问题；缺失 reader 和临时登录失败也会按重连上限继续恢复。
-- 修复云端指令发送失败或 writer 丢失时仍向上层返回成功的问题；发送等待限制为 10 秒，失败会释放待响应请求并关闭失效连接，不自动重放结果未知的控制指令。
+- Unified the HACS release entry point: after each validated push to `main`, creates a missing tag from the manifest version and retries missing Releases/ZIPs. Supports annotated tags, packages the tagged commit, and makes a new Release public only after upload finishes.
+- Removed duplicate declarations of Home Assistant built-in dependencies `aiohttp` and `cryptography` from the manifest, fixing hassfest requirements validation.
+- Fixed cloud TLS disconnects remaining marked as connected and stopped listeners failing to log in again. Missing readers and temporary login failures now continue recovery within the retry limit.
+- Fixed cloud commands reporting success after a send failure or missing writer. Send waits are limited to 10 seconds; failures release pending requests and close the failed connection. Commands with an unknown result are not replayed automatically.
 
 ### Verification
 
-- 完整单元测试：409 项，1 项跳过。
-- 发布工作流回归测试：18 项通过，覆盖 tag 创建、失败补发、注解标签和 ZIP 上传恢复。
-- 工作流 YAML、Python 编译、JavaScript 语法和 Git 补丁格式检查通过。
+- Full unit suite: 409 tests, 1 skipped.
+- Release-workflow regressions: 18 passed, covering tag creation, retry after failure, annotated tags, and ZIP upload recovery.
+- Workflow YAML, Python compilation, JavaScript syntax, and Git patch-format checks passed.
 
 ## [0.2.0] - 2026-08-24
 
 ### Fixed
 
-- 修复灯带和其他 active-low 调光灯在关闭后重新加载或收到实时状态推送时错误显示为开启的问题；现在初始化、云端和 LAN/SSL 状态更新都会统一使用正确的开关方向。
+- Fixed light strips and other active-low dimmable lights incorrectly showing as on after reload or live-state push while off. Initialization and cloud/LAN/SSL state updates now consistently use the correct switch polarity.
 
 ### Verification
 
-- 完整单元测试：382 项通过，1 项跳过。
-- Python 编译与 Git 补丁格式检查通过。
+- Full unit suite: 382 tests passed, 1 skipped.
+- Python compilation and Git patch-format checks passed.
 
 ## [0.1.10] - 2026-08-24
 
 ### Fixed
 
-- 修复部分反向协议调光灯在关闭后重新加载集成时错误显示为开启的问题；初始化设备状态时会保留并使用子设备类型，关闭状态现在可以正确恢复。
+- Fixed some reverse-protocol dimmable lights incorrectly showing as on after reloading the integration while off. Device initialization now retains and uses the subtype, so the off state restores correctly.
 
 ### Verification
 
-- 完整单元测试：380 项通过，1 项跳过。
-- Python 编译与 Git 补丁格式检查通过。
+- Full unit suite: 380 tests passed, 1 skipped.
+- Python compilation and Git patch-format checks passed.
 
 ## [0.1.9] - 2026-08-19
 
 ### Fixed
 
-- 修复门锁的干电池、锂电池、锁状态和开锁事件传感器被错误显示为“不可用”的问题；即使设备列表没有提供可靠的在线标志，只要协调器已有门锁状态，这些实体仍会显示最近一次数据。
+- Fixed dry-cell/lithium battery, lock-state, and unlock-event sensors being incorrectly shown as unavailable. These entities now display the latest data whenever the coordinator has lock state, even if the device list has no reliable online flag.
 
 ### Verification
 
-- 完整单元测试：379 项通过，1 项跳过。
-- 门锁卡片 JavaScript 语法和 Git 补丁格式检查通过。
+- Full unit suite: 379 tests passed, 1 skipped.
+- Door-lock card JavaScript syntax and Git patch-format checks passed.
 
 ## [0.1.8] - 2026-08-19
 
 ### Added
 
-- 门锁事件截图现在会自动保存到 Home Assistant 媒体目录；门锁卡片新增历史截图区域、刷新操作和可配置的 `history_limit`，可点击缩略图查看大图。
+- Door-lock event snapshots are now saved automatically to the Home Assistant media directory. The lock card adds snapshot history, refresh, configurable `history_limit`, and clickable thumbnails for a large view.
 
 ### Changed
 
-- 门锁卡片显示实际锁状态，并根据已安装的电池类型显示干电池或锂电池电量。
-- P20 `deviceType=107` 设备现在会创建锁状态、开锁事件和电池传感器。
-- 移除门锁卡片底部的版本文字，减少界面噪声。
+- Door-lock card shows actual lock state and dry-cell or lithium battery level according to the installed battery type.
+- P20 `deviceType=107` devices now create lock-state, unlock-event, and battery sensors.
+- Removed the version text at the bottom of the door-lock card to reduce visual clutter.
 
 ### Fixed
 
-- 即使 camera 实体未加载，门锁事件截图也会继续保存到历史目录。
+- Door-lock event snapshots continue to be saved to the history directory even when the camera entity is not loaded.
 
 ### Verification
 
-- 完整单元测试：378 项通过，1 项跳过。
-- Python 编译、门锁卡片 JavaScript 语法和 Git 补丁格式检查通过。
+- Full unit suite: 378 tests passed, 1 skipped.
+- Python compilation, door-lock card JavaScript syntax, and Git patch-format checks passed.
 
 ## [0.1.7] - 2026-08-19
 
 ### Added
 
-- 新增 `custom:orvibo-smart-control-temp-password-card`，可独立创建、查看和撤销门锁临时
-  密码授权，并提供复制、加载、错误和撤销确认状态。
+- Added `custom:orvibo-smart-control-temp-password-card` for independently creating, viewing, and revoking temporary door-lock passwords, with copy, loading, error, and revocation-confirmation states.
 
 ### Fixed
 
-- 临时密码授权列表不再依赖服务器返回密码明文；授权名称和类型在列表刷新后继续保留。
-- 门锁卡片表单在 Home Assistant 状态刷新时不再丢失尚未提交的内容。
+- Temporary-password authorization lists no longer rely on the server returning plaintext passwords; authorization names and types remain after list refresh.
+- Door-lock card forms no longer lose unsubmitted content when Home Assistant state refreshes.
 
 ### Verification
 
-- 完整单元测试：376 项通过，1 项跳过。
-- 门锁卡片 JavaScript 语法检查和自定义卡片注册烟雾测试通过。
+- Full unit suite: 376 tests passed, 1 skipped.
+- Door-lock card JavaScript syntax and custom-card registration smoke tests passed.
 
 ## [0.1.6] - 2026-08-14
 
 ### Fixed
 
-- 门铃实时推送兼容新版 `doorbell_ring` / `picture_url` 报文，按铃、接听和挂断事件
-  现在能正确更新 Home Assistant，同时继续支持旧版门铃报文。
-- 云端实时事件保留设备上报时间，门铃历史不再因时间字段在 SSL 转发时丢失而显示异常。
+- Doorbell live pushes now support the newer `doorbell_ring` / `picture_url` packet, correctly updating Home Assistant for ringing, answering, and hanging up while retaining support for older doorbell packets.
+- Cloud live events retain the device-reported time, so doorbell history no longer displays incorrect times when the timestamp was lost during SSL forwarding.
 
 ### Verification
 
-- 完整单元测试：388 项通过。
-- Ruff 致命错误检查与 Git 补丁格式检查通过。
+- Full unit suite passed, 388 tests.
+- Ruff fatal-error checks and Git patch-format checks passed.
 
 ## [0.1.5] - 2026-08-13
 
 ### Fixed
 
-- P20 门锁在部分云端设备清单中缺少 `deviceType/classId` 时，仍可按官方型号识别，
-  并在配置页正常选择；门磁、锁状态、电量和开锁事件等只读实体可以正常创建。
+- P20 locks missing `deviceType/classId` in some cloud inventories can still be recognized by official model and selected in the config flow; read-only door-contact, lock-state, battery, and unlock-event entities can be created.
 
 ### Verification
 
-- 门锁分类、配置页、状态解析和设备清单相关测试：112 项通过。
+- Door-lock classification, config flow, state parsing, and inventory tests: 112 passed.
 
 ## [0.1.4] - 2026-08-13
 
 ### Added
 
-- 首次登录时即可配置按名称忽略设备，以及独立的 MixPad LAN 登录凭据；
-  独立密码仅保存协议摘要。
+- The initial login flow can configure devices to ignore by name and separate MixPad LAN credentials; the separate password is stored only as a protocol digest.
 
 ### Fixed
 
-- 名称隐藏和设备选择现在会同步清理 Home Assistant 中枢的实体与设备记录，
-  使中枢内容与当前选择保持一致；重新选择设备后仍可恢复创建。
+- Name hiding and device selection now synchronize cleanup of Home Assistant entity and device registry records, keeping the registry consistent with the current selection. Entities can be recreated after selecting the device again.
 
 ### Verification
 
-- 首次配置、名称过滤与注册表同步相关单元测试：25 项通过。
-- Python 语法、JSON 格式与版本一致性检查通过。
+- Initial setup, name filtering, and registry synchronization unit tests: 25 passed.
+- Python syntax, JSON format, and version-consistency checks passed.
 
 ## [0.1.3] - 2026-08-12
 
 ### Fixed
 
-- 补充 P20 门锁设备档案，支持 `deviceType=107`、`deviceType=522` 无子类型，
-  以及 `subDeviceType=462/463`，可在 Home Assistant 中显示门磁、锁状态、
-  电量和媒体实体。
-- P20 继续使用云端只读设备通道；门磁开关状态可随云端推送实时更新。
+- Added a P20 lock profile supporting `deviceType=107`, `deviceType=522` without a subtype, and `subDeviceType=462/463`, exposing door-contact, lock-state, battery, and media entities in Home Assistant.
+- P20 remains on the cloud read-only device channel; door-contact switch state can update live from cloud pushes.
 
 ### Verification
 
-- 完整单元测试：375 项通过。
-- Python 语法与 Ruff 致命错误检查通过。
+- Full unit suite passed, 375 tests.
+- Python syntax and Ruff fatal-error checks passed.
 
 ## [0.1.2] - 2026-08-11
 
 ### Changed
 
-- 设备选择改为复选列表，可连续勾选同类多台设备，无需每选一台就重新展开列表；同类多台
-  设备仍可使用“全部”选项一次选中。
+- Device selection now uses a checkbox list, allowing multiple devices of the same type to be selected consecutively without reopening the list after each one. The “All” option remains available for groups with multiple devices.
 
 ### Verification
 
-- 完整单元测试：373 项通过。
-- JSON、Python 语法、门锁卡片 JavaScript 语法与版本格式检查通过。
+- Full unit suite passed, 373 tests.
+- JSON, Python syntax, door-lock card JavaScript syntax, and version-format checks passed.
 
 ## [0.1.1] - 2026-08-11
 
 ### Added
 
-- 可按设备名称关键词或通配符隐藏设备；匹配设备不会创建实体或出现在设备选择页面，
-  删除规则后可恢复显示，已保存的设备选择不会被永久删除。
+- Devices can be hidden by name keyword or wildcard. Matching devices do not get entities and do not appear on the device-selection page. They reappear when the rule is removed; saved device selection is not permanently deleted.
 
 ### Changed
 
-- 设备分类改用单个可展开列表；同类多台时在列表内提供“全部”选项，单台设备可直接勾选。
-- 未识别的设备类型统一归入“其他设备”，不再把原始英文类型名显示为分类标题。
+- Device categories now use one expandable list. Groups with multiple devices have an “All” option; a single device can be checked directly.
+- Unrecognized device types are grouped under “Other Devices” rather than showing the raw English type name as the category heading.
 
 ### Verification
 
-- 完整单元测试：372 项通过。
-- JSON、Python 语法与版本格式检查通过。
+- Full unit suite passed, 372 tests.
+- JSON, Python syntax, and version-format checks passed.
 
 ## [0.1.0] - 2026-08-10
 
-这是 ORVIBO Smart Control 的首个独立版本。项目使用新的 Home Assistant 集成域和仓库
-身份，不承诺与其他 ORVIBO 自定义集成共享配置或实体。
+This is the first independent release of ORVIBO Smart Control. It uses a new Home Assistant integration domain and repository identity and does not promise shared config or entities with other ORVIBO custom integrations.
 
 ### Added
 
-- MixPad 网关 LAN 发现、认证、TCP 会话、实时状态推送和本地控制。
-- ORVIBO 云端 REST 与 TLS 长连接，作为 LAN 不支持、网关不可达或控制失败时的承接通道。
-- `LAN 与云端结合`（默认、LAN 优先）、`纯 LAN` 与 `纯云端` 三种传输模式。
-- 可选的独立 MixPad LAN 用户名和密码摘要，适配网关账号与云账号不同的家庭。
-- 通用配置菜单：设备增删、账号密码更新、云端名称同步、本地媒体清理、轮询间隔、
-  设备上下线通知和稳定版本更新检查。
-- 首次配置与后续设备增删会根据实际设备名称和类型动态分组；同类设备可整类全选，
-  也可展开后逐台勾选，单例类型保持独立。
-- 每台已接入设备的“传输通道”诊断实体，显示 LAN、云端、默认回退策略、网关连接和最近一次
-  成功控制实际使用的通道，不修改原设备或实体名称。
-- 字段级状态合并：`LAN > SSL > CLOUD > OPTIMISTIC > INITIAL`，并对乱序快照提供短期保护。
-- 灯光、开关、窗帘、暖通、新风、环境传感器、门锁和晾衣机的设备分类与 Home Assistant 实体。
-- 未知或未验证设备的登记保护，不根据相似字段发送推测控制命令。
-- 门锁事件、截图、录像归档、媒体浏览器引用、临时密码和内置 Lovelace 门锁卡片。
-- `refresh_devices`、门锁用户映射、媒体历史和临时授权管理服务。
-- 独立品牌资源、HACS 元数据和 CI 验证流程。
-- 独立的设备支持矩阵、服务与事件参考、迁移指南、运行时架构和安全策略。
+- MixPad gateway LAN discovery, authentication, TCP sessions, live state pushes, and local control.
+- ORVIBO cloud REST and TLS long connection as fallback when LAN is unsupported, the gateway is unreachable, or control fails.
+- Three transport modes: `LAN + cloud` (default, LAN preferred), `Pure LAN`, and `Pure cloud`.
+- Optional separate MixPad LAN username and password digest for households with different gateway and cloud accounts.
+- General options menu for device selection, account/password updates, cloud name sync, local media cleanup, polling interval, device online/offline notifications, and stable-version update checks.
+- Initial setup and later device changes dynamically group devices by actual name and type; select all in a group or expand and select individually, with single-instance types kept separate.
+- A “Transport Path” diagnostic entity for each configured device, showing LAN, cloud, default fallback policy, gateway status, and the path used for the latest successful control, without changing existing device/entity names.
+- Field-level state merging: `LAN > SSL > CLOUD > OPTIMISTIC > INITIAL`, with short-term protection against out-of-order snapshots.
+- Device classification and Home Assistant entities for lights, switches, curtains, HVAC, fresh air, environmental sensors, locks, and clothes dryers.
+- Registration protection for unknown or unverified devices; no speculative control commands based on similar fields.
+- Door-lock events, snapshots, recording archives, media-browser references, temporary passwords, and built-in Lovelace lock card.
+- Services for `refresh_devices`, lock-user mappings, media history, and temporary authorization management.
+- Independent brand assets, HACS metadata, and CI validation workflow.
+- Separate device support matrix, services/events reference, migration guide, runtime architecture, and security policy.
 
 ### Changed
 
-- 门锁 `107/522` 与晾衣机 `52` 使用云专属策略；门锁状态、事件、媒体和临时密码不由 LAN 接管。
-- LAN 控制失败时只向云端重试一次，并隔离 LAN/SSL 的响应关联，避免并发控制串用通道。
-- 纯 LAN 模式不建立云端实时连接、不执行周期云轮询，也不会在 LAN 不支持或失败时回退云端；
-  首次家庭、设备与网关拓扑发现仍使用云端。
-- 纯云端模式不初始化 MixPad LAN；默认结合模式继续让门锁、晾衣机等设备自动走云端。
-- 公共服务响应不返回 Home Assistant 主机绝对路径或已保存的临时密码。
-- 日志和诊断数据掩码家庭、设备、UID、IP 等关联标识；独立项目文档不再复用源项目的结构和定位。
+- Locks `107/522` and clothes dryers `52` use cloud-only policy; LAN does not take over lock state, events, media, or temporary passwords.
+- LAN control failure retries through cloud only once, with LAN/SSL response correlation isolated to prevent concurrent controls from using the wrong channel.
+- Pure LAN does not establish a cloud live connection or perform periodic cloud polling, and does not fall back when LAN is unsupported or fails; initial family/device/gateway-topology discovery still uses cloud.
+- Pure cloud does not initialize MixPad LAN; default combined mode continues to route locks and clothes dryers through cloud automatically.
+- Public service responses do not return absolute paths on the HA host or stored temporary passwords.
+- Logs and diagnostics mask linked family/device/UID/IP identifiers; independent project documentation no longer reuses the source project's structure and positioning.
 
 ### Security
 
-- 网关握手校验预期 UID、会话身份和请求关联，拒绝畸形帧、错误网关和越界状态值。
-- 云账号和独立 MixPad 密码只生成协议所需的大写 MD5 摘要，不保存明文；摘要仍按密码级别保护。
-- 本地清理只操作 `media/orvibo_smart_control/`，不会删除 Home Assistant `.storage`、实体注册、
-  账号、家庭、设备选择或锁用户映射。
-- 临时密码只在创建服务的当前响应中返回，事件总线和列表服务不包含密码明文。
-- 门锁媒体对象键拒绝完整 URL、查询串、路径穿越和反斜杠，历史按默认 7 天周期清理。
+- Gateway handshake validates expected UID, session identity, and request correlation; malformed frames, wrong gateways, and out-of-range state values are rejected.
+- Cloud and separate MixPad passwords are converted only to the uppercase MD5 digest required by the protocol; plaintext is not saved, and the digest is still protected like a password.
+- Local cleanup operates only on `media/orvibo_smart_control/`; it does not delete Home Assistant `.storage`, entity registry, accounts, families, device selection, or lock-user mappings.
+- Temporary passwords are returned only in the current response from their creation service; the event bus and list service never contain plaintext passwords.
+- Door-lock media object keys reject full URLs, query strings, path traversal, and backslashes; history is cleaned on the default 7-day schedule.
 
 ### Verification
 
-- 完整单元测试：364 项通过。
-- JSON/YAML、Python 语法和门锁卡片 JavaScript 语法检查通过。
+- Full unit suite passed, 364 tests.
+- JSON/YAML, Python syntax, and door-lock card JavaScript syntax checks passed.

@@ -23,16 +23,16 @@ SPEC.loader.exec_module(selection)
 class SelectionTests(unittest.TestCase):
     def test_hidden_name_patterns_are_normalized(self) -> None:
         result = selection.parse_hidden_device_name_patterns(
-            " 测试\n*控制器*，TEST；卧室?灯\n测试 "
+            " Test\n*Controller*, TEST; Bedroom?X\nSample "
         )
-        self.assertEqual(result, ["测试", "*控制器*", "TEST", "卧室?灯"])
+        self.assertEqual(result, ["Test", "*Controller*", "Bedroom?X", "Sample"])
 
     def test_hidden_name_matches_keyword_and_wildcard(self) -> None:
-        device = {"device_name": "卧室灯控制器"}
-        self.assertTrue(selection.device_name_is_hidden(device, ["卧室灯"]))
-        self.assertTrue(selection.device_name_is_hidden(device, ["*控制器"]))
-        self.assertTrue(selection.device_name_is_hidden(device, ["卧室?控制器"]))
-        self.assertFalse(selection.device_name_is_hidden(device, ["客厅"]))
+        device = {"device_name": "Bedroom1Controller"}
+        self.assertTrue(selection.device_name_is_hidden(device, ["Bedroom1"]))
+        self.assertTrue(selection.device_name_is_hidden(device, ["*Controller"]))
+        self.assertTrue(selection.device_name_is_hidden(device, ["Bedroom?Controller"]))
+        self.assertFalse(selection.device_name_is_hidden(device, ["Living Room"]))
 
     def test_hidden_name_matching_is_case_insensitive(self) -> None:
         device = {"device_name": "Test Controller"}
@@ -41,9 +41,9 @@ class SelectionTests(unittest.TestCase):
 
     def test_hidden_devices_are_excluded_from_entity_selection(self) -> None:
         available = {
-            "dev-001": {"device_name": "客厅灯"},
-            "dev-002": {"device_name": "卧室灯"},
-            "dev-003": {"device_name": "窗帘"},
+            "dev-001": {"device_name": "Living Room Light"},
+            "dev-002": {"device_name": "Bedroom Light"},
+            "dev-003": {"device_name": "Curtain"},
         }
         options = {
             selection.CONF_SELECTED_DEVICE_IDS: [
@@ -51,7 +51,7 @@ class SelectionTests(unittest.TestCase):
                 "dev-002",
                 "dev-003",
             ],
-            selection.CONF_HIDDEN_DEVICE_NAME_PATTERNS: ["卧室"],
+            selection.CONF_HIDDEN_DEVICE_NAME_PATTERNS: ["Bedroom"],
         }
         self.assertEqual(
             selection.selected_device_ids(options, available),

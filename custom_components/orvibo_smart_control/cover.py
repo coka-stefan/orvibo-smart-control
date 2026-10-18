@@ -54,7 +54,7 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
         self._category = classify_device(device)
         if self._category == DeviceCategory.DREAM_CURTAIN:
             self._attr_supported_features = self._attr_supported_features | CoverEntityFeature.SET_TILT_POSITION
-        # 判断是否是卷帘（type=35），使用 SHUTTER 图标
+        # Check whether this is a roller blind (type=35) and use the SHUTTER icon
         device_type_raw = device.get("device_type_raw", 0)
         if device_type_raw == 35:
             self._attr_device_class = CoverDeviceClass.SHUTTER
@@ -124,7 +124,7 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
 
 
 class OrviboClothesHorseMotor(CoordinatorEntity, CoverEntity):
-    """晾衣架电机 Cover 实体（升降）。"""
+    """Clothes dryer motor cover entity (raise/lower)."""
     _attr_has_entity_name = True
     _attr_device_class = CoverDeviceClass.AWNING
     _attr_supported_features = (
@@ -139,14 +139,14 @@ class OrviboClothesHorseMotor(CoordinatorEntity, CoverEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_ch_motor_{self._device_id}"
-        self._attr_name = "晾杆"
+        self._attr_name = 'Drying rack'
         self._attr_icon = "mdi:hanger"
 
     @property
     def current_cover_position(self) -> int:
         state = self.coordinator.get_device_state(self._device_id)
-        # 晾衣架 position=0 顶部（收起），HA cover position=0 关闭
-        # 所以直接映射即可：顶部=0=关闭，底部=100=打开
+        # Clothes dryer position=0 is the top (retracted); HA cover position=0 is closed
+        # Map directly: top=0=closed, bottom=100=open
         return state.get("position", 0) if state else 0
 
     @property
@@ -170,26 +170,26 @@ class OrviboClothesHorseMotor(CoordinatorEntity, CoverEntity):
         }
 
     async def async_open_cover(self, **kwargs) -> None:
-        """打开晾衣杆（下降到底部）。"""
+        """Open the clothes rail (lower it to the bottom)."""
         await self.coordinator.async_clothes_horse_control(self._device_id, "motor", "down")
 
     async def async_close_cover(self, **kwargs) -> None:
-        """关闭晾衣杆（上升到顶部）。"""
+        """Close the clothes rail (raise it to the top)."""
         await self.coordinator.async_clothes_horse_control(self._device_id, "motor", "up")
 
     async def async_stop_cover(self, **kwargs) -> None:
-        """停止电机。"""
+        """Stop the motor."""
         await self.coordinator.async_clothes_horse_control(self._device_id, "motor", "stop")
 
     async def async_set_cover_position(self, **kwargs) -> None:
-        """设置位置。晾衣架不支持精确定位，转换为升降操作。"""
+        """Set the position. The clothes dryer does not support precise positioning, so convert this to a raise/lower operation."""
         position = kwargs.get("position", 0)
         current = self.current_cover_position
         if position == current:
             return
         if position > current:
-            # HA position 变大 = 更打开 = 晾衣架下降
+            # Increasing HA position means more open; the clothes dryer lowers
             await self.coordinator.async_clothes_horse_control(self._device_id, "motor", "down")
         else:
-            # HA position 变小 = 更关闭 = 晾衣架上升
+            # Decreasing HA position means more closed; the clothes dryer rises
             await self.coordinator.async_clothes_horse_control(self._device_id, "motor", "up")

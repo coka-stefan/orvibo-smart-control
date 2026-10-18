@@ -110,9 +110,9 @@ class DeviceProfileTests(unittest.TestCase):
 
     def test_audited_unsupported_models_are_named_but_not_controllable(self) -> None:
         examples = (
-            (63, "bbfed49c738948b989911f9f9f73d759", "隐藏式智能开关"),
-            (37, "82c167c95ed746cdbd21d6817f72c593", "多功能控制盒"),
-            (152, "141516b297254e8080d98a89b046fded", "人体状态传感器"),
+            (63, "bbfed49c738948b989911f9f9f73d759", "concealed smart switch (neutral-wire edition)"),
+            (37, "82c167c95ed746cdbd21d6817f72c593", "multifunction controller"),
+            (152, "141516b297254e8080d98a89b046fded", "presence sensor MixSense S360"),
         )
         for device_type, model, label in examples:
             with self.subTest(model=model):
@@ -146,7 +146,7 @@ class DeviceProfileTests(unittest.TestCase):
             catalog.KNOWN_DEVICE_MODELS[
                 "2ac836760da10748856a7e4eafb91efa"
             ].display_name,
-            "地暖控制面板",
+            "floor-heating panel",
         )
 
 

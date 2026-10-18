@@ -142,14 +142,15 @@ class CameraInventoryTests(unittest.TestCase):
                 self.assertEqual(capabilities.transport_path_for(device), capabilities.TransportPath.CLOUD)
                 self.assertEqual(capabilities.transport_path_for(device, capabilities.TransportMode.LAN_ONLY),
                                  capabilities.TransportPath.UNAVAILABLE)
-                self.assertEqual(selection.infer_device_group(device), ("cameras", "摄像头"))
+                self.assertEqual(selection.infer_device_group(device), ("cameras", "Cameras"))
 
     def test_camera_type_takes_precedence_over_name_keywords(self):
+        # Keep the vendor light keyword to verify camera type wins over name matching.
         for device_type in (14, 162):
             self.assertEqual(selection.infer_device_group({
                 "device_id": "camera", "device_type_raw": device_type,
-                "device_name": "客厅灯旁的监控", "device_type": "sensor",
-            }), ("cameras", "摄像头"))
+                "device_name": "灯", "device_type": "sensor",
+            }), ("cameras", "Cameras"))
 
     def test_inventory_keeps_camera_and_nvr_and_refreshes_metadata(self):
         devices, states = {}, {}

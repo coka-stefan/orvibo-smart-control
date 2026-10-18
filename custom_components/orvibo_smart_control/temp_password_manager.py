@@ -60,16 +60,16 @@ class TempPasswordManager:
     ) -> Dict[str, Any]:
         ssl_client = self._ssl_client()
         if ssl_client is None:
-            return {"error": "SSL 客户端未就绪"}
+            return {"error": 'Cloud connection is not ready'}
         device = self.devices.get(device_id)
         if device is None or classify_device(device) != DeviceCategory.DOOR_LOCK:
-            return {"error": "设备不存在或不是门锁"}
+            return {"error": 'Device not found or is not a door lock'}
         if auth_type not in (1, 2):
-            return {"error": "授权类型必须为 1 或 2"}
+            return {"error": 'Authorization type must be 1 or 2'}
         if not 1 <= minutes <= 525600:
-            return {"error": "有效期必须在 1 到 525600 分钟之间"}
+            return {"error": 'Validity must be between 1 and 525600 minutes'}
         if not 0 <= number <= 100:
-            return {"error": "可用次数必须在 0 到 100 之间"}
+            return {"error": 'Usage limit must be between 0 and 100'}
 
         server_records = await self.fetch_server_records()
         active = [
@@ -79,12 +79,12 @@ class TempPasswordManager:
         ]
         if len(active) >= self.MAX_ACTIVE:
             return {
-                "error": f"临时密码已达上限（{self.MAX_ACTIVE} 个），请先删除旧密码"
+                "error": f'Temporary-password limit reached ({self.MAX_ACTIVE}); remove an old password first'
             }
 
         records = self._records.setdefault(device_id, [])
         device_uid = device_uid or device.get("uid", "")
-        name = name or f"临时用户 {time.strftime('%m%d%H%M')}"
+        name = name or f"Temporary user {time.strftime('%m%d%H%M')}"
         response = await ssl_client.send_temp_password(
             device_id=device_id,
             device_uid=device_uid,
@@ -97,14 +97,14 @@ class TempPasswordManager:
             end_time=end_time,
         )
         if not response:
-            return {"error": "未收到 cmd=246 响应（超时）"}
+            return {"error": 'Timed out waiting for temporary-password response (cmd=246)'}
         if response.get("status") not in (None, 0, "0"):
             return {
-                "error": f"下发失败 status={response.get('status')} msg={response.get('msg')}"
+                "error": f"Creation failed; status={response.get('status')} msg={response.get('msg')}"
             }
         record = parse_grant_response(response)
         if record is None:
-            return {"error": "响应缺少密码或 authorizedId"}
+            return {"error": 'Response is missing the password or authorizedId'}
         record["device_id"] = device_id
         records.append(record)
         if len(records) > 10:
@@ -117,7 +117,7 @@ class TempPasswordManager:
         )
         self._touch(device_id)
         _LOGGER.info(
-            "临时密码已下发 device=%s authorizedId=%s",
+            "Temporary password sent: device=%s authorizedId=%s",
             fingerprint(device_id, self._redaction_salt),
             record["authorized_id"],
         )
@@ -128,21 +128,21 @@ class TempPasswordManager:
     ) -> Dict[str, Any]:
         ssl_client = self._ssl_client()
         if ssl_client is None:
-            return {"error": "SSL 客户端未就绪"}
+            return {"error": 'Cloud connection is not ready'}
         device = self.devices.get(device_id)
         if device is None or classify_device(device) != DeviceCategory.DOOR_LOCK:
-            return {"error": "设备不存在或不是门锁"}
+            return {"error": 'Device not found or is not a door lock'}
         if authorized_id <= 0:
-            return {"error": "authorized_id 必须为正整数"}
+            return {"error": 'authorized_id must be a positive integer'}
         response = await ssl_client.delete_authorization(
             device_id=device_id,
             device_uid=device_uid or device.get("uid", ""),
             authorized_id=authorized_id,
         )
         if not response:
-            return {"error": "未收到 cmd=247 响应（超时）"}
+            return {"error": 'Timed out waiting for revocation response (cmd=247)'}
         if response.get("status") not in (None, 0, "0"):
-            return {"error": f"删除失败 status={response.get('status')}"}
+            return {"error": f"Revocation failed; status={response.get('status')}"}
         records = self._records.get(device_id, [])
         self._records[device_id] = [
             record
@@ -151,7 +151,7 @@ class TempPasswordManager:
         ]
         self._touch(device_id)
         _LOGGER.info(
-            "临时密码已删除 device=%s authorizedId=%s",
+            "Temporary password deleted: device=%s authorizedId=%s",
             fingerprint(device_id, self._redaction_salt),
             authorized_id,
         )
@@ -177,7 +177,7 @@ class TempPasswordManager:
         client = self.https_client
         if client is None or not client.is_logged_in:
             _LOGGER.warning(
-                "拉取临时密码列表跳过: client=%s logged_in=%s",
+                "Skipping temporary password list fetch: client=%s logged_in=%s",
                 client is not None,
                 client.is_logged_in if client else None,
             )
@@ -185,16 +185,16 @@ class TempPasswordManager:
         try:
             data = await client._readtable(device_flag=0)
         except Exception as error:  # noqa: BLE001
-            _LOGGER.warning("拉取临时密码列表失败: %s", error)
+            _LOGGER.warning("Failed to fetch temporary password list: %s", error)
             return []
         if not isinstance(data, dict):
             _LOGGER.warning(
-                "拉取临时密码列表: readtable 返回非 dict: %s", type(data)
+                "Fetching temporary password list: readtable returned a non-dict: %s", type(data)
             )
             return []
         authorizations = data.get("authorizedUnlock")
         _LOGGER.info(
-            "拉取临时密码列表: readtable keys=%s authorizedUnlock=%s",
+            "Temporary password list: readtable keys=%s authorizedUnlock=%s",
             list(data.keys())[:12],
             (
                 f"list[{len(authorizations)}]"
@@ -256,7 +256,7 @@ class TempPasswordManager:
                         )
                     except Exception:  # noqa: BLE001
                         _LOGGER.warning(
-                            "临时密码自动回收失败 device=%s authorizedId=%s",
+                            "Automatic temporary password cleanup failed: device=%s authorizedId=%s",
                             fingerprint(device_id, self._redaction_salt),
                             record.get("authorized_id"),
                         )

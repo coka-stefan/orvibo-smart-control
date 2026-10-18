@@ -13,7 +13,7 @@ from typing import Any, Dict, FrozenSet, Optional
 
 from .device_types import DeviceCategory, get_device_profile
 
-# HA 平台名（与 __init__.PLATFORMS 对齐）
+# HA platform names (aligned with __init__.PLATFORMS)
 PLATFORM_LIGHT = "light"
 PLATFORM_COVER = "cover"
 PLATFORM_CLIMATE = "climate"
@@ -25,10 +25,10 @@ PLATFORM_SWITCH = "switch"
 
 
 class ControlChannel(str, Enum):
-    """设备可用的控制通道。"""
+    """Control channels available for a device."""
 
-    LAN = "lan"  # 网关直连（本地优先）
-    SSL = "ssl"  # 云端长连接
+    LAN = "lan"  # Direct gateway connection (prefer local)
+    SSL = "ssl"  # Persistent cloud connection
 
 
 class TransportMode(str, Enum):
@@ -50,7 +50,7 @@ class TransportPath(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class DeviceCapability:
-    """一类设备的融合能力声明。"""
+    """Merged capability declaration for a device category."""
 
     category: DeviceCategory
     platforms: FrozenSet[str]
@@ -64,23 +64,23 @@ class DeviceCapability:
         return bool(self.channels)
 
 
-# ---- 类型级传输与只读策略 ----
+# ---- Type-level transport and read-only policy ----
 
-# LAN 可直接控制的设备类型（gateway 转发；源自 lan profiles 的非只读类型）
+# Device types that LAN can control directly (gateway forwarding; writable types from LAN profiles)
 _LAN_CONTROLLABLE_TYPES = frozenset(
     {0, 1, 34, 35, 36, 38, 81, 102, 501, 502, 503, 516}
 )
 
-# 类型级只读标记：仅保留云端实现未映射为分类的 WiFi 门锁（107）。
-# 其余只读类型（传感器类、522 门锁）由 _STATUS_ONLY_CATEGORIES 按分类判定，
-# type 300 按云端实测子类型定义（481 地暖可云控 / 491 温湿度只读）。
+# Type-level read-only marker: only for the WiFi lock (107), which the cloud implementation does not map to a category.
+# Other read-only types (sensors and type 522 locks) are determined by category in _STATUS_ONLY_CATEGORIES,
+# Type 300 subtypes follow cloud observations: 481 underfloor heating is cloud-controllable; 491 temperature/humidity is read-only.
 _STATUS_ONLY_TYPES = frozenset({107})
 
-# 本集成的云专属路径（ADR-4）；摄像头仅使用云端库存元数据，
-# 不暴露 MixPad LAN 或 SDK 控制，也不据此判断视频流传输方式。
+# This integration uses a cloud-only path (ADR-4); cameras use cloud inventory metadata only,
+# with no MixPad LAN or SDK controls; this does not determine video stream transport.
 _CLOUD_ONLY_TYPES = frozenset({14, 52, 107, 162, 522})
 
-# 只读分类（无设备控制通道，状态仍正常推送）
+# Read-only categories (no device control channel; state updates continue)
 _STATUS_ONLY_CATEGORIES = frozenset(
     {
         DeviceCategory.MOTION_SENSOR,
@@ -97,7 +97,7 @@ _STATUS_ONLY_CATEGORIES = frozenset(
 )
 
 
-# ---- 分类 → Home Assistant 平台 ----
+# ---- Category -> Home Assistant platform ----
 
 _CATEGORY_PLATFORMS: Dict[DeviceCategory, FrozenSet[str]] = {
     DeviceCategory.SIMPLE_ZIGBEE_LIGHT: frozenset({PLATFORM_LIGHT}),
@@ -158,7 +158,7 @@ def _safe_int(value: Any) -> Optional[int]:
 
 
 def _device_type_key(device: Any) -> int:
-    """从设备 dict 提取归一化 deviceType（缺省按 0 处理）。"""
+    """Extract normalized deviceType from a device dict, defaulting to 0."""
     if not isinstance(device, dict):
         return 0
     raw = device.get("device_type_raw")
@@ -168,7 +168,7 @@ def _device_type_key(device: Any) -> int:
 
 
 def capability_for(device: Any) -> DeviceCapability:
-    """解析单台设备的融合能力（不触发任何 I/O）。"""
+    """Resolve merged capabilities for one device without performing I/O."""
     profile = get_device_profile(device)
     category = profile.category
     device_type = _device_type_key(device)
@@ -180,8 +180,8 @@ def capability_for(device: Any) -> DeviceCapability:
     cloud_only = device_type in _CLOUD_ONLY_TYPES
 
     if cloud_only:
-        # cloud_only 表示状态/富功能走云；channels 只描述"设备控制"通道。
-        # 门锁等只读设备没有控制通道；晾衣机（52）有云控制命令。
+        # cloud_only means state and rich features use the cloud; channels describe device-control paths only.
+        # Read-only devices such as locks have no control channel; clothes dryers (52) have cloud control commands.
         channels = (
             frozenset({ControlChannel.SSL})
             if not status_only
@@ -190,10 +190,10 @@ def capability_for(device: Any) -> DeviceCapability:
     elif status_only:
         channels = frozenset()
     elif profile.registration_only:
-        # 未知/未验证类别只展示、不下发控制（项目默认的保守策略）
+        # Unknown or unverified categories are displayed without sending controls (the project default conservative policy).
         channels = frozenset()
     elif device_type in _LAN_CONTROLLABLE_TYPES:
-        # 本地优先：LAN 与云都支持，路由层按模式/可达性选择
+        # Prefer local: when LAN and cloud are both supported, routing uses the mode and reachability.
         channels = frozenset({ControlChannel.LAN, ControlChannel.SSL})
     else:
         channels = frozenset({ControlChannel.SSL})
@@ -212,7 +212,7 @@ def capability_for_type(
     device_type: int,
     sub_type: Optional[int] = None,
 ) -> DeviceCapability:
-    """按类型解析能力（测试与诊断用；运行时请用 capability_for）。"""
+    """Resolve capabilities by type for tests and diagnostics; use capability_for at runtime."""
     return capability_for(
         {
             "device_type_raw": device_type,

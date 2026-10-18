@@ -133,17 +133,17 @@ class RegistrySyncTests(unittest.TestCase):
             entry_id="entry-1",
             options={
                 "selected_device_ids": ["selected", "hidden"],
-                "hidden_device_name_patterns": ["继电器"],
+                "hidden_device_name_patterns": ["Relay"],
             },
         )
         devices = {
             "selected": {
                 "device_id": "selected",
-                "device_name": "客厅灯",
+                "device_name": "Living Room Light",
             },
             "hidden": {
                 "device_id": "hidden",
-                "device_name": "餐厅灯带继电器",
+                "device_name": "Dining Room Light Strip Relay",
             },
         }
 

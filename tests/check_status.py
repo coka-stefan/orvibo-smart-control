@@ -1,4 +1,4 @@
-"""快速查看设备状态信息"""
+"""Quickly inspect device state information."""
 import hashlib, json, asyncio, aiohttp, sys
 import os
 from pathlib import Path
@@ -9,11 +9,11 @@ DEVICE_ID = os.environ.get("ORVIBO_DEVICE_ID", "")
 DEVICE_UID = os.environ.get("ORVIBO_DEVICE_UID", "")
 if not all((USER, PASSWORD, DEVICE_ID, DEVICE_UID)):
     sys.exit(
-        "请设置 ORVIBO_USERNAME / ORVIBO_PASSWORD / ORVIBO_DEVICE_ID / "
-        "ORVIBO_DEVICE_UID 环境变量"
+        "Set the ORVIBO_USERNAME, ORVIBO_PASSWORD, ORVIBO_DEVICE_ID, and "
+        "ORVIBO_DEVICE_UID environment variables"
     )
 
-# 临时绕过 homeassistant 依赖
+# Temporarily bypass Home Assistant dependencies.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "custom_components"))
 _init = Path(sys.path[0]) / "orvibo_smart_control" / "__init__.py"
 _orig = _init.read_bytes()
@@ -29,7 +29,7 @@ async def main():
                        headers={**HTTP_HEADERS, "Accept":"*/*"}, ssl=False)
         j = json.loads(await r.text())
         token, uid = j["data"]["access_token"], j["data"]["user_id"]
-        print(f"✅ 登录成功")
+        print("✅ Login succeeded")
 
         ret = HomemateJsonData.get_family_statistics_users(uid, token)
         r = await s.post(ret["url"], data=ret["data"], headers=HTTP_HEADERS, ssl=False)
@@ -42,20 +42,20 @@ async def main():
             d = json.loads(await r.text()).get("data", {})
             devs = d.get("device", [])
             sts = d.get("deviceStatus", [])
-            print(f"  设备: {len(devs)}, 状态: {len(sts)}")
+            print(f"  Devices: {len(devs)}, states: {len(sts)}")
 
             target = DEVICE_ID
             for st in sts:
                 if st.get("deviceId") == target:
-                    print(f"  🔌 插线板: {json.dumps(st, ensure_ascii=False, indent=2)}")
+                    print(f"  🔌 Power strip: {json.dumps(st, ensure_ascii=False, indent=2)}")
                     break
             else:
                 for st in sts:
                     if "deviceId" in st:
-                        print(f"    状态: deviceId={st.get('deviceId','?')[:20]} {json.dumps(st, ensure_ascii=False)}")
+                        print(f"    State: deviceId={st.get('deviceId','?')[:20]} {json.dumps(st, ensure_ascii=False)}")
 
-            # 试试发控制命令
-            print(f"\n  尝试发送控制命令...")
+            # Try sending a control command.
+            print("\n  Try sending a control command...")
             for order, v1 in [("on", 1), ("off", 0), ("set property", 0)]:
                 ctrl = {
                     "uid": DEVICE_UID,
@@ -64,7 +64,7 @@ async def main():
                     "order": order, "value1": v1, "value2": 0, "value3": 0, "value4": 0,
                     "delayTime": 0, "qualityOfService": 1, "defaultResponse": 1, "propertyResponse": 0,
                 }
-                # 构造带签名的控制请求
+                # Build a signed control request.
                 from orvibo_smart_control.packet import generate_serial, generate_uuid
                 ctrl.update({
                     "cmd": 15, "serial": generate_serial(), "clientType": 1,

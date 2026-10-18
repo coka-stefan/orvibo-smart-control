@@ -1,55 +1,55 @@
-# 开关失效排查记录
+# Switch Control Failure Investigation
 
-排查日期：2026-10-08。
+Investigation date: 2026-10-08.
 
-用户反馈：在 `smart-home-dashboard` 控制设备开关后，本集成部分开关无法继续控制，界面没有报错，重启后恢复。
+User report: after controlling device switches from `smart-home-dashboard`, some switches could no longer be controlled through this integration. The interface showed no error, and restarting restored operation.
 
-## 结论与证据范围
+## Conclusions and evidence scope
 
-本集成云端 TLS 控制链路存在可通过自动化测试复现的稳定性缺陷：断线后保留错误的连接标志，以及发送失败被吞掉。这些缺陷能形成“开关没有动作、界面却没有报错、重启恢复”的故障路径。相关代码已经修复。
+The integration's cloud TLS control path had stability defects reproducible with automated tests: after a disconnect it retained an incorrect connection flag, and it swallowed send failures. These defects could produce the reported failure pattern: the switch does not act, the interface shows no error, and restarting restores operation. The related code has been fixed.
 
-此次没有连接实际 Home Assistant 或物理设备，也没有取得故障时的运行日志。因此，尚不能证明 dashboard 的开关操作直接造成了云端断线，也不能断定所有失效设备都受同一原因影响。
+The investigation did not connect to the actual Home Assistant instance or physical devices, and no runtime logs from the failure were available. Therefore it cannot prove that operating a switch from the dashboard directly caused the cloud connection to drop, nor that every affected device had the same cause.
 
-## 两个项目的调用关系
+## Call flow between the two projects
 
-dashboard 的 `src/features/devices/device-controls.ts` 将灯或开关的电源操作映射为 `turn_on` / `turn_off`。`src/adapters/homeAssistantAdapter.ts` 通过 Home Assistant WebSocket 发送 `call_service`，指定实体所属 domain 和 `entity_id`，并将服务调用排队。这里没有直接登录 ORVIBO 云端，也没有独立的 ORVIBO 设备控制会话。
+In the dashboard, `src/features/devices/device-controls.ts` maps a light or switch power action to `turn_on` / `turn_off`. `src/adapters/homeAssistantAdapter.ts` sends `call_service` through the Home Assistant WebSocket, specifying the entity's domain and `entity_id`, and queues service calls. It does not log in to the ORVIBO cloud or create a separate ORVIBO device-control session.
 
-Home Assistant 收到服务请求后，执行当前集成的实体方法，再经 coordinator、`ControlExecutor` 选择 LAN 或云端 TLS。dashboard 与 HA 内置页面操作同一实体时，会使用同一个集成控制链路。
+After Home Assistant receives a service request, it calls the current integration entity method, then the coordinator and `ControlExecutor` select LAN or cloud TLS. Operating the same entity from the dashboard or HA's built-in page uses the same integration control path.
 
-LAN 不可用时回退到云端，云专属设备也使用云端，所以云端连接异常可以只影响部分设备。
+When LAN is unavailable, control falls back to the cloud; cloud-only devices also use the cloud. As a result, a cloud connection problem can affect only some devices.
 
-## 已复现并修复的缺陷
+## Reproduced and fixed defects
 
-| 缺陷 | 原实现行为 | 修复后行为 |
+| Defect | Previous behavior | Behavior after the fix |
 | --- | --- | --- |
-| TLS reader 断开后保留 `connected=True` | `_listen_loop()` 遇到 EOF 或网络错误退出；`_reconnect()` 因标志仍为 True 直接返回，实际没有重新登录 | 意外退出立即清除连接标志、释放待响应请求，然后重新建立会话 |
-| reader 丢失导致放弃恢复 | reader 为 None 时直接退出重连循环 | 无 reader 时仍尝试建立新的连接 |
-| 临时清理被当作永久关闭 | `_disconnect()` 设置 `_closed=True`，首次重新登录失败后后续重试可能停止 | 临时清理保留重试能力；集成卸载使用永久关闭 |
-| 发送失败被吞掉 | `_send_packet()` 捕获异常后返回，`send_control_*()` 继续返回 True，控制层可能写入乐观状态 | 向调用方抛出 `ConnectionError`，阻止假成功；网络错误同时释放请求并关闭失效 stream |
-| writer 缺失时丢弃当前控制 | 发包代码只进行重连，没有发送原指令，上层仍返回成功 | 缺失或关闭的 writer 明确失败，不自动重放结果未知的指令 |
-| 发送等待无超时 | `writer.drain()` 长时间不返回时，控制调用持续占用，dashboard 后续排队操作也受影响 | 单次发包等待最多 10 秒，超时释放故障链路并向上报错 |
+| TLS reader disconnect left `connected=True` | `_listen_loop()` exited on EOF or a network error; `_reconnect()` returned immediately because the flag was still True, without actually logging in again | An unexpected exit immediately clears the connection flag and releases pending requests, then establishes a new session |
+| Missing reader prevented recovery | The reconnect loop exited immediately when the reader was None | It still tries to establish a new connection when there is no reader |
+| Temporary cleanup was treated as permanent closure | `_disconnect()` set `_closed=True`; later retries could stop after the first failed login | Temporary cleanup preserves retry capability; integration unload uses permanent closure |
+| Send failure was swallowed | `_send_packet()` caught an exception and returned; `send_control_*()` then returned True, so the control layer could write an optimistic state | Raises `ConnectionError` to the caller and prevents false success; network errors also release requests and close the failed stream |
+| Current control was dropped when the writer was missing | Packet sending only attempted reconnection and did not send the original command, while the caller still reported success | A missing or closed writer fails explicitly; a command with an unknown result is not replayed automatically |
+| Send wait had no timeout | If `writer.drain()` did not return, the control call remained occupied, also blocking later dashboard operations in the queue | Each send waits at most 10 seconds; timeout releases the failed connection path and reports the error upstream |
 
-修改主要位于 `custom_components/orvibo_smart_control/ssl_client.py`，回归测试位于 `tests/test_ssl_client_recovery.py`。
+The main change is in `custom_components/orvibo_smart_control/ssl_client.py`; regression tests are in `tests/test_ssl_client_recovery.py`.
 
-## 验证结果
+## Verification results
 
-新增 9 项测试覆盖 EOF、网络错误、缺失 reader / writer、首次登录失败后的继续重试、发送阻塞、正常开关报文、显式关闭以及重试上限。
+Nine new tests cover EOF, network errors, missing reader/writer, continued retry after the first failed login, blocked sends, normal switch packets, explicit closure, and retry limits.
 
-修复前，断线、发送失败、writer 丢失和发送阻塞的测试未通过；修复后全部通过。
+Before the fix, tests for disconnects, send failures, a missing writer, and blocked sends failed; after the fix, all passed.
 
-全量验证命令：
+Full verification command:
 
 ```powershell
 python -B -m unittest discover -s tests -q
 ```
 
-结果：运行 391 项测试，390 项通过，1 项跳过；没有失败。
+Result: 391 tests run, 390 passed, 1 skipped; none failed.
 
-## 真机确认步骤
+## Confirm on a real device
 
-1. 将修复后的集成代码更新到 Home Assistant，并重载集成或重启一次以加载代码。
-2. 依次从 HA 内置页面和 dashboard 控制同一个开关，确认两边状态更新、设备实际动作一致。
-3. 如果再次失效，先查看该设备的 `transport_path` 诊断实体是 `lan` 还是 `cloud`，保留故障时间附近集成的日志。
-4. 云端断线后应出现重新连接和登录，而非仅“重连成功”但没有新登录；发送失败应向服务调用方报错。
+1. Update the integration code in Home Assistant, then reload the integration or restart HA once to load the code.
+2. Operate the same switch from the HA built-in page and the dashboard, and confirm both update state and cause the same physical action.
+3. If it fails again, first check whether the device's `transport_path` diagnostic entity is `lan` or `cloud`, and retain integration logs from around the failure time.
+4. After a cloud disconnect, expect reconnection and a new login, not only a “reconnected” message without a new login. A send failure should be reported to the service caller.
 
-正常发包但没有设备状态回执时仍沿用现有乐观更新策略，因此服务成功不等于物理动作已确认。若纯 LAN 设备也出现同样问题，需要结合网关运行日志继续定位，不能直接归因于本次云端缺陷。
+The existing optimistic update behavior remains when a packet is sent normally but no device state confirmation arrives, so a successful service call does not prove the physical action occurred. If a pure-LAN device has the same issue, investigate gateway logs; it cannot be attributed directly to this cloud defect.

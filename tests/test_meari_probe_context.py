@@ -183,7 +183,7 @@ class ProbeContextTests(unittest.TestCase):
 
     def test_serial_and_host_key_fit_native_buffers_without_control_characters(self):
         for field, error in (("snNum", "serial_invalid"), ("hostKey", "host_key_invalid")):
-            for value in (None, True, 123, "", "PRIVATE SECRET", "PRIVATE\nSECRET", "PRIVATE\x00SECRET", "x" * 64, "非ASCII"):
+            for value in (None, True, 123, "", "PRIVATE SECRET", "PRIVATE\nSECRET", "PRIVATE\x00SECRET", "x" * 64, "non-ASCII-é"):
                 with self.subTest(field=field, value=value):
                     inventory = inventory_response()
                     inventory["nvr-neutral"][0][field] = value

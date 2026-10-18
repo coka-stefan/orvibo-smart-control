@@ -49,7 +49,7 @@ class SSLTransport:
             self.tls_files.server_ca,
         ):
             if not path.is_file():
-                raise FileNotFoundError(f"找不到证书文件: {path}")
+                raise FileNotFoundError(f'Certificate file not found: {path}')
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.load_cert_chain(
             certfile=self.tls_files.certificate,

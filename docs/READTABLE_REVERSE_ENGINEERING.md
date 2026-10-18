@@ -1,51 +1,32 @@
-# 设备加载与状态合并的逆向依据
+# Reverse-Engineering Basis for Device Loading and State Merging
 
-本轮依据欧瑞博智家 APK `5.2.6.307` 的静态代码完善加载与状态同步。APK SHA-256：
-`6ea3f3eff41ad4657ca437d10c79022949a1f080af857a8800dc6b6819abac8c`。
-没有运行 APK、调用欧瑞博服务器或连接真实设备；测试使用合成数据和传输 mock。
+This update improves device loading and state synchronization based on static code analysis of ORVIBO Smart Home APK `5.2.6.307`. APK SHA-256:
+`6ea3f3eff41ad4657ca437d10c79022949a1f080af857a8800dc6b6819abac8c`.
+The APK was not run, no ORVIBO server was called, and no real devices were connected; tests use synthetic data and transport mocks.
 
-## APK 中确认的契约
+## Contracts confirmed in the APK
 
-- `model/SyncTableData.java:30,131,162`：设备加载实际使用 HTTPS
-  `v2/cmd/app/readtable`；`data.tableNameList` 给出表名，记录在 `data[表名]`。
-- `bo/device/DevicePropertyStatus.java:16`、`core/f.java:1786`：属性状态可独立放在
-  `devicePropertyStatus` 表，字段为 `deviceId/property/value`。
-- `data/e0.java:675`、`dao/p0.java:58`：属性关联键为 `(deviceId, property)`，
-  `devicePropertyStatusId` 不能替代业务设备 ID。
-- `core/g.java:1971,2034`：`deviceStatus.properties` 是另一种属性来源。
-- `bo/BaseBo.java:84`：`updateTimeSec` 转毫秒后参与比较；
-  `dao/p0.java:64` 的批量写入接受未提供时间或不早于旧记录的值。
-- `core/c.java:3646` 构造普通控制 `cmd=15`；`core/g.java:2185,3434` 分派 `cmd=42`
-  状态报告。控制 ACK 本身不能证明设备已到达目标状态。
+- `model/SyncTableData.java:30,131,162`: device loading uses HTTPS `v2/cmd/app/readtable`; `data.tableNameList` lists table names, and records are in `data[table name]`.
+- `bo/device/DevicePropertyStatus.java:16`, `core/f.java:1786`: property status can be stored separately in the `devicePropertyStatus` table with fields `deviceId/property/value`.
+- `data/e0.java:675`, `dao/p0.java:58`: property records are keyed by `(deviceId, property)`; `devicePropertyStatusId` cannot replace the business device ID.
+- `core/g.java:1971,2034`: `deviceStatus.properties` is another source of properties.
+- `bo/BaseBo.java:84`: `updateTimeSec` is converted to milliseconds and used for comparisons; batch writes in `dao/p0.java:64` accept entries without a timestamp or with a timestamp no earlier than the existing record.
+- `core/c.java:3646` constructs ordinary control `cmd=15`; `core/g.java:2185,3434` dispatch status reports `cmd=42`. A control ACK alone does not prove that the device reached its target state.
 
-这些路径及行号对应本次反编译导出，不是厂商公开接口或原始源代码行号。
+These paths and line numbers refer to this decompiled export, not a vendor-published API or original source line numbers.
 
-## 集成实现
+## Integration implementation
 
-`protocol.parse_readtable_devices` 统一处理数组表和按 ID 索引的字典表，保留
-房间、网关、状态别名、子类型、界面模型及设备自带的旧式状态值。HTTPS 包装器和
-主页后备解析复用此路径；未知类型保留为库存记录，控制能力仍由现有能力表决定。
+`protocol.parse_readtable_devices` handles both array tables and tables represented as dictionaries indexed by ID, retaining rooms, gateways, status aliases, subtypes, interface models, and legacy status values supplied by devices. The HTTPS wrapper and homepage fallback parser reuse this path. Unknown types remain in the inventory, while control capabilities continue to be determined by the existing capability table.
 
-属性先合并设备和设备状态中的 `properties`，再读取独立属性记录。复合 JSON
-字符串转换为对象/数组，普通字符串、数字、布尔和列表保持类型。递归合并保留
-同一属性内未更新的成员；输入对象不被修改。
+Properties from the device and device-status `properties` are merged first, followed by separate property records. Compound JSON strings are converted to objects/arrays; ordinary strings, numbers, booleans, and lists retain their types. Recursive merging retains members of the same property that were not updated; input objects are not modified.
 
-独立记录的数字时间统一为毫秒；较旧记录不覆盖较新属性。没有时间或时间相等时，
-本实现采用到达顺序，独立记录排在内嵌属性之后。删除记录会移除本次快照中的对应
-属性，并阻止随后较旧的记录把它重新引入。这是集成的明确快照策略；APK 的批量
-SQL 实际写死 `delFlag=0`，不能把该行为直接用于 HA 删除处理。
+Numeric timestamps on separate records are normalized to milliseconds; an older record does not overwrite a newer property. When no timestamp is available or timestamps are equal, this implementation uses arrival order, with separate records placed after embedded properties. A deleted record removes its property from the current snapshot and prevents a later older record from reintroducing it. This is the integration's explicit snapshot policy. The APK's batch SQL hardcodes `delFlag=0`, so that behavior cannot be applied directly to HA deletion handling.
 
-LAN/SSL 分派保留解析器所需的当前状态视图，只将本次赋值的字段交给 `StateStore`。
-明确上报的同值仍更新保护时间；未上报的亮度、色温等不会随开关推送进入保护期。
-普通、开关及晾衣机的部分更新保留缺省字段。
+LAN/SSL dispatch retains the current-state view needed by parsers but sends only fields assigned in the current update to `StateStore`. An explicitly reported value, even if unchanged, refreshes its protection window; brightness, color temperature, and similar fields that were not reported do not enter that window with a switch update. Partial updates for ordinary devices, switches, and clothes dryers retain omitted fields.
 
-## 验证与剩余边界
+## Validation and remaining limits
 
-新增 `tests/test_readtable_loading.py` 的 16 项离线回归，覆盖两种库存形式、
-房间/状态联表、独立属性、JSON 值、数字时间、删除标记、网关容错、初始灯状态及
-LAN/SSL 字段保护。Python 3.11 完整测试 477 项通过。
+Sixteen offline regression tests were added in `tests/test_readtable_loading.py`, covering both inventory formats, room/status joins, separate properties, JSON values, numeric timestamps, deletion flags, gateway fault tolerance, initial light state, and LAN/SSL field protection. The full Python 3.11 test suite passed, 477 tests.
 
-本轮没有增加设备控制类别或修改控制 payload。不同型号的亮度范围、窗帘停止命令
-和空调位域仍需按型号验证。独立属性删除目前作用于解析出的快照；跨快照缓存失效、
-属性叶子级来源保护和非灯具的周期云状态解析还需进一步完善。全新安装/重载的库存
-加载仍依赖云端，不能据此宣称任意网关可以完全离线部署。
+This work added no control categories and did not change control payloads. Brightness ranges, curtain stop commands, and air-conditioner bit fields still need model-specific validation. Deletion of separate properties currently applies to the parsed snapshot; cross-snapshot cache invalidation, per-leaf property source protection, and periodic cloud state parsing for non-light devices need further work. Initial inventory loading on a clean install or reload still depends on the cloud; this does not establish that arbitrary gateways can be deployed fully offline.

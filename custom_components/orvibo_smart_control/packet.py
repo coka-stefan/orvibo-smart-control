@@ -27,7 +27,7 @@ from .const import (
     CMD_COS_AUTH, CMD_TEMP_PASSWORD, CMD_DELETE_AUTHORIZATION,
 )
 
-# 当前 HTTPS API 主机（模块级，可在运行时切换：中国区/国际区）
+# Current HTTPS API host (module-level; can be switched at runtime between China and international regions)
 _api_host = HTTPS_HOST
 
 
@@ -161,7 +161,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_switch(cls, username: str, device_id: str, device_uid: str, state: bool):
-        """开关控制（set property 格式，适用于 type=501/135/136 等）。"""
+        """Switch control (set property format, used by types 501/135/136, etc.)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -202,7 +202,7 @@ class HomemateJsonData:
         value3: int | None = None,
         value4: int | None = None,
     ):
-        """空调原始控制（cmd=15 set property，value1~value4 语义与 App 一致）。"""
+        """Raw AC control (cmd=15 set property; value1-value4 follow the app semantics)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         return {
@@ -230,10 +230,10 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_dimmable_light_brightness(cls, username: str, device_id: str, device_uid: str, brightness_percent: int):
-        """可调光灯亮度控制（set property 格式，适用于 type=502）。
+        """Dimmable light brightness control (set property format for type=502).
 
         Args:
-            brightness_percent: 亮度百分比 0-100
+            brightness_percent: Brightness percentage (0-100)
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -265,7 +265,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_zigbee_dimmable_light_onoff(cls, username: str, device_id: str, device_uid: str, state: bool, brightness: int = 255):
-        """Zigbee调光灯开关控制（on/off 格式，适用于 deviceType=0, subDeviceType=-2）"""
+        """Zigbee dimmable light switch control (on/off format for deviceType=0, subDeviceType=-2)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         bri = max(0, min(int(brightness), 255))
@@ -295,7 +295,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_zigbee_dimmable_light_brightness(cls, username: str, device_id: str, device_uid: str, brightness_255: int):
-        """Zigbee调光灯亮度控制（move to level 格式，适用于 deviceType=0, subDeviceType=-2）"""
+        """Zigbee dimmable light brightness control (move to level format for deviceType=0, subDeviceType=-2)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         bri = max(1, min(int(brightness_255), 255))
@@ -325,7 +325,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_fast_move_dim_color_light_onoff(cls, username: str, device_id: str, device_uid: str, state: bool, brightness: int = 0, colortemp_mired: int = 0):
-        """Fast Move调光调色灯开关控制（on/off 格式，适用于 statusType=2, subDeviceType=6）"""
+        """Fast Move dimmable color-temperature light switch control (on/off format for statusType=2, subDeviceType=6)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -355,7 +355,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_fast_move_dim_color_light_brightness(cls, username: str, device_id: str, device_uid: str, brightness: int, colortemp_mired: int = 0):
-        """Fast Move调光调色灯亮度控制（fast move to level 格式，适用于 statusType=2, subDeviceType=6）"""
+        """Fast Move dimmable color-temperature light brightness control (fast move to level format for statusType=2, subDeviceType=6)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         bri = max(0, min(int(brightness), 255))
@@ -386,7 +386,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_fast_move_dim_color_light_colortemp(cls, username: str, device_id: str, device_uid: str, brightness: int, colortemp_mired: int):
-        """Fast Move调光调色灯色温控制（fast color temperature 格式，适用于 statusType=2, subDeviceType=6）"""
+        """Fast Move dimmable color-temperature light color temperature control (fast color temperature format for statusType=2, subDeviceType=6)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         bri = max(0, min(int(brightness), 255))
@@ -417,7 +417,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_cct_light_onoff(cls, username: str, device_id: str, device_uid: str, state: bool):
-        """色温灯开关控制（set property 格式，适用于 statusType=503）"""
+        """Color temperature light switch control (set property format for statusType=503)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -511,7 +511,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_cct_light_brightness(cls, username: str, device_id: str, device_uid: str, brightness_percent: int):
-        """色温灯亮度控制（set property 格式，适用于 statusType=503）"""
+        """Color temperature light brightness control (set property format for statusType=503)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         bri = max(0, min(int(brightness_percent), 100))
@@ -542,7 +542,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_cct_light_colortemp(cls, username: str, device_id: str, device_uid: str, colortemp_k: int):
-        """色温灯色温控制（set property 格式，适用于 statusType=503）"""
+        """Color temperature light color temperature control (set property format for statusType=503)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         ct = max(2700, min(int(colortemp_k), 6500))
@@ -573,7 +573,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_light(cls, username: str, device_id: str, device_uid: str, state: bool, brightness: int = 0, colortemp_mired: int = 0):
-        """灯光开关控制（order=on/off + value1 格式，适用于 type=102/38 等）。"""
+        """Light switch control (order=on/off + value1 format for types 102/38, etc.)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -601,7 +601,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_cover(cls, username: str, device_id: str, device_uid: str, position: int, stop_value2: int = 0):
-        """控制窗帘（position: 0-100，或使用字符串 'stop' 停止）"""
+        """Control a curtain (position: 0-100, or the string 'stop' to stop)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         if isinstance(position, str) and position == "stop":
@@ -616,7 +616,7 @@ class HomemateJsonData:
             "deviceId": device_id,
             "groupId": "",
             "order": order,
-            "value1": value1,  # 位置百分比 0-100
+            "value1": value1,  # Position percentage (0-100)
             "value2": stop_value2 if order == "stop" else 0,
             "value3": 0,
             "value4": 0,
@@ -671,8 +671,8 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_ventilation(cls, username: str, device_id: str, device_uid: str, value1: int):
-        """新风系统控制（set property 格式，适用于 deviceType=516, classId=1114）。
-        value1: 0=慢, 50=停, 100=快
+        """Ventilation system control (set property format for deviceType=516, classId=1114).
+        value1: 0=slow, 50=stop, 100=fast
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -702,7 +702,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_light_brightness(cls, username: str, device_id: str, device_uid: str, brightness: int):
-        """设置灯光亮度（范围：0-255）"""
+        """Set light brightness (range: 0-255)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         brightness_val = min(int(brightness), 255)
@@ -732,9 +732,9 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_light_colortemp(cls, username: str, device_id: str, device_uid: str, colortemp_k: int, brightness: int = 0):
-        """设置灯光色温（单位：Kelvin，内部转为 Mired 发送）。
+        """Set light color temperature (input in Kelvin, converted to mireds for transmission).
 
-        注意：type=38 控制命令不能包含 properties 字段，order 使用 "fast color temperature"。
+        Note: type=38 control commands must omit the properties field and use order="fast color temperature".
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -767,10 +767,10 @@ class HomemateJsonData:
     @classmethod
     def ssl_control_light_full(cls, username: str, device_id: str, device_uid: str,
                                 brightness: int = None, colortemp_k: int = None, power: bool = True):
-        """设置灯光完整参数（亮度+色温+开关）。
+        """Set all light parameters (brightness, color temperature, and power).
 
-        注意：type=38 控制命令 value3 直接使用 Kelvin，order 使用 "on"/"off"，
-        不能包含 properties 字段。
+        Note: type=38 control commands use Kelvin directly for value3 and use order="on"/"off";
+        the properties field must be omitted.
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -802,11 +802,11 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_clothes_horse_control(cls, username: str, device_id: str, device_uid: str, ctrl_field: str, ctrl_value: str):
-        """构建晾衣架控制命令(cmd=98)。
+        """Build a clothes dryer control command (cmd=98).
 
         Args:
-            ctrl_field: 控制字段名，如 lightingCtrl/sterilizingCtrl/windDryingCtrl/heatDryingCtrl/mainSwitchCtrl/motorCtrl
-            ctrl_value: 控制值，如 on/off/up/down/stop
+            ctrl_field: Control field, e.g. lightingCtrl/sterilizingCtrl/windDryingCtrl/heatDryingCtrl/mainSwitchCtrl/motorCtrl
+            ctrl_value: Control value, e.g. on/off/up/down/stop
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -827,7 +827,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_clothes_horse_query(cls, device_id: str):
-        """构建晾衣架状态查询命令(cmd=100)。"""
+        """Build a clothes dryer state query command (cmd=100)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -860,7 +860,7 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_heartbeat(cls):
-        """构建心跳包(cmd=32)。"""
+        """Build a heartbeat packet (cmd=32)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         payload = {
@@ -876,12 +876,12 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_cos_auth(cls, user_id: str, device_id: str, device_uid: str, family_id: str):
-        """构建门锁媒体授权请求(cmd=313, Skill.GetCOSAuthorization)。
+        """Build a lock media authorization request (cmd=313, Skill.GetCOSAuthorization).
 
-        与智家365 App 的 AbstractC0003b.m28V 一致：
-        内层 JSON 字符串含 namespace/requestId/version/userId/deviceId/
-        familyId/uid/type=lock，外层再包一层 {"request": "<内层 JSON>"}。
-        响应 QueryTxAuthResponse.security 提供门锁专用 COS 桶凭证。
+        Matches AbstractC0003b.m28V in the Smart Home 365 app:
+        The inner JSON string contains namespace/requestId/version/userId/deviceId/
+        familyId/uid/type=lock, wrapped in the outer {"request": "<inner JSON>"} object.
+        The response QueryTxAuthResponse.security provides credentials for the lock-specific COS bucket.
         """
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
@@ -920,7 +920,7 @@ class HomemateJsonData:
         start_time: int,
         end_time: int,
     ):
-        """构建临时密码下发请求（cmd=246，对照 App 抓包实测）。"""
+        """Build a temporary password request (cmd=246, verified against an app packet capture)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         return {
@@ -949,7 +949,7 @@ class HomemateJsonData:
         device_uid: str,
         authorized_id: int,
     ):
-        """构建删除授权请求（cmd=247，authorizedId 来自下发响应）。"""
+        """Build an authorization deletion request (cmd=247; authorizedId comes from the send response)."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
         return {
@@ -984,7 +984,7 @@ class HomemateJsonData:
     ):
         """Build the legacy GET query without materializing a credential URL."""
         url = f"https://{api_host or get_api_host()}/getOauthToken"
-        _LOGGER.debug("请求access_token: type=0 (structured query parameters)")
+        _LOGGER.debug("Request access_token: type=0 (structured query parameters)")
         return {
             "url": url,
             "data": None,
@@ -1076,14 +1076,14 @@ class HomemateJsonData:
         device_flag=0,
         api_host: str | None = None,
     ):
-        """获取设备状态列表，通过 /v2/cmd/app/readtable API"""
+        """Get the device state list through the /v2/cmd/app/readtable API."""
         url = f"https://{api_host or get_api_host()}/v2/cmd/app/readtable"
 
         random_str = generate_uuid()
         serial = generate_serial()
         timestamp = generate_timestamp()
 
-        # lastUpdateTime 设置为一个较早的时间，以确保获取所有设备
+        # Set lastUpdateTime to an earlier time to ensure all devices are retrieved
         lastUpdateTime = 0
 
         req_data = {
@@ -1102,7 +1102,7 @@ class HomemateJsonData:
             "pageIndex": 0,
             "dataType": "all"
         }
-        # 参数加密前排序
+        # Sort parameters before encryption
         params = {
             "accessToken": req_data["accessToken"],
             "dataType": req_data["dataType"],

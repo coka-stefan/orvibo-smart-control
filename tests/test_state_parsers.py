@@ -126,7 +126,7 @@ class StateParserTests(unittest.TestCase):
             },
         )
 
-        # type=38 量纲 0-255：80% → 204
+        # type=38 scale 0-255: 80% → 204.
         self.assertEqual(patch.values["state"], True)
         self.assertEqual(patch.values["brightness"], 204)
 
@@ -338,7 +338,7 @@ class StateParserTests(unittest.TestCase):
 
         self.assertEqual(
             patch.values,
-            {"value1": 100, "fan_speed": "停", "state": False, "temperature": 21.5},
+            {"value1": 100, "fan_speed": "Off", "state": False, "temperature": 21.5},
         )
 
     def test_clothes_horse_parser_normalizes_all_channels(self) -> None:

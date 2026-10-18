@@ -1,4 +1,4 @@
-"""查网关和设备的绑定关系"""
+"""Inspect gateway and device bindings."""
 import hashlib, json, asyncio, aiohttp, sys
 import os
 from pathlib import Path
@@ -15,7 +15,7 @@ if _orig: _init.write_bytes(_orig)
 USER = os.environ.get("ORVIBO_USERNAME", "")
 PASS = os.environ.get("ORVIBO_PASSWORD", "")
 if not USER or not PASS:
-    sys.exit("请先设置环境变量 ORVIBO_USERNAME 和 ORVIBO_PASSWORD")
+    sys.exit("Set the ORVIBO_USERNAME and ORVIBO_PASSWORD environment variables first")
 DEV = "example-device-id"
 
 async def main():
@@ -26,9 +26,9 @@ async def main():
         j = json.loads(await r.text())
         token = j["data"]["access_token"]
         uid = j["data"]["user_id"]
-        print(f"✅ 登录成功")
+        print("✅ Login succeeded")
 
-        # 查询所有家庭的信息（检查是否有网关绑定）
+        # Query each family's information and check for gateway bindings.
         ret = HomemateJsonData.get_family_statistics_users(uid, token)
         async with s.post(ret["url"], data=ret["data"], headers=HTTP_HEADERS, ssl=False) as r:
             families = json.loads(await r.text()).get("data", [])
@@ -42,43 +42,43 @@ async def main():
             async with s.post(ret2["url"], data=ret2["data"], headers=HTTP_HEADERS, ssl=False) as r:
                 data = json.loads(await r.text()).get("data", {})
                 
-                # 网关
+                # Gateways
                 gws = data.get("gateway", [])
-                print(f"  网关: {len(gws)}")
+                print(f"  Gateways: {len(gws)}")
                 for g in gws:
                     print(f"    {json.dumps(g, ensure_ascii=False)[:300]}")
                 
-                # 用户网关绑定
+                # User-gateway bindings
                 binds = data.get("userGatewayBind", [])
-                print(f"  用户-网关绑定: {len(binds)}")
+                print(f"  User-gateway bindings: {len(binds)}")
                 for b in binds:
                     print(f"    {json.dumps(b, ensure_ascii=False)[:200]}")
                 
-                # 设备
+                # Devices
                 devs = data.get("device", [])
                 for d in devs:
                     if d.get("deviceId") == DEV:
-                        print(f"\n  🔌 插线板详细信息:")
+                        print("\n  🔌 Power strip details:")
                         print(f"    {json.dumps(d, ensure_ascii=False)}")
-                        # 查它的 endpoint/profileID/zoneId
+                        # Inspect its endpoint, profileID, and zoneId.
                         print(f"    endpoint={d.get('endpoint')}, profileID={d.get('profileID')}, zoneId={d.get('zoneId')}")
                         print(f"    appDeviceId={d.get('appDeviceId')}, gdid={d.get('gdid')}")
                 
-                # 设备状态
+                # Device state
                 sts = data.get("deviceStatus", [])
                 for st in sts:
                     if st.get("deviceId") == DEV:
-                        print(f"\n  🔌 插线板状态:")
+                        print("\n  🔌 Power strip state:")
                         print(f"    {json.dumps(st, ensure_ascii=False)}")
                 
-                # 看看有没有其他家庭有插线板的endpoint配置
+                # Check whether another family has a power strip endpoint configured.
                 ret3 = HomemateJsonData.get_devices_status(token, "", uid, USER, fid, 0)
                 async with s.post(ret3["url"], data=ret3["data"], headers=HTTP_HEADERS, ssl=False) as r:
                     data2 = json.loads(await r.text()).get("data", {})
                     devs2 = data2.get("device", [])
                     for d in devs2:
                         if d.get("deviceId") == DEV:
-                            print(f"\n  🔌 插线板 (deviceFlag=0):")
+                            print("\n  🔌 Power strip (deviceFlag=0):")
                             print(f"    {json.dumps(d, ensure_ascii=False)[:500]}")
 
 asyncio.run(main())

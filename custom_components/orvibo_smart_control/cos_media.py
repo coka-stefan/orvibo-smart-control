@@ -1,14 +1,14 @@
-"""门锁媒体 COS 凭证管理：cmd=313 换凭证 → 对象键签成临时 URL。
+"""Lock media COS credential management: exchange credentials with cmd=313 and sign object keys into temporary URLs.
 
-背景（APK 逆向 + 实机验证）：
-- 门锁事件（撬锁告警/门铃）里的 videoUrl/picUrl 是腾讯云 COS 对象键
-  （如 /uid/picturePicklockEvent/xxx.jpg）；
-- REST 接口 v2/cosToken/getCosToken 只签发日志桶凭证，读门锁媒体会
-  AccessDenied（实测确认）；正确路径是 SSL 长连接发 cmd=313
-  （Skill.GetCOSAuthorization），返回门锁专用桶（如
-  p20-doorlock-1251222210）的 STS 凭证；
-- 拿到凭证后用 COS 签名 v5 把对象键签成临时 URL（Authorization 参数
-  直接作为 query 附加，即官方预签名 URL 格式）。
+Background (APK reverse engineering and hardware verification):
+- Lock events (tampering alerts/doorbell) provide Tencent Cloud COS object keys in videoUrl/picUrl
+  (e.g. /uid/picturePicklockEvent/xxx.jpg);
+- The REST endpoint v2/cosToken/getCosToken issues credentials for the log bucket only; reading lock media returns
+  AccessDenied (confirmed on hardware). The correct path is to send cmd=313 over the persistent SSL connection
+  (Skill.GetCOSAuthorization), which returns credentials for the lock-specific bucket (e.g.
+  p20-doorlock-1251222210);
+- Use COS Signature v5 to sign the object key into a temporary URL (the Authorization parameter
+  is appended directly to the query, matching the official presigned URL format).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from urllib.parse import quote
 
 _LOGGER = logging.getLogger(__name__)
 
-# 凭证到期前提前刷新的余量（秒）
+# Refresh buffer before credentials expire (seconds)
 _RENEW_LEAD_TIME = 300
 
 
@@ -42,10 +42,10 @@ def cos_authorization(
     end: int,
     query_params: Optional[Mapping[str, str]] = None,
 ) -> str:
-    """COS 签名 v5（与 tests/cos_probe.py 同算法，实机验证通过）。
+    """COS Signature v5, using the same algorithm as tests/cos_probe.py and verified on hardware.
 
-    query_params 参与签名（如 response-content-type），按 URL 编码后的
-    参数名排序；签名参数自身与 x-cos-security-token 不参与计算。
+    query_params are included in the signature (e.g. response-content-type) and sorted by their URL-encoded
+    names. The signature parameters and x-cos-security-token are excluded from the calculation.
     """
     key_time = f"{start};{end}"
     sign_key = _hmac_hex(secret_key, key_time, hashlib.sha1)
@@ -73,14 +73,14 @@ def cos_authorization(
 
 @dataclasses.dataclass(slots=True)
 class CosCredentials:
-    """门锁 COS STS 凭证（已归一化）。"""
+    """Normalized lock COS STS credentials."""
 
     secret_id: str
     secret_key: str
     session_token: str
     bucket: str
     region: str
-    expires_at: float  # 本地时间戳，秒
+    expires_at: float  # Local timestamp in seconds
     system_time_ms: Optional[int] = None
 
     @property
@@ -101,7 +101,7 @@ _CONTENT_TYPE_BY_EXT = {
 
 
 def _infer_content_type(object_key: str) -> Optional[str]:
-    """按对象键扩展名推断 Content-Type（用于 response-content-type 覆盖）。"""
+    """Infer Content-Type from the object key extension for the response-content-type override."""
     dot = object_key.rfind(".")
     if dot < 0:
         return None
@@ -109,7 +109,7 @@ def _infer_content_type(object_key: str) -> Optional[str]:
 
 
 def parse_cos_response(resp: Mapping[str, Any]) -> Optional[CosCredentials]:
-    """解析 cmd=313 响应，返回归一化凭证；格式不符返回 None。"""
+    """Parse the cmd=313 response and return normalized credentials, or None if the format is invalid."""
     if not isinstance(resp, Mapping):
         return None
     response_json = resp.get("response")
@@ -159,12 +159,12 @@ def signed_media_url(
     ttl: int = 600,
     content_type: Optional[str] = None,
 ) -> str:
-    """把 COS 对象键签成临时可访问 URL（预签名 URL 格式）。
+    """Sign a COS object key into a temporary accessible URL (presigned URL format).
 
-    STS 临时凭证必须把 x-cos-security-token 放进 URL query（浏览器无法带
-    自定义 header），否则直接访问会 AccessDenied。该参数不参与签名计算。
-    COS 存储的 Content-Type 可能是 text/html（实测），导致浏览器把图片
-    当文本渲染；通过 response-content-type 参数覆盖响应头（参与签名）。
+    STS temporary credentials require x-cos-security-token in the URL query (browsers cannot send
+    custom headers), or direct access returns AccessDenied. This parameter is excluded from signing.
+    COS may store Content-Type as text/html (observed), causing browsers to render an image
+    as text. Override the response header with response-content-type (included in signing).
     """
     host = f"{creds.bucket}.cos.{creds.region}.myqcloud.com"
     path = object_key if object_key.startswith("/") else "/" + object_key
@@ -196,10 +196,10 @@ def signed_media_url(
 
 
 class CosMediaManager:
-    """按门锁设备缓存 COS 凭证，并把对象键签成临时 URL。
+    """Cache COS credentials by lock device and sign object keys into temporary URLs.
 
-    凭证通过 SSL 长连接 cmd=313 获取（36 小时有效），按 device_id 缓存，
-    到期前自动续期。同一把锁的多个事件共享一份凭证。
+    Credentials are obtained with cmd=313 over the persistent SSL connection (valid for 36 hours) and cached by device_id;
+    they are renewed before expiry. Events for the same lock share credentials.
     """
 
     def __init__(self, ssl_client, user_id: str, family_id: str) -> None:
@@ -212,7 +212,7 @@ class CosMediaManager:
         self._cache.clear()
 
     def cached_credentials(self, device_id: str) -> Optional[CosCredentials]:
-        """返回仍有效的缓存凭证（不联网）；缺失或过期返回 None。"""
+        """Return valid cached credentials without network access, or None if missing or expired."""
         cached = self._cache.get(device_id)
         if cached is not None and cached.valid:
             return cached
@@ -225,7 +225,7 @@ class CosMediaManager:
         object_key: str,
         ttl: int = 600,
     ) -> Optional[str]:
-        """用缓存凭证同步签名（事件发布路径，零网络等待）。"""
+        """Sign synchronously with cached credentials (event publishing path, no network wait)."""
         if not object_key:
             return None
         cached = self.cached_credentials(device_id)
@@ -233,8 +233,8 @@ class CosMediaManager:
             return None
         try:
             return signed_media_url(cached, object_key, ttl=ttl)
-        except Exception:  # noqa: BLE001 - 签名失败不应影响事件发布
-            _LOGGER.exception("COS 对象键签名失败: %s", object_key)
+        except Exception:  # noqa: BLE001 - signing failures must not affect event publishing
+            _LOGGER.exception("Failed to sign COS object key: %s", object_key)
             return None
 
     async def get_credentials(
@@ -242,7 +242,7 @@ class CosMediaManager:
         device_id: str,
         device_uid: str,
     ) -> Optional[CosCredentials]:
-        """返回有效凭证；缓存过期或缺失时通过 cmd=313 重新获取。"""
+        """Return valid credentials, fetching them again with cmd=313 if missing or expired."""
         cached = self._cache.get(device_id)
         if cached is not None and cached.valid:
             return cached
@@ -256,12 +256,12 @@ class CosMediaManager:
         creds = parse_cos_response(resp) if resp else None
         if creds is None:
             _LOGGER.warning(
-                "门锁媒体凭证获取失败 device=%s（响应格式不符或超时）", device_id
+                "Failed to get lock media credentials: device=%s (invalid response or timeout)", device_id
             )
             return None
         self._cache[device_id] = creds
         _LOGGER.debug(
-            "门锁媒体凭证已刷新 device=%s bucket=%s region=%s 有效%.0fh",
+            "Lock media credentials refreshed: device=%s bucket=%s region=%s valid_for=%.0fh",
             device_id,
             creds.bucket,
             creds.region,
@@ -276,7 +276,7 @@ class CosMediaManager:
         object_key: str,
         ttl: int = 600,
     ) -> Optional[str]:
-        """把对象键签成临时 URL；凭证不可用时返回 None。"""
+        """Sign the object key into a temporary URL, or return None if credentials are unavailable."""
         if not object_key:
             return None
         creds = await self.get_credentials(device_id, device_uid)
@@ -284,6 +284,6 @@ class CosMediaManager:
             return None
         try:
             return signed_media_url(creds, object_key, ttl=ttl)
-        except Exception:  # noqa: BLE001 - 签名失败不应影响事件发布
-            _LOGGER.exception("COS 对象键签名失败: %s", object_key)
+        except Exception:  # noqa: BLE001 - signing failures must not affect event publishing
+            _LOGGER.exception("Failed to sign COS object key: %s", object_key)
             return None

@@ -99,7 +99,7 @@ class ProtocolTests(unittest.TestCase):
         )
 
     def test_parse_readtable_devices_joins_only_device_tables(self) -> None:
-        """account/gateway/room 表不产生设备，只有 device[] 表产生。"""
+        """Only device[] records produce devices; account/gateway/room tables do not."""
         devices = protocol.parse_readtable_devices(
             {
                 "code": 0,
@@ -251,7 +251,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual({device.room for device in devices}, {"Kitchen"})
 
     def test_device_to_dict_compatible_with_https_client(self) -> None:
-        """验证 device_to_dict() 与 https_client 的 dict 格式兼容。"""
+        """Verify that device_to_dict() matches the https_client dictionary format."""
         dev = protocol.OrviboDevice(
             uid="test-device-001",
             name="Test Light",
@@ -303,7 +303,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(dicts[0]["familyName"], "Home")
 
     def test_parse_readtable_to_device_dicts(self) -> None:
-        """验证 parse_readtable_to_device_dicts 产生完整的 dict 列表。"""
+        """Verify that parse_readtable_to_device_dicts produces complete device dictionaries."""
         dicts = protocol.parse_readtable_to_device_dicts(
             {
                 "code": 0,
@@ -371,7 +371,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIsNone(protocol._safe_int("not-a-number"))
 
     def test_parse_online_various_formats(self) -> None:
-        """验证 _parse_online 支持多种格式。"""
+        """Verify that _parse_online accepts the supported formats."""
         devs = protocol.extract_devices([
             {"uid": "xxxxxxxxxxx1", "deviceName": "A", "online": True},
             {"uid": "xxxxxxxxxxx2", "deviceName": "B", "online": 1},
@@ -438,7 +438,7 @@ class ProtocolTests(unittest.TestCase):
         )
         self.assertTrue(protocol.device_to_dict(d4)["state"])
 
-        # type=34 (窗帘), value1=0 → state=False
+        # type=34 (curtain), value1=0 → state=False
         d5 = protocol.OrviboDevice(
             uid="d5", name="", model="", device_type="34",
             sub_device_type="", room="", parent_uid="",
@@ -446,7 +446,7 @@ class ProtocolTests(unittest.TestCase):
         )
         self.assertFalse(protocol.device_to_dict(d5)["state"])
 
-        # type=34 (窗帘), value1=50 → state=True
+        # type=34 (curtain), value1=50 → state=True
         d6 = protocol.OrviboDevice(
             uid="d6", name="", model="", device_type="34",
             sub_device_type="", room="", parent_uid="",

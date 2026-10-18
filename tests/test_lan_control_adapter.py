@@ -121,7 +121,7 @@ class LanControlAdapterTests(unittest.TestCase):
         _, payload = manager.sent[0]
         self.assertEqual(payload["order"], "on")
         self.assertEqual(payload["value1"], 0)
-        # LAN 旧协议开灯必须带满亮度，否则设备开灯即亮度 0 熄灭
+        # The legacy LAN light-on command must include full brightness; otherwise the device turns on at brightness 0 and immediately goes off.
         self.assertEqual(payload["value2"], 255)
 
     def test_light_on_preserves_explicit_brightness(self) -> None:

@@ -2,273 +2,273 @@
     "config": {
         "step": {
             "user": {
-                "title": "ORVIBO Smart Control 登录",
-                "description": "请输入智家365账号和密码。您也可以在此按云端名称忽略设备，并为 MixPad LAN 登录配置独立账号。名称规则每行一个，支持关键词和通配符。",
+                "title": "ORVIBO Smart Control - HomeMate Login",
+                "description": "Enter your HomeMate account and password. You can also hide devices by cloud name and configure a separate account used only for MixPad LAN login. Enter one name keyword or wildcard pattern per line.",
                 "data": {
-                    "username": "手机号或邮箱",
-                    "password": "密码",
-                    "hidden_device_name_patterns": "要忽略的设备名称（可选）",
-                    "use_independent_lan_credentials": "使用独立的 MixPad LAN 凭据",
-                    "lan_username": "MixPad 用户名",
-                    "lan_password": "MixPad 密码"
+                    "username": "Phone / Email",
+                    "password": "Password",
+                    "hidden_device_name_patterns": "Names to ignore (optional)",
+                    "use_independent_lan_credentials": "Use independent MixPad LAN credentials",
+                    "lan_username": "MixPad username",
+                    "lan_password": "MixPad password"
                 }
             },
             "select_family": {
-                "title": "选择家庭",
-                "description": "您的账号下存在多个家庭，请选择一个家庭添加进Home Assistant",
+                "title": "Select Family",
+                "description": "Multiple families found, select one to manage",
                 "data": {
-                    "family_id": "家庭"
+                    "family_id": "Family"
                 }
             },
             "reauth_confirm": {
-                "title": "重新认证",
-                "description": "为 {username} 更新密码",
+                "title": "Re-authenticate",
+                "description": "Update the password for {username}",
                 "data": {
-                    "password": "密码"
+                    "password": "Password"
                 }
             },
             "devices": {
-                "title": "选择设备",
-                "description": "设备按类型分组，可使用复选框连续勾选多台设备，无需反复展开列表；同类有多台时可选择“全部”。",
+                "title": "Select Devices",
+                "description": "Devices are grouped by type. Use the checkboxes to select multiple devices without reopening the list. Groups with multiple devices include a select-all option.",
                 "data": {
-                    "device_group_lights_all": "全选灯具",
-                    "device_group_lights": "灯具",
-                    "device_group_switches_all": "全选开关",
-                    "device_group_switches": "开关",
-                    "device_group_curtains_all": "全选窗帘",
-                    "device_group_curtains": "窗帘",
-                    "device_group_clothes_horse_all": "全选晾衣机",
-                    "device_group_clothes_horse": "晾衣机",
-                    "device_group_climate_all": "全选暖通设备",
-                    "device_group_climate": "暖通",
-                    "device_group_ventilation_all": "全选新风设备",
-                    "device_group_ventilation": "新风",
-                    "device_group_sensors_all": "全选传感器",
-                    "device_group_sensors": "传感器",
-                    "device_group_locks_all": "全选门锁",
-                    "device_group_locks": "门锁",
-                    "device_group_cameras_all": "全选摄像头",
-                    "device_group_cameras": "摄像头",
-                    "device_group_other_all": "全选其他设备",
-                    "device_group_other": "其他设备",
-                    "selected_device_ids": "设备"
+                    "device_group_lights_all": "Select all lights",
+                    "device_group_lights": "Lights",
+                    "device_group_switches_all": "Select all switches",
+                    "device_group_switches": "Switches",
+                    "device_group_curtains_all": "Select all curtains",
+                    "device_group_curtains": "Curtains",
+                    "device_group_clothes_horse_all": "Select all clothes dryers",
+                    "device_group_clothes_horse": "Clothes dryers",
+                    "device_group_climate_all": "Select all climate devices",
+                    "device_group_climate": "Climate",
+                    "device_group_ventilation_all": "Select all ventilation devices",
+                    "device_group_ventilation": "Ventilation",
+                    "device_group_sensors_all": "Select all sensors",
+                    "device_group_sensors": "Sensors",
+                    "device_group_locks_all": "Select all locks",
+                    "device_group_locks": "Locks",
+                    "device_group_cameras_all": "Select all cameras",
+                    "device_group_cameras": "Cameras",
+                    "device_group_other_all": "Select all other devices",
+                    "device_group_other": "Other devices",
+                    "selected_device_ids": "Devices"
                 }
             },
             "area": {
-                "title": "指定设备区域",
-                "description": "为 {device} 选择区域（第 {position}/{total} 台）。智家365中的房间为 {room}。留空不设区域。",
+                "title": "Assign Area",
+                "description": "Select HA area for {device} ({position}/{total}). The room from HomeMate is {room}. Leave empty for no area.",
                 "data": {
-                    "area_id": "区域"
+                    "area_id": "Area"
                 }
             }
         },
         "error": {
-            "auth_failed": "登录失败，请检查账号和密码",
-            "empty_username_or_password": "账号和密码不能为空",
-            "invalid_username": "手机号或邮箱格式不正确",
-            "no_devices_selected": "请至少勾选一台设备",
-            "no_devices": "该家庭中没有发现设备",
-            "no_visible_devices": "发现的设备已全部被名称规则隐藏",
-            "lan_credentials_required": "请输入独立的 MixPad 用户名和密码",
-            "cannot_connect": "无法连接欧瑞博云"
+            "auth_failed": "Login failed, check your credentials",
+            "empty_username_or_password": "Username and password are required",
+            "invalid_username": "Invalid phone number or email format",
+            "no_devices_selected": "Select at least one device",
+            "no_devices": "No devices found in this family",
+            "no_visible_devices": "All discovered devices are hidden by the name rules",
+            "lan_credentials_required": "Enter the independent MixPad username and password",
+            "cannot_connect": "Cannot connect to ORVIBO cloud"
         },
         "abort": {
-            "already_configured": "该账号已配置",
-            "reauth_entry_missing": "该配置项已不存在"
+            "already_configured": "This account is already configured",
+            "reauth_entry_missing": "The configuration entry no longer exists"
         }
     },
     "options": {
         "step": {
             "init": {
-                "title": "ORVIBO Smart Control 配置",
+                "title": "ORVIBO Smart Control options",
                 "menu_options": {
-                    "transport_mode": "配置 LAN / 云端传输模式",
-                    "lan_credentials": "配置独立 MixPad LAN 凭据",
-                    "devices": "继续添加或移除设备",
-                    "device_name_filter": "按名称隐藏设备",
-                    "reauth": "更新欧瑞博账号密码",
-                    "sync_device_names": "同步云端设备名称",
-                    "clear_local_data": "清理本地配置文件",
-                    "polling": "配置轮询间隔时间",
-                    "availability_notifications": "配置设备上下线通知",
-                    "update_check": "配置集成更新检查",
-                    "lock_users": "锁用户映射",
-                    "lock_snapshots": "门锁抓拍保留数量"
+                    "transport_mode": "Configure LAN / cloud mode",
+                    "lan_credentials": "Configure independent MixPad LAN credentials",
+                    "devices": "Add or remove devices",
+                    "device_name_filter": "Hide devices by name",
+                    "reauth": "Update ORVIBO account password",
+                    "sync_device_names": "Sync cloud device names",
+                    "clear_local_data": "Clear local data",
+                    "polling": "Configure polling interval",
+                    "availability_notifications": "Configure device availability notifications",
+                    "update_check": "Configure integration update check",
+                    "lock_users": "Lock user mapping",
+                    "lock_snapshots": "Lock snapshot retention"
                 }
             },
             "transport_mode": {
-                "title": "传输模式",
-                "description": "LAN 与云端结合（默认）：LAN 优先并自动回退云端；纯 LAN：首次发现后不连接云端实时通道，也不周期轮询云端；纯云端：不连接 MixPad。",
+                "title": "Transport mode",
+                "description": "Combined (default): LAN-first with cloud fallback. LAN only: no cloud realtime connection or periodic cloud polling after initial discovery. Cloud only: do not connect to MixPad.",
                 "data": {
-                    "transport_mode": "传输模式"
+                    "transport_mode": "Transport mode"
                 }
             },
             "lan_credentials": {
-                "title": "独立 MixPad LAN 凭据",
-                "description": "仅当 MixPad 使用不同账号时启用。密码只保存协议摘要；已配置后留空密码可保留原值。",
+                "title": "Independent MixPad LAN credentials",
+                "description": "Enable only when MixPad uses another account. The password is stored as a protocol digest; leave it blank to keep an existing value.",
                 "data": {
-                    "use_independent_lan_credentials": "使用独立的 MixPad LAN 凭据",
-                    "lan_username": "MixPad 用户名",
-                    "lan_password": "MixPad 密码"
+                    "use_independent_lan_credentials": "Use independent MixPad LAN credentials",
+                    "lan_username": "MixPad username",
+                    "lan_password": "MixPad password"
                 }
             },
             "sync_device_names": {
-                "title": "同步云端设备名称",
-                "description": "从欧瑞博云端更新集成提供的 Home Assistant 设备名称。用户手动设置的名称不会被覆盖。",
+                "title": "Sync cloud device names",
+                "description": "Update integration-provided Home Assistant device names from ORVIBO cloud. User-defined names are preserved.",
                 "data": {
-                    "confirm": "确认同步"
+                    "confirm": "Confirm synchronization"
                 }
             },
             "clear_local_data": {
-                "title": "清理本地配置文件",
-                "description": "只删除本集成的本地门锁媒体目录，并可重置通用选项。账号、家庭、已选设备、实体注册和 Home Assistant .storage 均会保留。",
+                "title": "Clear local data",
+                "description": "Deletes only this integration's local lock media directory and optionally resets general options. Account, family, selected devices, entity registry, and Home Assistant .storage are preserved.",
                 "data": {
-                    "clear_media": "删除本地门锁媒体",
-                    "reset_general_options": "重置传输、LAN 凭据、轮询、通知和更新选项",
-                    "confirm": "我已了解并确认执行"
+                    "clear_media": "Delete local lock media",
+                    "reset_general_options": "Reset transport, LAN credentials, polling, notification, and update options",
+                    "confirm": "I understand and confirm"
                 }
             },
             "polling": {
-                "title": "云端轮询间隔",
-                "description": "设置云端快照兜底轮询间隔（分钟）。纯 LAN 模式不会执行周期云轮询。",
+                "title": "Cloud polling interval",
+                "description": "Fallback cloud snapshot polling interval in minutes. LAN-only mode does not perform periodic cloud polling.",
                 "data": {
-                    "poll_interval_minutes": "轮询间隔"
+                    "poll_interval_minutes": "Polling interval"
                 }
             },
             "availability_notifications": {
-                "title": "设备上下线通知",
-                "description": "只在已选设备的在线状态真实变化后通知。通知服务留空时使用 Home Assistant 持久通知。",
+                "title": "Device availability notifications",
+                "description": "Notify only after a selected device actually changes online state. Leave the service blank to use persistent notifications.",
                 "data": {
-                    "availability_notifications": "启用上下线通知",
-                    "notify_online": "设备上线时通知",
-                    "notify_offline": "设备离线时通知",
-                    "notify_service": "通知服务（例如 notify.mobile_app_phone）"
+                    "availability_notifications": "Enable notifications",
+                    "notify_online": "Notify when online",
+                    "notify_offline": "Notify when offline",
+                    "notify_service": "Notification service (for example notify.mobile_app_phone)"
                 }
             },
             "update_check": {
-                "title": "集成更新检查",
-                "description": "按设定周期检查 GitHub 最新稳定 Release；发现新版本时创建一条持久通知。",
+                "title": "Integration update check",
+                "description": "Periodically check the latest stable GitHub release and create one persistent notification when an update is available.",
                 "data": {
-                    "update_check_enabled": "启用更新检查",
-                    "update_check_interval_hours": "检查间隔"
+                    "update_check_enabled": "Enable update check",
+                    "update_check_interval_hours": "Check interval"
                 }
             },
             "reauth": {
-                "title": "重新登录",
-                "description": "为 {username} 输入新密码。成功后会保留当前家庭、设备、实体和区域设置。",
+                "title": "Sign in again",
+                "description": "Enter the new password for {username}. Your family, devices, entities, and area assignments will be preserved.",
                 "data": {
-                    "password": "新密码"
+                    "password": "New password"
                 }
             },
             "lock_users": {
-                "title": "锁用户映射",
-                "description": "每行一项：用户ID=姓名。可按设备和方式区分，例如 w-lock/fingerprint/7=张三；编号 0 有效。",
+                "title": "Lock user mapping",
+                "description": "One entry per line: userID=name. To distinguish locks and credentials, use deviceID/fingerprint/userID=name. User ID 0 is valid.",
                 "data": {
-                    "lock_user_names": "用户映射"
+                    "lock_user_names": "User mapping"
                 }
             },
             "device_name_filter": {
-                "title": "按名称隐藏设备",
-                "description": "每行输入一个名称关键词或通配符。关键词会匹配设备名称中的任意位置；通配符支持 *、? 和 [0-9] 等字符范围。匹配的设备不会创建 Home Assistant 实体，也不会显示在设备选择页面。删除规则后设备会重新显示。",
+                "title": "Hide devices by name",
+                "description": "Enter one name keyword or wildcard pattern per line. Keywords match any part of a device name; wildcards support *, ?, and character ranges such as [0-9]. Matching devices are hidden from Home Assistant and the device selection page. Remove a rule to show them again.",
                 "data": {
-                    "hidden_device_name_patterns": "名称关键词或通配符"
+                    "hidden_device_name_patterns": "Name keywords or wildcard patterns"
                 }
             },
             "devices": {
-                "title": "选择设备",
-                "description": "设备按类型分组，可使用复选框连续勾选多台设备，无需反复展开列表；同类有多台时可选择“全部”。",
+                "title": "Select Devices",
+                "description": "Devices are grouped by type. Use the checkboxes to select multiple devices without reopening the list. Groups with multiple devices include a select-all option.",
                 "data": {
-                    "device_group_lights_all": "全选灯具",
-                    "device_group_lights": "灯具",
-                    "device_group_switches_all": "全选开关",
-                    "device_group_switches": "开关",
-                    "device_group_curtains_all": "全选窗帘",
-                    "device_group_curtains": "窗帘",
-                    "device_group_clothes_horse_all": "全选晾衣机",
-                    "device_group_clothes_horse": "晾衣机",
-                    "device_group_climate_all": "全选暖通设备",
-                    "device_group_climate": "暖通",
-                    "device_group_ventilation_all": "全选新风设备",
-                    "device_group_ventilation": "新风",
-                    "device_group_sensors_all": "全选传感器",
-                    "device_group_sensors": "传感器",
-                    "device_group_locks_all": "全选门锁",
-                    "device_group_locks": "门锁",
-                    "device_group_cameras_all": "全选摄像头",
-                    "device_group_cameras": "摄像头",
-                    "device_group_other_all": "全选其他设备",
-                    "device_group_other": "其他设备",
-                    "selected_device_ids": "设备"
+                    "device_group_lights_all": "Select all lights",
+                    "device_group_lights": "Lights",
+                    "device_group_switches_all": "Select all switches",
+                    "device_group_switches": "Switches",
+                    "device_group_curtains_all": "Select all curtains",
+                    "device_group_curtains": "Curtains",
+                    "device_group_clothes_horse_all": "Select all clothes dryers",
+                    "device_group_clothes_horse": "Clothes dryers",
+                    "device_group_climate_all": "Select all climate devices",
+                    "device_group_climate": "Climate",
+                    "device_group_ventilation_all": "Select all ventilation devices",
+                    "device_group_ventilation": "Ventilation",
+                    "device_group_sensors_all": "Select all sensors",
+                    "device_group_sensors": "Sensors",
+                    "device_group_locks_all": "Select all locks",
+                    "device_group_locks": "Locks",
+                    "device_group_cameras_all": "Select all cameras",
+                    "device_group_cameras": "Cameras",
+                    "device_group_other_all": "Select all other devices",
+                    "device_group_other": "Other devices",
+                    "selected_device_ids": "Devices"
                 }
             },
             "area": {
-                "title": "指定设备区域",
-                "description": "为 {device} 选择区域（第 {position}/{total} 台）。欧瑞博中的房间为 {room}。",
+                "title": "Assign Area",
+                "description": "Select HA area for {device} ({position}/{total}). ORVIBO room is {room}.",
                 "data": {
-                    "area_id": "区域"
+                    "area_id": "Area"
                 }
             },
             "lock_snapshots": {
-                "title": "门锁抓拍保留数量",
-                "description": "每把锁保留最近的抓拍，默认 30 次，可设为 1–500 次。新抓拍保存成功后才淘汰旧图；自动按天清理不删除保留的抓拍。",
+                "title": "Lock snapshot retention",
+                "description": "Keep the newest snapshots per lock (default 30, range 1–500). Older pictures are removed after a successful save. Automatic age cleanup preserves retained snapshots.",
                 "data": {
-                    "lock_snapshot_limit": "每把锁保留的抓拍数量"
+                    "lock_snapshot_limit": "Snapshots to keep per lock"
                 }
             }
         },
         "error": {
-            "auth_failed": "登录失败，请检查新密码",
-            "empty_username_or_password": "密码不能为空",
-            "no_devices_selected": "请至少勾选一台设备",
-            "cannot_connect": "无法连接欧瑞博云",
-            "no_devices": "该家庭中没有发现设备",
-            "no_visible_devices": "发现的设备已全部被名称规则隐藏",
-            "lan_credentials_required": "请输入独立的 MixPad 用户名和密码",
-            "invalid_service": "通知服务必须使用 domain.service 格式",
-            "invalid_snapshot_limit": "请输入 1–500 之间的整数。"
+            "auth_failed": "Login failed, check the new password",
+            "empty_username_or_password": "Password is required",
+            "no_devices_selected": "Select at least one device",
+            "cannot_connect": "Cannot connect to ORVIBO cloud",
+            "no_devices": "No devices found in this family",
+            "no_visible_devices": "All discovered devices are hidden by the name rules",
+            "lan_credentials_required": "Enter the independent MixPad username and password",
+            "invalid_service": "Use a service in domain.service format",
+            "invalid_snapshot_limit": "Enter a whole number from 1 to 500."
         },
         "abort": {
-            "reauth_successful": "重新登录成功，现有设备和实体设置已保留",
-            "device_names_synced": "云端设备名称同步完成，共更新 {count} 个 Home Assistant 设备",
-            "local_data_cleared": "本地数据已清理，共删除 {count} 个文件"
+            "reauth_successful": "Signed in successfully; existing device and entity settings were preserved",
+            "device_names_synced": "Cloud device names synchronized. Updated {count} Home Assistant devices",
+            "local_data_cleared": "Local integration data cleared. Removed {count} files"
         }
     },
     "selector": {
         "transport_mode": {
             "options": {
-                "auto": "LAN 与云端结合（默认，LAN 优先并自动回退）",
-                "lan_only": "纯 LAN（运行时状态与控制仅使用 MixPad）",
-                "cloud_only": "纯云端（不连接 MixPad LAN）"
+                "auto": "LAN and cloud (default, LAN first with cloud fallback)",
+                "lan_only": "LAN only (runtime state and control use MixPad only)",
+                "cloud_only": "Cloud only (do not connect to MixPad LAN)"
             }
         }
     },
     "entity": {
         "sensor": {
             "door_lock_state": {
-                "name": "锁状态",
+                "name": "Lock state",
                 "state": {
-                    "locked": "已上锁",
-                    "unlocked": "未上锁",
-                    "inside_locked": "门内已反锁",
-                    "abnormal": "异常"
+                    "locked": "Locked",
+                    "unlocked": "Unlocked",
+                    "inside_locked": "Inside locked",
+                    "abnormal": "Abnormal"
                 }
             },
             "camera_sdk": {
-                "name": "摄像头 SDK 识别",
+                "name": "Camera SDK hint",
                 "state": {
-                    "unknown": "未知",
+                    "unknown": "Unknown",
                     "danale": "Danale",
                     "meari": "Meari",
-                    "ezviz": "萤石"
+                    "ezviz": "EZVIZ"
                 }
             },
             "transport_path": {
-                "name": "传输通道",
+                "name": "Transport path",
                 "state": {
                     "lan": "LAN",
-                    "cloud": "云端",
-                    "lan_cloud": "LAN 优先，云端回退",
-                    "unavailable": "当前模式不可用"
+                    "cloud": "Cloud",
+                    "lan_cloud": "LAN first, cloud fallback",
+                    "unavailable": "Unavailable in current mode"
                 }
             }
         }

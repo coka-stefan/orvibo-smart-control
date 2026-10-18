@@ -33,7 +33,7 @@ async def async_setup_entry(
             entities.append(OrviboVentilationFan(coordinator, device))
 
     async_add_entities(entities)
-    _LOGGER.debug(f"添加了{len(entities)}个新风实体")
+    _LOGGER.debug("Added %s ventilation entities", len(entities))
 
 
 class OrviboVentilationFan(CoordinatorEntity, FanEntity):
@@ -52,7 +52,7 @@ class OrviboVentilationFan(CoordinatorEntity, FanEntity):
             FanEntityFeature.TURN_ON |
             FanEntityFeature.TURN_OFF
         )
-        self._attr_preset_modes = ["停", "慢", "快"]
+        self._attr_preset_modes = ['Off', 'Low', 'High']
         self._attr_oscillating = False
         self._attr_percentage = None
         self._attr_percentage_step = None
@@ -84,9 +84,9 @@ class OrviboVentilationFan(CoordinatorEntity, FanEntity):
     @property
     def preset_mode(self) -> str:
         if not self.coordinator.device_states:
-            return "停"
+            return 'Off'
         device_state = self.coordinator.device_states.get(self._device_id, {})
-        return device_state.get("fan_speed", "停")
+        return device_state.get("fan_speed", 'Off')
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -102,13 +102,13 @@ class OrviboVentilationFan(CoordinatorEntity, FanEntity):
         elif speed:
             await self.async_set_preset_mode(speed)
         else:
-            await self.async_set_preset_mode("慢")
+            await self.async_set_preset_mode('Low')
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.async_set_preset_mode("停")
+        await self.async_set_preset_mode('Off')
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        _LOGGER.debug(f"设置新风{self._device_id}预设模式为{preset_mode}")
+        _LOGGER.debug("Set ventilation preset mode for %s to %s", self._device_id, preset_mode)
         await self.coordinator.async_set_ventilation_preset_mode(self._device_id, preset_mode)
 
     async def async_toggle(self, **kwargs) -> None:

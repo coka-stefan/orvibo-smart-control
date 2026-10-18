@@ -29,26 +29,26 @@ class BulkReadtableAuditTests(unittest.TestCase):
             "device": [
                 {
                     "deviceId": "real-supported-id",
-                    "deviceName": "卧室灯",
-                    "roomName": "卧室",
+                    "deviceName": "Bedroom Light",
+                    "roomName": "Bedroom",
                     "deviceType": 1,
                     "subDeviceType": -2,
                     "model": "S20",
                 },
                 {
                     "deviceId": "real-hidden-id",
-                    "deviceName": "家庭网关",
+                    "deviceName": "Home Gateway",
                     "deviceType": 114,
                 },
                 {
                     "deviceId": "real-unknown-id",
-                    "deviceName": "自定义名称",
+                    "deviceName": "Custom Name",
                     "deviceType": 9001,
                     "protocolType": "zigbee",
                 },
                 {
                     "deviceId": "real-gap-id",
-                    "deviceName": "遗漏设备",
+                    "deviceName": "Missing Device",
                     "deviceType": 9002,
                 },
             ],
@@ -129,8 +129,8 @@ class BulkReadtableAuditTests(unittest.TestCase):
     def test_report_does_not_persist_names_or_identifiers(self) -> None:
         secret_values = (
             "real-device-id",
-            "真实设备名",
-            "真实房间名",
+            "Real Device Name",
+            "Real Room Name",
             "real-family-id",
         )
         data = {
@@ -235,7 +235,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
                             {
                                 "dataId": "catalog-secret-id",
                                 "language": "zh",
-                                "productName": "测试产品",
+                                "productName": "Test Product",
                             }
                         ],
                     },
@@ -252,7 +252,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
             self.assertTrue(fields["catalog_match"])
             self.assertTrue(fields["catalog_ambiguous"])
             self.assertEqual(fields["catalog_device_desc_count"], 2)
-            self.assertEqual(fields["product_names"], ["测试产品"])
+            self.assertEqual(fields["product_names"], ["Test Product"])
             self.assertEqual(fields["internal_models"], ["HW-ONE", "HW-ONE-B"])
             exported = __import__("json").dumps(fields, ensure_ascii=False)
             self.assertNotIn("catalog-secret-id", exported)
@@ -263,7 +263,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
             "one": {
                 "descriptor": {"model": "known"},
                 "category": "unknown",
-                "category_label": "未知设备",
+                "category_label": "Unknown Device",
                 "support_state": "registration_only",
                 "count": 3,
                 "family_examples": [],
@@ -278,7 +278,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
             "two": {
                 "descriptor": {"model": "missing"},
                 "category": "unknown",
-                "category_label": "未知设备",
+                "category_label": "Unknown Device",
                 "support_state": "registration_only",
                 "count": 1,
                 "family_examples": [],
@@ -294,7 +294,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
         catalog = {
             "known": {
                 "catalog_device_desc_count": 1,
-                "product_names": ["已知产品"],
+                "product_names": ["Known Product"],
                 "internal_models": ["KNOWN-1"],
             }
         }
@@ -306,7 +306,7 @@ class BulkReadtableAuditTests(unittest.TestCase):
         self.assertEqual(report["catalog"]["matched_device_records"], 3)
         self.assertEqual(report["catalog"]["unmatched_device_records"], 1)
         self.assertEqual(report["catalog"]["device_record_match_rate"], 75.0)
-        self.assertEqual(report["signatures"][0]["product_names"], ["已知产品"])
+        self.assertEqual(report["signatures"][0]["product_names"], ["Known Product"])
 
 
 class BulkReadtableAuditAsyncTests(unittest.IsolatedAsyncioTestCase):

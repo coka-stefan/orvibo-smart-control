@@ -76,7 +76,7 @@ class LanPacketCodecTests(unittest.TestCase):
                 {"cmd": 1},
             )
         )
-        packet[6] ^= 0xFF  # 破坏 CRC 字节
+        packet[6] ^= 0xFF  # Corrupt a CRC byte.
         with self.assertRaises(self.protocol.InvalidCrcError):
             self.protocol.parse_packet(
                 bytes(packet),

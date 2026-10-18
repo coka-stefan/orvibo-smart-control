@@ -1,30 +1,27 @@
-# 服务与事件参考
+# Services and Events Reference
 
-所有服务均位于 `orvibo_smart_control` 域。存在多个配置项时应显式传入 `entry_id`，避免
-把请求发送给错误的家庭。可以在“设置 -> 设备与服务 -> ORVIBO Smart Control”中找到
-配置项 ID。
+All services are in the `orvibo_smart_control` domain. When there are multiple config entries, pass `entry_id` explicitly to avoid sending a request to the wrong household. Find the config entry ID under “Settings → Devices & Services → ORVIBO Smart Control.”
 
-## 服务总览
+## Service overview
 
-| 服务                   | 用途                           | 响应                                  |
-| ---------------------- | ------------------------------ | ------------------------------------- |
-| `refresh_devices`      | 立即刷新指定配置项的设备快照   | 无                                    |
-| `set_lock_user_name`   | 设置或清除门锁用户编号的显示名 | 无                                    |
-| `fetch_video`          | 拉取并归档一个门锁事件录像     | `ok`、`media_id` 或 `error`           |
-| `list_events`          | 查询已归档的门锁图片/录像      | `events`                              |
-| `cleanup_history`      | 按时间或条数清理门锁媒体       | `removed`                             |
-| `grant_temp_password`  | 创建门锁临时授权               | 新授权元数据；仅本次响应含 `password` |
-| `revoke_temp_password` | 删除指定临时授权               | `ok`、`authorized_id` 或 `error`      |
-| `list_temp_passwords`  | 读取服务器端授权元数据         | 按设备 ID 分组；不含密码              |
+| Service | Purpose | Response |
+| --- | --- | --- |
+| `refresh_devices` | Immediately refresh the selected config entry's device snapshot | None |
+| `set_lock_user_name` | Set or clear the display name for a door-lock user number | None |
+| `fetch_video` | Fetch and archive a door-lock event recording | `ok`, `media_id`, or `error` |
+| `list_events` | Query archived door-lock images/recordings | `events` |
+| `cleanup_history` | Prune door-lock media by age or count | `removed` |
+| `grant_temp_password` | Create a temporary door-lock authorization | New authorization metadata; `password` appears only in this response |
+| `revoke_temp_password` | Delete a specified temporary authorization | `ok`, `authorized_id`, or `error` |
+| `list_temp_passwords` | Read server-side authorization metadata | Grouped by device ID; no passwords |
 
-带响应的服务使用 Home Assistant 的可选响应机制。自动化需要读取结果时，设置
-`response_variable`。
+Services with responses use Home Assistant's optional response mechanism. Set `response_variable` in an automation when the result is needed.
 
-## 刷新与用户映射
+## Refresh and user mappings
 
 ### `refresh_devices`
 
-`entry_id` 是必填字段；该服务只刷新一个配置项。
+`entry_id` is required; this service refreshes one config entry only.
 
 ```yaml
 action: orvibo_smart_control.refresh_devices
@@ -34,35 +31,32 @@ data:
 
 ### `set_lock_user_name`
 
-| 字段        | 必填 | 说明                           |
-| ----------- | ---- | ------------------------------ |
-| `entry_id`  | 否   | 多配置项环境建议填写           |
-| `device_id` | 是   | 门锁设备 ID                    |
-| `user_id`   | 是   | 推送中的门锁用户编号           |
-| `name`      | 是   | 显示名称；空字符串用于清除映射 |
+| Field | Required | Description |
+| --- | --- | --- |
+| `entry_id` | No | Recommended when there are multiple config entries |
+| `device_id` | Yes | Door-lock device ID |
+| `user_id` | Yes | Door-lock user number from the push |
+| `name` | Yes | Display name; an empty string clears the mapping |
 
 ```yaml
 action: orvibo_smart_control.set_lock_user_name
 data:
   device_id: w-example-door-lock-id
   user_id: "2"
-  name: 张三
+  name: John Doe
 ```
 
-映射只改变 Home Assistant 中的显示和事件字段，不会修改门锁内部用户。
+Mappings change only the display and event fields in Home Assistant; they do not modify users inside the lock.
 
-长期保存姓名请在集成选项“门锁用户映射”填写，每行一项：`用户ID=姓名`。
-多把锁可以使用 `设备ID/用户ID=姓名`；不同开锁方式可能复用编号，可使用
-`设备ID/fingerprint/用户ID=姓名`、`设备ID/password/用户ID=姓名` 等更精确的映射。
-匹配顺序为设备及方式、方式、设备、通用用户编号；编号 `0` 有效。服务修改仅对当前运行期
-生效且按设备隔离；重载后以集成选项为准。名字缺失时显示用户编号，内开未上报身份时显示人员未知。
+To save names persistently, enter one mapping per line in the integration option “Lock User Mapping”: `userID=name`.
+For multiple locks, use `deviceID/userID=name`. If different unlock methods reuse a number, specify a method, for example `deviceID/fingerprint/userID=name` or `deviceID/password/userID=name`.
+Matching order is device plus method, method, device, then global user number; user number `0` is valid. Service changes last only for the current run and are scoped by device; after reload, the integration option takes precedence. If a name is missing, the user number is shown. If an inside opening has no reported identity, the card displays “Person unknown.”
 
-## 媒体归档
+## Media archive
 
 ### `fetch_video`
 
-`device_id` 和 `object_key` 必填。`object_key` 必须是事件提供的相对对象键；完整 URL、
-带查询串的值、路径穿越和反斜杠会被拒绝。
+`device_id` and `object_key` are required. `object_key` must be a relative object key supplied by an event; full URLs, values with query strings, path traversal, and backslashes are rejected.
 
 ```yaml
 action: orvibo_smart_control.fetch_video
@@ -72,26 +66,25 @@ data:
 response_variable: video_result
 ```
 
-成功响应只公开 Home Assistant 媒体引用：
+The successful response exposes only a Home Assistant media reference:
 
 ```yaml
 ok: true
 media_id: media-source://orvibo_smart_control/archive/...
 ```
 
-服务不会返回 Home Assistant 主机上的绝对路径。录像先保存为 H.264；环境中存在 ffmpeg
-时会以流复制方式转封装为 MP4。
+The service does not return an absolute path on the Home Assistant host. Recordings are initially saved as H.264; if ffmpeg is available, they are remuxed as MP4 using stream copy.
 
 ### `list_events`
 
-| 字段        | 默认           | 限制                       |
-| ----------- | -------------- | -------------------------- |
-| `entry_id`  | 全部匹配配置项 | 可选                       |
-| `device_id` | 全部门锁       | 必须属于目标配置项且为门锁 |
-| `limit`     | `100`          | `1..500`                   |
-| `media_type` | 全部          | 可选 `image` / `video`，先筛选再限制条数 |
+| Field | Default | Constraint |
+| --- | --- | --- |
+| `entry_id` | All matching config entries | Optional |
+| `device_id` | All door locks | Optional; must belong to the target config entry and be a door lock |
+| `limit` | `100` | `1..500` |
+| `media_type` | All | Optional `image` / `video`; filter first, then apply the limit |
 
-响应中的每条记录只可能包含 `device_id`、`kind`、`time`、`type` 和 `media_id`。
+Each response record can contain only `device_id`, `kind`, `time`, `type`, and `media_id`.
 
 ```yaml
 action: orvibo_smart_control.list_events
@@ -103,12 +96,12 @@ response_variable: lock_history
 
 ### `cleanup_history`
 
-| 字段          | 默认           | 限制                            |
-| ------------- | -------------- | ------------------------------- |
-| `keep_days`   | `7`            | `0..3650`；`0` 表示不保留旧记录 |
-| `device_id`   | 全部门锁       | 可选                            |
-| `max_entries` | 不按条数裁剪   | `1..10000`，按设备保留最新记录  |
-| `entry_id`    | 全部匹配配置项 | 可选                            |
+| Field | Default | Constraint |
+| --- | --- | --- |
+| `keep_days` | `7` | `0..3650`; `0` means do not retain old records |
+| `device_id` | All door locks | Optional |
+| `max_entries` | No count-based pruning | `1..10000`; retain newest records per device |
+| `entry_id` | All matching config entries | Optional |
 
 ```yaml
 action: orvibo_smart_control.cleanup_history
@@ -118,28 +111,25 @@ data:
 response_variable: cleanup_result
 ```
 
-集成启动时会执行一次默认清理，之后每 7 天运行一次。录像默认保留 7 天，抓拍按每把锁的
-数量保留，默认最近 30 次；集成选项“门锁抓拍保留数量”支持 `1..500`。自动按天清理
-不会删除保留范围内的抓拍。手动调用 `cleanup_history` 仍可显式删除抓拍。
+The integration runs the default cleanup once at startup and then every 7 days. Recordings are retained for 7 days by default; snapshots are retained by count per lock, 30 by default. The “Door Lock Snapshot Retention Count” option supports `1..500`. Automatic age-based cleanup does not remove snapshots within the retention window. A manual call to `cleanup_history` can explicitly delete snapshots.
 
-## 临时密码
+## Temporary passwords
 
 ### `grant_temp_password`
 
-| 字段         | 默认       | 约束                               |
-| ------------ | ---------- | ---------------------------------- |
-| `entry_id`   | 自动选择   | 多配置项时建议填写                 |
-| `device_id`  | 第一把门锁 | 必须属于目标配置项                 |
-| `type`       | `2`        | `1` 限时，`2` 临时                 |
-| `minutes`    | `1440`     | `1..525600`                        |
-| `number`     | `1`        | `0..100`，`0` 表示不限次数         |
-| `name`       | 自动生成   | 最多 64 个字符                     |
-| `phone`      | 空         | 可选，6 到 20 位数字，可带前导 `+` |
-| `start_time` | 当前时间   | 可选 Unix 秒时间戳                 |
-| `end_time`   | 由时长计算 | 可选，必须晚于 `start_time`        |
+| Field | Default | Constraint |
+| --- | --- | --- |
+| `entry_id` | Automatically selected | Recommended when there are multiple config entries |
+| `device_id` | First door lock | Must belong to the target config entry |
+| `type` | `2` | `1` time-limited, `2` temporary |
+| `minutes` | `1440` | `1..525600` |
+| `number` | `1` | `0..100`; `0` means unlimited uses |
+| `name` | Generated automatically | Up to 64 characters |
+| `phone` | Empty | Optional, 6 to 20 digits, may start with `+` |
+| `start_time` | Current time | Optional Unix timestamp in seconds |
+| `end_time` | Calculated from duration | Optional, must be later than `start_time` |
 
-服务器最多允许 4 个活动授权。服务响应会返回 `authorized_id`、有效期、次数等元数据，
-并且只在创建成功的本次响应中返回 6 位 `password`：
+The server allows at most 4 active authorizations. The service response includes metadata such as `authorized_id`, validity period, and use count; the six-digit `password` is returned only in the current response for a successful creation:
 
 ```yaml
 action: orvibo_smart_control.grant_temp_password
@@ -148,16 +138,15 @@ data:
   type: 2
   minutes: 30
   number: 1
-  name: 访客
+  name: Visitor
 response_variable: temp_password
 ```
 
-不要把 `temp_password.password` 写入日志、Recorder 可见实体、蓝图跟踪或公开通知。集成
-每 6 小时检查一次本地已知授权，并尝试撤销已过期或次数用尽的记录。
+Do not write `temp_password.password` to logs, Recorder-visible entities, blueprint traces, or public notifications. Every 6 hours the integration checks locally known authorizations and attempts to revoke records that have expired or exhausted their uses.
 
 ### `revoke_temp_password`
 
-`device_id` 和正整数 `authorized_id` 必填。
+`device_id` and a positive integer `authorized_id` are required.
 
 ```yaml
 action: orvibo_smart_control.revoke_temp_password
@@ -169,8 +158,7 @@ response_variable: revoke_result
 
 ### `list_temp_passwords`
 
-`device_id` 可选。结果按设备 ID 分组，包含授权 ID、有效期、次数、名称、电话和过期状态
-等服务器元数据，但永远不返回密码明文。
+`device_id` is optional. Results are grouped by device ID and contain server metadata such as authorization ID, validity period, use count, name, phone, and expiration status, but never the plaintext password.
 
 ```yaml
 action: orvibo_smart_control.list_temp_passwords
@@ -179,48 +167,38 @@ data:
 response_variable: authorizations
 ```
 
-## 门锁事件
+## Door-lock events
 
 ### `orvibo_smart_control_lock_event`
 
-门锁状态变化、开锁、告警、门铃和文本消息会发布到此事件。基础字段如下；没有值的可选
-字段可能省略或为 `null`。
+Door-lock state changes, unlocks, alerts, doorbell rings, and text messages are published as this event. Basic fields are below; optional fields without a value may be omitted or set to `null`.
 
-| 字段                            | 说明                                                        |
-| ------------------------------- | ----------------------------------------------------------- |
-| `device_id`、`uid`              | 事件所属门锁标识                                            |
-| `source`                        | 原始实时通道，通常为 `ssl`；保留 `lan` 枚举用于统一事件契约 |
-| `locked`、`door_open`           | 锁舌和门磁状态                                              |
-| `inside_locked`、`child_locked` | 室内反锁和童锁状态                                          |
-| `leave_home_armed`              | 离家防护状态                                                |
-| `kind`                          | 归一化事件类别                                              |
-| `time`                          | 设备事件时间戳                                              |
+| Field | Description |
+| --- | --- |
+| `device_id`, `uid` | Identifier of the door lock associated with the event |
+| `source` | Original live channel, usually `ssl`; the `lan` enum is retained for a unified event contract |
+| `locked`, `door_open` | Bolt and door-contact state |
+| `inside_locked`, `child_locked` | Interior deadbolt and child-lock state |
+| `leave_home_armed` | Away-mode security state |
+| `kind` | Normalized event category |
+| `time` | Device event timestamp |
 
-常见 `kind` 包括 `unlock`、`error_unlock`、`picklock`、`door_unclose`、
-`leave_home`、`ring` 和 `message`。开锁事件还可能包含：
+Common `kind` values include `unlock`, `error_unlock`, `picklock`, `door_unclose`, `leave_home`, `ring`, and `message`. Unlock events may also include:
 
-| 字段                                                    | 说明                                        |
-| ------------------------------------------------------- | ------------------------------------------- |
-| `unlock_type`                                           | `fingerprint`、`password`、`face` 或 `card` |
-| `unlock_method`                                         | 规范化方式：`fingerprint/password/card/key/face/temporary_password`，未知为 null |
-| `open_direction`                                        | `inside`（内开）/ `outside`（外开） |
-| `unlock_user_id`                                        | 门锁用户编号                                |
-| `unlock_user_name`                                      | 配置映射后的名称                            |
-| `opened_by_user_id`、`opened_by_type`、`opened_by_name` | 最近一次开锁与随后开门的关联结果            |
+| Field | Description |
+| --- | --- |
+| `unlock_type` | `fingerprint`, `password`, `face`, or `card` |
+| `unlock_method` | Normalized method: `fingerprint/password/card/key/face/temporary_password`; `null` if unknown |
+| `open_direction` | `inside` or `outside` |
+| `unlock_user_id` | Door-lock user number |
+| `unlock_user_name` | Name from the configured mapping |
+| `opened_by_user_id`, `opened_by_type`, `opened_by_name` | Attribution linking the most recent unlock with the subsequent door opening |
 
-新版 `doorLock/unlockEvent` 的 `userId` 与旧版 `unlock` 的 `userID` 均可读取，表示锁侧
-授权编号。按四类凭据规则，密码、指纹、钥匙、卡片（含临时密码、胁迫凭据）判外开；
-其他开锁方式（包括人脸、未识别或未上报方式）统一判内开。只有门磁打开、没有匹配到
-四类外开凭据时也判内开，且不沿用上次外开人员。这是集成的方向推断规则；
-内开不会据外开用户映射猜测人员。反锁状态不用于判断方向。开锁与开门的关联
-窗口为 30 秒，一次开锁仅归属一次开门，关闭后再次打开不会复用上一个人。
-较旧的开锁事件迟到时带 `historical: true`，其抓拍仍归档，但不更新最近开门状态和人员。
+The new `doorLock/unlockEvent` field `userId` and old `unlock` field `userID` are both read as the lock-side authorization number. Under the four-credential rule, password, fingerprint, key, and card (including temporary passwords and duress credentials) mean opening from outside; all other unlock methods (including face recognition, unrecognized methods, or methods not reported by the lock) mean opening from inside. A door-contact opening without a matching one of the four outside credentials also counts as an inside opening and does not inherit the previous outside person's identity. This is the integration's inferred direction rule. It does not guess a person's identity from an outside-user mapping for an inside opening. Deadbolt state is not used to infer direction. The unlock-to-opening association window is 30 seconds; one unlock can be assigned to only one opening, and closing then reopening does not reuse the previous person. A delayed older unlock event is marked `historical: true`; its snapshot is still archived, but it does not change recent-opening state or identity.
 
-带媒体的事件可能附带短期签名 URL：`media_url`、`pic_media_url`、
-`doorbell_media_url`。URL 中包含临时访问凭据，不应持久化或提交到 Issue。媒体在后台归档
-完成后可通过服务或媒体浏览器访问。
+Events with media may include short-lived signed URLs: `media_url`, `pic_media_url`, and `doorbell_media_url`. These URLs contain temporary access credentials; do not persist them or submit them in an Issue. Media is archived in the background and can then be accessed through services or the media browser.
 
-自动化示例：
+Automation example:
 
 ```yaml
 triggers:
@@ -234,32 +212,31 @@ conditions:
 actions:
   - action: notify.mobile_app_phone
     data:
-      title: 开门通知
+      title: Door unlocked
       message: >-
         {{ trigger.event.data.unlock_user_name
-           | default('用户' ~ trigger.event.data.unlock_user_id) }} 已开门
+           | default('User ' ~ trigger.event.data.unlock_user_id) }} opened the door
 ```
 
 ### `orvibo_smart_control_temp_password_event`
 
-创建临时授权成功后发布。事件包含 `device_id` 和不敏感的授权元数据，明确不包含
-`password`。需要新密码时只能读取 `grant_temp_password` 的当前服务响应。
+Published after temporary authorization is created successfully. The event contains `device_id` and non-sensitive authorization metadata and explicitly excludes `password`. To obtain a new password, read only the current service response from `grant_temp_password`.
 
-## 内置门锁卡片
+## Built-in door-lock cards
 
-集成在前端注册两个卡片：
+The integration registers two cards in the frontend:
 
-- `custom:orvibo-smart-control-door-lock-card`：门锁状态、自动保存的历史截图和临时密码管理；
-- `custom:orvibo-smart-control-temp-password-card`：只显示临时密码的创建、授权列表和撤销操作。
+- `custom:orvibo-smart-control-door-lock-card`: door-lock state, automatically saved snapshot history, and temporary-password management;
+- `custom:orvibo-smart-control-temp-password-card`: create temporary passwords, list authorizations, and revoke them.
 
-专用临时密码卡片配置：
+Standalone temporary-password card:
 
 ```yaml
 type: custom:orvibo-smart-control-temp-password-card
 device_id: w-example-door-lock-id
 ```
 
-总览卡片配置：
+Overview card:
 
 ```yaml
 type: custom:orvibo-smart-control-door-lock-card
@@ -267,14 +244,8 @@ device_id: w-example-door-lock-id
 history_limit: 24
 ```
 
-`history_limit` 可选，用于设置卡片展示的历史截图数量（`1..500`，默认 `30`）。
+`history_limit` is optional and sets how many historical snapshots the card displays (`1..500`, default `30`).
 
-门锁事件截图会自动保存到 Home Assistant 的 `config/media/orvibo_smart_control/<设备>/` 目录，
-默认保留最近 30 次，可在集成选项调整。卡片中的“历史截图（自动保存）”区域可刷新列表
-并点击缩略图查看大图；只查询抓拍，录像不会占用图片名额。抓拍保存成功后才淘汰旧图，
-同秒不同图片分别保存，重载后从本地恢复最近画面。也可以直接调用 `list_events`
-并传 `media_type: image` 获取每张截图的 `media_id`。
+Door-lock event snapshots are saved automatically under Home Assistant's `config/media/orvibo_smart_control/<device>/` directory. The most recent 30 are retained by default; change this in the integration options. The overview card's “Saved Snapshot History” section can refresh the list and open a large view of any thumbnail. Only snapshots count toward the limit; recordings do not. Old images are pruned only after a snapshot is saved successfully. Different images captured in the same second are saved separately, and after reload the latest view is restored from disk. You can also call `list_events` with `media_type: image` to get each snapshot's `media_id`.
 
-不填写 `device_id` 时卡片会尝试选择实体最完整的一把门锁；多配置项或多门锁环境应明确
-配置。卡片调用的仍是上文服务，权限取决于当前 Home Assistant 用户。授权列表不会返回
-或重复显示密码明文；新密码只在创建成功后显示一次。不要把门锁仪表盘匿名暴露到公网。
+If `device_id` is omitted, the card tries to select the lock with the most complete set of entities. In environments with multiple config entries or locks, configure it explicitly. The card calls the services above, and permissions depend on the current Home Assistant user. The authorization list does not return or redisplay plaintext passwords; a new password appears once after a successful creation. Do not expose a door-lock dashboard anonymously to the public internet.

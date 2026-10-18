@@ -1,106 +1,91 @@
-# 录像机视频接入诊断
+# NVR Video Integration Diagnostics
 
-目前普通摄像机和 NVR 仍只有诊断传感器，没有实时播放或录像机硬盘回放实体。
-0.2.6b3 增加限时媒体连接和编码首帧探测，使用下文的 `probe_video_stream`。
-`inspect_video_session` 是开发诊断入口，不是播放功能修复。
+Ordinary cameras and NVRs currently have diagnostic sensors only; they do not yet have live playback or NVR hard-drive playback entities. `0.2.6b3` added a time-limited media connection and encoded first-frame probe, described below as `probe_video_stream`.
+`inspect_video_session` is a development diagnostic entry point, not a fix that enables video playback.
 
-它复用本集成已连接的欧瑞博云端会话，按 HomeMate APK 的 `cmd=148` 请求
-Meari 外部授权。结果仅包含字段是否存在和阶段，不返回用户信息、token、hostKey、
-厂商原始 JSON 或可复用的授权 URL；授权数据不写入配置或诊断文件。
-该动作不建立 Meari MQTT 会话，也不连接摄像机、不修改设备、不查询或删除硬盘录像。
-欧瑞博厂商授权请求本身是否影响手机会话尚未有真实账号验证。
+It reuses this integration's existing ORVIBO cloud session and requests Meari external authorization using the HomeMate APK's `cmd=148`. The result reports only field presence and stage. It does not return user information, tokens, hostKey, raw vendor JSON, or reusable authorization URLs; authorization data is not written to config or diagnostic files.
+The action does not establish a Meari MQTT session, connect to a camera, modify a device, or search/delete hard-drive recordings. Whether the ORVIBO vendor authorization request itself affects a phone session has not been verified with a real account.
 
-## 运行
+## Run
 
-在已加载该诊断构建的 HA 中，打开“开发者工具 → 动作”，执行：
+In HA with this diagnostic build loaded, open “Developer Tools → Actions” and run:
 
 ```yaml
 action: orvibo_smart_control.inspect_video_session
 data: {}
 ```
 
-只有一个欧瑞博配置项时不需要配置项 ID；有多个时提供 `entry_id`。
-中国账号默认 `country_code: CN`、`phone_code: "86"`、`language: zh`。
-其他地区可指定国家代码和电话区号。需要现有云连接；纯本地模式不会自动切换到云端。
+If there is one ORVIBO config entry, an entry ID is not needed; if there are multiple, provide `entry_id`.
+Chinese accounts default to `country_code: CN`, `phone_code: "86"`, and `language: zh`.
+Other regions can specify a country code and calling code. An existing cloud connection is required; pure local mode does not switch to cloud automatically.
 
-- `external_session_received`：取得了 API 地址、用户标识和用户 token。仅证明会话响应
-  满足结构检查，不能证明 token 被厂商接受、实时画面或硬盘回放可用。
-- `external_session_incomplete`：响应缺少必需字段。
-- `session_rejected`：欧瑞博拒绝请求；`orvibo_status` 是返回的数值状态。
-- `cloud_connection_required`：没有已连接的欧瑞博云会话。
-- `no_response`：请求超时或当前会话不可用。
-- `select_one_entry`：需指定一个有效配置项。
+- `external_session_received`: API address, user identifier, and user token were obtained. This proves only that the session response passed structural checks, not that the vendor accepted the token or that live video/hard-drive playback works.
+- `external_session_incomplete`: the response is missing required fields.
+- `session_rejected`: ORVIBO rejected the request; `orvibo_status` contains the numeric status returned.
+- `cloud_connection_required`: no ORVIBO cloud session is connected.
+- `no_response`: the request timed out or the current session is unavailable.
+- `select_one_entry`: specify one valid config entry.
 
-可以将动作返回的脱敏 JSON 用于后续排查，无需提供账号密码、设备 IP 或原始授权响应。
+You can use the action's redacted JSON response for follow-up diagnostics; there is no need to provide account credentials, device IP, or the raw authorization response.
 
-## 厂商设备列表诊断（0.2.6b1）
+## Vendor device-list diagnostics (`0.2.6b1`)
 
-会话动作返回 `stage: external_session_received` 后，可执行：
+After the session action returns `stage: external_session_received`, run:
 
 ```yaml
 action: orvibo_smart_control.inspect_video_devices
 data: {}
 ```
 
-此动作重新获取一次外部会话，使用内存中的 token 为设备列表请求签名，向欧瑞博
-响应下发的 HTTPS API 发送一次只读查询。它不连接 MQTT 或摄像机，不修改设备或硬盘。
-地区和 `entry_id` 参数与会话动作相同。token、设备标识、设备名称、密钥和原始响应
-不会出现在动作返回值中，也不会写入集成配置或日志。
+This action refreshes the external session, signs the device-list request using the in-memory token, and sends one read-only query to the HTTPS API supplied by ORVIBO. It does not connect to MQTT or the camera, and it does not modify the device or hard drive.
+Region and `entry_id` parameters are the same as for the session action. Tokens, device identifiers/names, keys, and raw responses are not included in the action response or written to integration config or logs.
 
-返回保留 `stage` 表示欧瑞博会话阶段；`vendor_stage` 表示 Meari 请求阶段：
+The response retains `stage` for the ORVIBO session stage; `vendor_stage` gives the Meari request stage:
 
-- `vendor_devices_received`：返回成功码 `1001` 及已识别的设备分类；查看 `device_count`
-  和 `category_counts`。空列表也是有效结果，不能推断用户没有设备。
-- `vendor_request_rejected`：厂商返回非成功码，`vendor_result_code` 是有限范围的数字码。
-- `vendor_http_error`：HTTP 状态不是 200；`vendor_http_status` 是状态码，不跟随重定向。
-- `inventory_request_data_invalid`：会话中的 API 地址或签名必需字段不满足请求要求。
-- `vendor_request_failed`、`vendor_response_too_large`、`invalid_device_response`、
-  `unrecognized_inventory_shape`：网络、响应大小或结构未通过验证，不能宣称授权已被接受。
+- `vendor_devices_received`: success code `1001` and recognized device categories were returned; inspect `device_count` and `category_counts`. An empty list is also a valid result and does not imply the user has no devices.
+- `vendor_request_rejected`: the vendor returned a non-success code; `vendor_result_code` is a bounded numeric code.
+- `vendor_http_error`: HTTP status was not 200; `vendor_http_status` is returned, and redirects are not followed.
+- `inventory_request_data_invalid`: the API address or a required signature field from the session does not meet request requirements.
+- `vendor_request_failed`, `vendor_response_too_large`, `invalid_device_response`, `unrecognized_inventory_shape`: network, response-size, or structure validation failed; do not claim authorization was accepted.
 
-`devices` 按列表顺序编号，仅包含固定分类、连接字段是否存在及有限的原始能力码。
-`inventory_shape` 区分 App 使用的顶层分类结构与 `result` 包装结构；不返回任意服务端键。
-输出最多 512 条，超过时 `devices_truncated` 为 true，`device_count` 仍为总行数。
+`devices` are numbered in list order and contain only fixed classifications, whether connection fields exist, and bounded raw capability codes.
+`inventory_shape` distinguishes the App's top-level category structure from the `result` wrapper structure; arbitrary server keys are not returned.
+At most 512 items are output. When there are more, `devices_truncated` is true while `device_count` remains the total row count.
 
-NVR 通道来自 App 后续的设备参数查询，不是简单的设备库存字段。因此本版始终返回
-`channel_query_implemented: false`。`nct` 等能力码不能直接解释为实际在线通道数，
-这一步也不能证明首帧或硬盘回放可用。请提供完整动作返回的脱敏 JSON 继续排查。
+NVR channels come from a later App device-parameter request, not a simple inventory field. This version therefore always returns `channel_query_implemented: false`. Codes such as `nct` cannot be interpreted directly as the number of online channels, and this action does not prove that a first frame or hard-drive recording can be played. Provide the complete redacted response for further diagnosis.
 
-## NVR 通道诊断（0.2.6b2）
+## NVR channel diagnostics (`0.2.6b2`)
 
-用户在 `0.2.6b1` 的真实返回中已确认厂商接受授权并返回 1 台 IPC 与 1 台
-`nvr-neutral` 录像机，两者 `iotType=3`。SDK 对这类设备使用 XTS 认证，并从序列号
-生成连接 UUID，因而 `uuid_present=false` 本身不阻止该路径。此结论没有验证媒体连接。
+In the real `0.2.6b1` response, the user confirmed that the vendor accepted authorization and returned one IPC and one `nvr-neutral` recorder, both with `iotType=3`. The SDK uses XTS authentication for these devices and derives a connection UUID from the serial number, so `uuid_present=false` alone does not block this path. This did not validate a media connection.
 
-安装 `v0.2.6b2`（普通 GitHub Release，无需启用预发布），重启后运行：
+Install `v0.2.6b2` (an ordinary GitHub Release; prerelease mode is not required), restart, then run:
 
 ```yaml
 action: orvibo_smart_control.inspect_video_channels
 data: {}
 ```
 
-此动作一次获取会话和设备列表，然后调用厂商 HTTPS 批量接口读取 NVR 的
-`213,1015,67` 属性。它只读取通道云端快照，不连接 P2P、启动实时流或查询/删除硬盘片段。
-使用原有 `entry_id` 和地区参数。返回保留已有的会话、设备列表诊断字段，并新增：
+The action fetches a session and device list once, then calls the vendor HTTPS batch API to read NVR properties `213,1015,67`. It reads only the cloud channel snapshot; it does not connect over P2P, start a live stream, or search/delete hard-drive clips.
+Use the existing `entry_id` and region parameters. The response retains session and device-list diagnostic fields and adds:
 
-- `channel_query_implemented`：此动作已包含通道查询代码，不表示视频已实现。
-- `channel_stage: nvr_channels_received`：厂商返回成功码及结果对象；逐项查看 `nvrs`，不能由顶层成功推断每台录像机都有通道数据。
-- `nvr_count`、`queried_nvr_count`：识别出的录像机数量与实际查询的数量；最多查询 32 台，缺少序列号的设备不发送请求。
-- `nvrs[].index`：对应本次 `devices` 的序号，避免输出设备标识。
-- `maximum_channel_count`：213 的容量值，与返回的实际通道条目数量分开。
-- `channel_count`、`channels[].channel_id`、可选 `state/type/capability_codes`：1015 的实际通道条目及有限能力码；未知值省略，最多输出 128 条通道。
-- 每台录像机的 `channel_stage` 可为 `channel_state_received`、`channel_state_missing`、`invalid_channel_state` 或 `nvr_result_missing`，用于区分空列表、缺失和无效数据。
-- `channel_request_rejected`、`channel_http_error`、`channel_request_failed` 等顶层阶段表示请求失败；只返回有限结果码/HTTP 状态，不输出错误原文。
+- `channel_query_implemented`: channel-query code is included; this does not mean video is implemented.
+- `channel_stage: nvr_channels_received`: the vendor returned a success code and result object. Inspect each `nvrs` item; top-level success does not imply every recorder has channel data.
+- `nvr_count`, `queried_nvr_count`: identified and actually queried NVRs. At most 32 are queried; devices without a serial number are not requested.
+- `nvrs[].index`: index into the current `devices` list, without exposing a device identifier.
+- `maximum_channel_count`: capacity value from 213, separate from the count of actual returned channel entries.
+- `channel_count`, `channels[].channel_id`, optional `state/type/capability_codes`: actual channel entries from 1015 and bounded capability codes. Unknown values are omitted; at most 128 channels are output.
+- Per-NVR `channel_stage` can be `channel_state_received`, `channel_state_missing`, `invalid_channel_state`, or `nvr_result_missing`, distinguishing empty lists, missing data, and invalid data.
+- Top-level stages such as `channel_request_rejected`, `channel_http_error`, and `channel_request_failed` indicate request failures; only bounded result codes/HTTP status are returned, not raw error text.
 
-云端快照可能滞后，原始 `state/type` 不直接等同于已验证在线或可播放。
-`0.2.6b4` 的 `video_playback_implemented=true` 表示已提供实时播放代码；
-`real_device_video_verified=false` 表示本动作没有验证 HA 的真实画面播放。
-用户已提供本动作的真实成功结果：录像机容量与返回通道数均为 8；1、3 号 state=1、p2p=2，其余 state=0、p2p=0。
-此结果仅证明通道云端查询成功，媒体仍需单独测试。
-请求与静态依据见 [NVR 通道接口](meari-nvr-channel-protocol.md)。
+Cloud snapshots can be stale; raw `state/type` values do not directly establish that a channel is online or playable.
+Starting with `0.2.6b4`, `video_playback_implemented=true` means that live-playback code is available; `real_device_video_verified=false` means this action did not validate real video playback in HA.
+The user supplied a successful real result: the NVR's capacity and returned channel count were both 8; channels 1 and 3 had state=1 and p2p=2, while the others had state=0 and p2p=0.
+This proves only that the cloud channel query succeeded; media must be tested separately.
+See the [NVR Channel API](meari-nvr-channel-protocol.md) for request and static evidence.
 
-## 指定通道媒体测试（0.2.6b3）
+## Specified-channel media test (`0.2.6b3`)
 
-安装普通 Release `v0.2.6b3` 后重启 Home Assistant，先测试已发现的录像机 1 号通道：
+After installing the ordinary Release `v0.2.6b3` and restarting Home Assistant, first test channel 1 on the discovered NVR:
 
 ```yaml
 action: orvibo_smart_control.probe_video_stream
@@ -110,67 +95,53 @@ data:
   timeout_seconds: 35
 ```
 
-完成后再把 `channel_id` 改为 `3`，分别保留两次完整脱敏返回。
-`device_index` 按每次重新取得的厂商库存编号；库存变化时先重新运行设备/通道诊断。
-只接受 iotType=3、p2p=2 的 NVR（devTypeID=11）或 IPC（devTypeID=2，channel_id 必须为 0）。
-一次只连接一个明确指定的通道，同一配置项已有探测时返回 `probe_in_progress`。
+Then change `channel_id` to `3` and retain both complete redacted responses.
+`device_index` refers to the vendor inventory from that run; if inventory changes, run device/channel diagnostics again first.
+Only NVR (`devTypeID=11`) or IPC (`devTypeID=2`, requiring `channel_id=0`) devices with `iotType=3` and `p2p=2` are accepted.
+The action connects to one explicitly selected channel at a time; it returns `probe_in_progress` if a probe is already active for the same config entry.
 
-此动作使用新的云会话和库存，在独立进程内实际建立信令与 P2P/TURN 媒体连接，
-发送选定通道的实时开始请求。它不获取硬盘目录，不保存画面，不写入用户凭据或原始响应。
-媒体预算为 10–60 秒，默认 35 秒；云会话和库存获取另需时间，整个动作另有总时限。
-超时或取消后父进程强制结束并回收子进程，避免遗留阻塞网络线程；集成卸载与 HA 关闭也会取消探测。
+The action obtains a fresh cloud session and inventory, then establishes signaling and a P2P/TURN media connection in a separate process and sends a live-start request for the selected channel. It does not fetch hard-drive indexes, save video, or write user credentials or raw responses.
+The media budget is 10–60 seconds (35 seconds by default); obtaining the cloud session and inventory also takes time, and the action has an additional total deadline.
+After timeout or cancellation, the parent forcibly stops and reclaims the child process to avoid leaving blocked network threads. Integration unload and HA shutdown also cancel probes.
 
-返回保留会话/库存字段，新增：
+The response retains session/inventory fields and adds:
 
-| 字段 | 含义 |
+| Field | Meaning |
 | --- | --- |
-| `probe_stage` | 最后结果；`probe_stage_history` 依序记录尝试过的连接阶段，阶段出现本身不证明该阶段已成功 |
-| `root_discovery` / `signaling_connect` / `signaling_registered` | 发现信令地址、尝试连接、完成注册 |
-| `device_status` / `turn_allocate` / `sdp_offer` | 查询设备状态、申请中继、发送媒体协商 |
-| `ice_connect` / `kcp_connect` / `receiving_video` | 尝试 ICE、发送 KCP/IVA 握手、发送实时开始请求并等待视频 |
-| `video_keyframe_received` | 识别到 H.264/HEVC 参数集和关键 NAL 的基本头部、长度结构；不是完整解码校验 |
-| `encoded_video_verified` | 上述编码结构探测成功；与 `decoded`、播放和历史回放分开 |
-| `video_frames` / `video_bytes` / `codec` | 识别到的候选视频帧数、编码负载字节数和编解码名称 |
-| `received_packets` | 收到的网络包总数，包含协商包，不能直接当视频帧数 |
-| `keyframe_received` / `parameter_sets_received` | 编码关键帧与必要参数集是否通过基本结构检查 |
-| `no_video_frame` / `device_unavailable` / `probe_timeout` | 开流后无合格首帧、设备状态不允许连接、达到时限；不能自动归因为密码错误 |
-| `probe_failed` / `dependency_missing` / `invalid_context` | 连接或协议处理失败、依赖不可用、输入会话/设备参数不满足要求；不回显原始错误 |
-| `last_probe_stage` / `worker_stopped` | 最近尝试的阶段、媒体子进程已结束并回收 |
-| `probe_device_index` / `probe_channel_id` | 本次明确请求的设备序号与通道号 |
+| `probe_stage` | Last result; `probe_stage_history` lists attempted connection stages in order. A stage appearing does not prove that it succeeded. |
+| `root_discovery` / `signaling_connect` / `signaling_registered` | Discover signaling address, attempt connection, finish registration |
+| `device_status` / `turn_allocate` / `sdp_offer` | Query device status, request relay, send media negotiation |
+| `ice_connect` / `kcp_connect` / `receiving_video` | Attempt ICE, send KCP/IVA handshake, send live-start request and wait for video |
+| `video_keyframe_received` | Basic header/length structure of H.264/HEVC parameter sets and key NALs was recognized; this is not a full decode check |
+| `encoded_video_verified` | The encoded structure probe above succeeded; this is distinct from `decoded`, playback, and history playback |
+| `video_frames` / `video_bytes` / `codec` | Candidate video-frame count, encoded payload bytes, and codec name |
+| `received_packets` | Total network packets received, including negotiation; not a video-frame count |
+| `keyframe_received` / `parameter_sets_received` | Whether the encoded keyframe and required parameter sets passed basic structure checks |
+| `no_video_frame` / `device_unavailable` / `probe_timeout` | No valid first frame after stream start, device status disallows connection, or time limit reached; do not infer a password error automatically |
+| `probe_failed` / `dependency_missing` / `invalid_context` | Connection or protocol processing failed, dependency unavailable, or input session/device parameters invalid; raw errors are not echoed |
+| `last_probe_stage` / `worker_stopped` | Most recent stage and whether the media subprocess exited and was reclaimed |
+| `probe_device_index` / `probe_channel_id` | Explicit device index and channel requested for this probe |
 
-首帧动作仍返回 `decoded=false`、`real_device_video_verified=false`，因为该动作不执行解码。
-`0.2.6b4` 起 `video_playback_implemented=true` 表示另外提供了实时摄像头播放出口。
-不能从首帧结构探测成功推断硬盘片段可播放。
+The first-frame action still returns `decoded=false` and `real_device_video_verified=false` because it does not decode. Starting with `0.2.6b4`, `video_playback_implemented=true` means a separate live-camera playback output is available. Successful first-frame structure detection does not imply that hard-drive clips can be played.
 
-身份取自外部会话的 partnerId/userID；不套用其他品牌账号。
-本轮模拟客户端版本为 `5.2.6.307a13`，发现协议版本沿用固定参考实现的 `15259`，设备兼容性仍待实测。
-鉴权只尝试 App 默认 hostKey 模式；若已明确返回独立视频密码状态，则拒绝该模式。
-App 也可能把视频密码状态存在手机本地，所以字段缺失不表示已证明没有视频密码。
+Identity comes from the external session's `partnerId/userID`; credentials from another brand are not substituted.
+This run simulated client version `5.2.6.307a13` and reused discovery protocol version `15259` from the pinned reference implementation; device compatibility still needs real testing.
+Only the App's default hostKey mode is tried. If a separate video-password state is explicitly reported, this mode is rejected. The App may also store video-password state locally on the phone, so a missing field does not prove there is no video password.
 
-## 当前证据与下一阶段
+## Current evidence and next stage
 
-用户目标是 HAOS 虚拟机/x86 Linux 宿主上的实时画面和录像机硬盘历史。
-APK 的 Android ARM 原生视频库不能直接用于此环境。公开 MIT 项目
-[Ha-CloudEdge-Meari](https://github.com/ajeanney/Ha-CloudEdge-Meari/tree/5bc9f97766c3d8076da8bb15dcb7b62ca7721127)
-提供了可参考的 Python P2P 实时协议；其当前代码没有 NVR 硬盘索引、回放和定位实现。
-已收到用户真实 NVR 1 号通道的 HEVC 关键帧及参数集（153,474 字节、144 个网络包）。
-这确认了指定通道的编码接收，尚未证明真实连续播放或硬盘回放。
+The user's target is live video and NVR hard-drive history on an HAOS virtual machine / x86 Linux host. The APK's Android ARM native video library cannot be used directly in this environment. The public MIT project [Ha-CloudEdge-Meari](https://github.com/ajeanney/Ha-CloudEdge-Meari/tree/5bc9f97766c3d8076da8bb15dcb7b62ca7721127) provides a Python P2P live-protocol reference; its current code does not implement NVR hard-drive indexing, playback, or seeking.
+The user's real NVR channel 1 HEVC keyframe and parameter sets were received (153,474 bytes over 144 network packets). This confirms encoded data reception on the specified channel, not real continuous playback or hard-drive playback.
 
-外部会话、库存及 NVR 通道查询已获得用户环境成功返回。
-接下来由新动作验证一个通道的媒体首帧，再接入解码和播放出口；硬盘片段检索、播放及定位仍需独立实现。
-此探测结果不会改变 `stream_supported=False`。
+External session, inventory, and NVR channel queries have returned successfully in the user's environment. The next action validates a media first frame on one channel, then connects decoding and playback output; hard-drive clip search, playback, and seeking remain separate implementation work.
+This probe does not change `stream_supported=False`.
 
+## Live camera (`0.2.6b4`)
 
-## 实时摄像头（0.2.6b4）
+After updating, open the NVR's device page and select a new `camera` channel entity. Existing “Cloud” and “Meari” entities are diagnostic sensors; opening them does not show a picture. An entity is created for channels reported by cloud with state=1 and p2p=2 that also pass XTS session checks. Exact matching uses App `Device.uid` and `CameraInfo.deviceID`; it does not guess from names, device counts, or old inventory indexes.
+If no entity appears, check that the NVR is selected, run `inspect_video_channels`, and see whether the integration's camera platform in HA is retrying.
 
-更新后进入录像机的设备页面，打开新增的 `camera` 通道实体。已有“云端”“Meari”是
-诊断传感器，打开它们不会显示画面。当前会为云端报告 state=1、p2p=2，且通过 XTS
-会话校验的通道生成实体；按 App 的 Device.uid 与 CameraInfo.deviceID 精确关联，
-不会按名称、设备数量或旧库存序号猜测对应关系。没有实体时检查是否选中了录像机，
-运行 `inspect_video_channels`，并查看 HA 中该集成 camera 平台是否正在重试。
+`video_stage` is the current connection stage (a fixed value such as `idle`, `starting`, `connecting`, `transcoding`, or `streaming`). `streaming` means the transcoder has emitted data; it does not by itself prove that the browser displayed the video successfully.
+Please report whether the picture is visible, results for channels 1 and 3, and whether closing and reopening restores the stream. Audio, hard-drive history, and the device timeline are not yet integrated.
 
-`video_stage` 是当前连接阶段（idle/starting/connecting/transcoding/streaming等固定值）。
-`streaming` 表示转码器已有输出，不单独证明浏览器成功显示。请反馈能否看到实际画面、
-1/3号各自情况，以及关闭后重新打开是否恢复。音频、硬盘历史和设备时间轴暂未接入。
-
-实现与限制见 [实时视频](meari-live-video.md)。
+See [Live Video](meari-live-video.md) for implementation details and limitations.

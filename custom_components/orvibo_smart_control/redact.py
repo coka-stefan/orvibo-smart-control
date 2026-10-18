@@ -1,11 +1,11 @@
 """Redaction helpers for logs and diagnostics.
 
-移植自 orvibo-cloud 的 capture.py 脱敏方案：
+Redaction approach adapted from orvibo-cloud capture.py:
 
-- 凭据类字段（token/password/sessionKey/dynamicKey 等）统一打码；
-- 标识类字段（deviceId/uid/userId 等）指纹化，便于关联但不可还原；
-- ``strict=True`` 时所有字符串只保留长度，用于日志；``strict=False``
-  保留可读值，用于诊断信息。
+- Mask credential fields such as token, password, sessionKey, and dynamicKey.
+- Fingerprint identifiers such as deviceId, uid, and userId so records can be correlated but not recovered.
+- With ``strict=True``, retain only string lengths for logs; with ``strict=False``,
+  retain readable values for diagnostics.
 """
 
 from __future__ import annotations

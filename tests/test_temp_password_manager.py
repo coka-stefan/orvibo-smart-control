@@ -88,7 +88,7 @@ class TempPasswordManagerTests(unittest.TestCase):
         manager, _ = self.make_manager()
         result = asyncio.run(manager.grant("lock"))
 
-        self.assertEqual(result, {"error": "SSL 客户端未就绪"})
+        self.assertEqual(result, {"error": "Cloud connection is not ready"})
 
     def test_list_never_exposes_password(self) -> None:
         manager, _ = self.make_manager(object())
@@ -139,7 +139,7 @@ class TempPasswordManagerTests(unittest.TestCase):
         )
         manager.fetch_server_records = _empty_records
 
-        result = asyncio.run(manager.grant("lock", name="访客"))
+        result = asyncio.run(manager.grant("lock", name="Guest"))
 
         self.assertEqual(result["password"], "123456")
         event_type, event_data = manager.hass.bus.events[0]
@@ -167,14 +167,14 @@ class TempPasswordManagerTests(unittest.TestCase):
         )
         manager, _ = self.make_manager(https=https)
         manager._records = {
-            "lock": [{"authorized_id": 7, "name": "访客", "type": 2}]
+            "lock": [{"authorized_id": 7, "name": "Guest", "type": 2}]
         }
 
         records = asyncio.run(manager.fetch_server_records())
 
-        self.assertEqual(records[0]["name"], "访客")
+        self.assertEqual(records[0]["name"], "Guest")
         self.assertEqual(records[0]["type"], 2)
-        self.assertEqual(manager._records["lock"][0]["name"], "访客")
+        self.assertEqual(manager._records["lock"][0]["name"], "Guest")
         self.assertEqual(manager._records["lock"][0]["type"], 2)
 
     def test_revoke_removes_local_record_and_notifies(self) -> None:

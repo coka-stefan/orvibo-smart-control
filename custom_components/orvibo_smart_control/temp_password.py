@@ -1,4 +1,4 @@
-"""临时密码管理核心：响应解析 / 过期判断 / 回收规则（HA 无关）。"""
+"""Temporary password management core: response parsing, expiration checks, and cleanup rules (independent of HA)."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Any, Mapping, Optional
 
 
 def parse_grant_response(resp: Mapping[str, Any]) -> Optional[dict[str, Any]]:
-    """解析 cmd=246 下发响应，返回归一化记录；失败返回 None。
+    """Parse a cmd=246 response and return a normalized record, or None on failure.
 
-    记录字段：password/authorized_id/authorized_unlock_id/type/start_time/
-    end_time/number/unlock_num/phone/name。
+    Record fields: password/authorized_id/authorized_unlock_id/type/start_time/
+    end_time/number/unlock_num/phone/name.
     """
     if not isinstance(resp, Mapping):
         return None
@@ -51,12 +51,12 @@ def parse_grant_response(resp: Mapping[str, Any]) -> Optional[dict[str, Any]]:
 
 
 def parse_authorization_item(item: Mapping[str, Any]) -> Optional[dict[str, Any]]:
-    """解析 readtable authorizedUnlock 单条记录（服务器端完整列表）。"""
+    """Parse one record from the full server-side readtable authorizedUnlock list."""
     if not isinstance(item, Mapping):
         return None
-    if item.get("delFlag"):  # 已删除的授权跳过
+    if item.get("delFlag"):  # Skip deleted authorizations
         return None
-    # App 实测：authorizeStatus=0 为有效，3 为已删除/失效（delFlag 恒为 0）
+    # Observed in the app: authorizeStatus=0 is valid; 3 is deleted/invalid (delFlag remains 0).
     status = item.get("authorizeStatus")
     if status not in (None, 0, "0"):
         return None
@@ -85,7 +85,7 @@ def parse_authorization_item(item: Mapping[str, Any]) -> Optional[dict[str, Any]
 
 
 def is_expired(record: Mapping[str, Any], now: Optional[int] = None) -> bool:
-    """临时密码是否已过期（结束时间到 或 次数用尽）。"""
+    """Check whether a temporary password has expired (end time reached or usage count exhausted)."""
     now = int(time.time()) if now is None else int(now)
     end = int(record.get("end_time") or 0)
     if end > 0 and now >= end:
@@ -98,7 +98,7 @@ def is_expired(record: Mapping[str, Any], now: Optional[int] = None) -> bool:
 
 
 def describe_record(record: Mapping[str, Any]) -> dict[str, Any]:
-    """生成事件/传感器展示用的友好字段。"""
+    """Generate user-friendly fields for event and sensor display."""
     start = int(record.get("start_time") or 0)
     end = int(record.get("end_time") or 0)
     return {

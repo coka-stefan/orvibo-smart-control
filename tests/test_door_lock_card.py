@@ -23,7 +23,7 @@ const Card = definitions.get('orvibo-smart-control-door-lock-card');
   card._deviceId = 'a'; card._entitiesLoaded = true;
   card._entities = {unlock: 'sensor.unlock'};
   const requests = [];
-  card._hass = {states: {'sensor.unlock': {state: '<张三>外开（指纹）'}}, callWS: async request => {
+  card._hass = {states: {'sensor.unlock': {state: '<Alex> opened from outside (Fingerprint)'}}, callWS: async request => {
     requests.push(request);
     if (request.type === 'media_source/resolve_media') {
       assert.equal(typeof request.media_content_id, 'string');
@@ -39,8 +39,8 @@ const Card = definitions.get('orvibo-smart-control-door-lock-card');
   assert.deepEqual(requests[0].service_data, {device_id:'a', limit:47, media_type:'image'});
   assert.equal(requests[1].media_content_id, 'image');
   assert.equal(card._events.length, 1);
-  assert(card.shadowRoot.innerHTML.includes('&lt;张三&gt;外开（指纹）'));
-  assert(!card.shadowRoot.innerHTML.includes('<张三>'));
+  assert(card.shadowRoot.innerHTML.includes('&lt;Alex&gt; opened from outside (Fingerprint)'));
+  assert(!card.shadowRoot.innerHTML.includes('<Alex>'));
   card.setConfig({}); assert.equal(card._historyLimit, 30);
   card.setConfig({history_limit:1000}); assert.equal(card._historyLimit, 500);
 })().catch(error => { console.error(error); process.exitCode = 1; });
@@ -88,29 +88,29 @@ for (const invalid of ['unknown','unavailable','', ' ', '-1', '101', '1.5', fals
   card._hass.states = {'sensor.lithium':{state:invalid,attributes:{is_setup:true}},
     'sensor.dry':{state:'0',attributes:{is_setup:true}}};
   const battery=card._batterySummary();
-  assert.equal(battery.label,'干电池');
+  assert.equal(battery.label,'Primary battery');
   assert.equal(battery.value,'0%');
   assert.equal(battery.level,0);
 }
 card._hass.states['sensor.lithium']={state:'85',attributes:{is_setup:false}};
-assert.equal(card._batterySummary().label,'干电池');
+assert.equal(card._batterySummary().label,'Primary battery');
 ''')
 
     def test_inside_opening_does_not_display_stale_name_or_credential(self):
         self._run_script(r'''
 const card = new Card();
 card._entities={unlock:'sensor.unlock',lock_state:'sensor.lock',door:'binary_sensor.door'};
-card._hass={states:{'sensor.unlock':{state:'旧用户外开（指纹）',attributes:{
-  open_direction:'inside',unlock_user_name:'旧用户',unlock_method:'fingerprint'}}}};
+card._hass={states:{'sensor.unlock':{state:'Previous user opened from outside (Fingerprint)',attributes:{
+  open_direction:'inside',unlock_user_name:'Previous user',unlock_method:'fingerprint'}}}};
 const opening=card._openingSummary();
-assert.equal(opening.label,'人员未知');
-assert.equal(opening.direction,'内开');
-assert(!opening.detail.includes('指纹'));
+assert.equal(opening.label,'Unknown person');
+assert.equal(opening.direction,'Opened from inside');
+assert(!opening.detail.includes('Fingerprint'));
 card._hass.states['sensor.lock']={state:'unknown',attributes:{door_open:false,inside_locked:false}};
 assert.equal(card._lockState(),'unknown');
-assert.equal(card._doorSummary().label,'门已关');
+assert.equal(card._doorSummary().label,'Door closed');
 card._hass.states['sensor.lock'].attributes.door_open=null;
-assert.equal(card._doorSummary().label,'门磁未知');
+assert.equal(card._doorSummary().label,'Door sensor unknown');
 ''')
 
     def test_image_resolution_is_bounded_ordered_and_preserves_failed_refresh(self):

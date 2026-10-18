@@ -1,15 +1,15 @@
-"""临时密码下发探针（cmd=246，SSL 长连接）。
+"""Temporary password probe (cmd=246 over an SSL persistent connection).
 
-对照 lock6.log 实抓 + APK 逆向（core.c.X → cmd 246）实现：
-发送 type/effectTime/startTime/endTime/number/phone/userName 到门锁，
-服务器返回 code/password 即 6 位临时密码，可在门锁上直接输入验证。
+Implementation based on a lock6.log capture and APK reverse engineering (core.c.X → cmd 246):
+send type/effectTime/startTime/endTime/number/phone/userName to the lock; the server returns
+code/password containing a six-digit temporary password that can be entered on the lock.
 
-用法：
-  python tests/temp_pwd_probe.py                     # type=2 临时密码，24h，限 1 次
-  python tests/temp_pwd_probe.py --type 1 --hours 48 # 限时密码 48 小时
-  python tests/temp_pwd_probe.py --type 2 --minutes 30 --number 1 --name "测试临时密码"
+Usage:
+  python tests/temp_pwd_probe.py                     # type=2 temporary password, 24h, one use
+  python tests/temp_pwd_probe.py --type 1 --hours 48 # time-limited password for 48 hours
+  python tests/temp_pwd_probe.py --type 2 --minutes 30 --number 1 --name "Test temporary password"
 
-环境变量：ORVIBO_USERNAME / ORVIBO_PASSWORD
+Environment variables: ORVIBO_USERNAME / ORVIBO_PASSWORD
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ CMD_QUERY_LIST = 171
 
 
 class TempPwdSsl(Ssl):
-    """在现有 Ssl 基础上增加 cmd=246 下发与单次响应等待。"""
+    """Add a cmd=246 password request and single-response wait to the existing Ssl client."""
 
     async def request_temp_password(
         self,
@@ -69,8 +69,8 @@ class TempPwdSsl(Ssl):
         timeout: float = 20.0,
     ) -> Optional[Dict[str, Any]]:
         now = int(time.time()) + start_offset
-        # type=1 限时密码：可用 --start/--end 指定绝对时间段，否则按 minutes 计算；
-        # type=2 临时密码按 effectTime 相对时长（endTime=0）
+        # type=1 time-limited password: use --start/--end for an absolute range, otherwise calculate from minutes.
+        # type=2 temporary password: effectTime is a relative duration (endTime=0).
         if auth_type == 1 and start_ts and end_ts:
             start_time, end_time = start_ts, end_ts
         else:
@@ -95,7 +95,7 @@ class TempPwdSsl(Ssl):
             "debugInfo": DEBUG_INFO,
         }
         LOGGER.info(
-            "cmd=246 已发送: device=%s type=%s minutes=%s number=%s name=%s start=%s end=%s",
+            "cmd=246 sent: device=%s type=%s minutes=%s number=%s name=%s start=%s end=%s",
             device_id,
             auth_type,
             minutes,
@@ -116,7 +116,7 @@ class TempPwdSsl(Ssl):
             except asyncio.TimeoutError:
                 continue
             except (asyncio.IncompleteReadError, ConnectionError, OSError):
-                LOGGER.error("SSL 连接中断")
+                LOGGER.error("SSL connection interrupted")
                 return None
             try:
                 pkt = HomematePacket(
@@ -136,10 +136,10 @@ class TempPwdSsl(Ssl):
             if cmd in (CMD_LOGIN, CMD_HEARTBEAT, CMD_HANDSHAKE):
                 continue
             if cmd == CMD_TEMP_PWD:
-                LOGGER.info("cmd=246 响应收到")
+                LOGGER.info("cmd=246 response received")
                 return d
-            LOGGER.debug("忽略中间包 cmd=%s", cmd)
-        LOGGER.error("等待 cmd=246 响应超时")
+            LOGGER.debug("Ignoring intermediate packet cmd=%s", cmd)
+        LOGGER.error("Timed out waiting for cmd=246 response")
         return None
 
     async def delete_authorization(
@@ -149,7 +149,7 @@ class TempPwdSsl(Ssl):
         authorized_id: int,
         timeout: float = 15.0,
     ) -> Optional[Dict[str, Any]]:
-        """删除指定授权（cmd=247，authorizedId 来自下发响应）。"""
+        """Delete an authorization (cmd=247); authorizedId comes from the create response."""
         payload = {
             "uid": device_uid,
             "deviceId": device_id,
@@ -162,7 +162,7 @@ class TempPwdSsl(Ssl):
             "ver": SOFTWARE_VER,
             "debugInfo": DEBUG_INFO,
         }
-        LOGGER.info("cmd=247 已发送: device=%s authorizedId=%s", device_id, authorized_id)
+        LOGGER.info("cmd=247 sent: device=%s authorizedId=%s", device_id, authorized_id)
         await self._send(payload, self.key)
 
         deadline = time.time() + timeout
@@ -174,7 +174,7 @@ class TempPwdSsl(Ssl):
             except asyncio.TimeoutError:
                 continue
             except (asyncio.IncompleteReadError, ConnectionError, OSError):
-                LOGGER.error("SSL 连接中断")
+                LOGGER.error("SSL connection interrupted")
                 return None
             try:
                 pkt = HomematePacket(
@@ -195,8 +195,8 @@ class TempPwdSsl(Ssl):
                 continue
             if cmd == CMD_DELETE_AUTH:
                 return d
-            LOGGER.debug("忽略中间包 cmd=%s", cmd)
-        LOGGER.error("等待 cmd=247 响应超时")
+            LOGGER.debug("Ignoring intermediate packet cmd=%s", cmd)
+        LOGGER.error("Timed out waiting for cmd=247 response")
         return None
 
     async def query_authorization_list(
@@ -204,7 +204,7 @@ class TempPwdSsl(Ssl):
         family_id: str,
         timeout: float = 15.0,
     ) -> Optional[Dict[str, Any]]:
-        """发送 cmd=171 查询授权/消息列表，返回原始响应（供确认结构）。"""
+        """Send cmd=171 to query authorization/messages and return the raw response for inspection."""
         payload = {
             "familyId": family_id,
             "lastUpdateTime": 0,
@@ -218,7 +218,7 @@ class TempPwdSsl(Ssl):
             "ver": SOFTWARE_VER,
             "debugInfo": DEBUG_INFO,
         }
-        LOGGER.info("cmd=171 已发送: family=%s", family_id)
+        LOGGER.info("cmd=171 sent: family=%s", family_id)
         await self._send(payload, self.key)
 
         deadline = time.time() + timeout
@@ -231,7 +231,7 @@ class TempPwdSsl(Ssl):
             except asyncio.TimeoutError:
                 continue
             except (asyncio.IncompleteReadError, ConnectionError, OSError):
-                LOGGER.error("SSL 连接中断")
+                LOGGER.error("SSL connection interrupted")
                 break
             try:
                 pkt = HomematePacket(
@@ -255,13 +255,13 @@ class TempPwdSsl(Ssl):
                 if cmd == CMD_QUERY_LIST:
                     break
         if not collected:
-            LOGGER.error("未收到 cmd=171 响应")
+            LOGGER.error("Did not receive a cmd=171 response")
             return None
         return collected
 
 
 def extract_password(resp: Dict[str, Any]) -> Optional[str]:
-    """从响应里提取临时密码（code 或 authorizedUnlock.password）。"""
+    """Extract the temporary password from code or authorizedUnlock.password in the response."""
     code = resp.get("code")
     if isinstance(code, str) and code:
         return code
@@ -274,7 +274,7 @@ def extract_password(resp: Dict[str, Any]) -> Optional[str]:
 
 
 def parse_time(value: str) -> int:
-    """解析时间：支持 'yyyy-MM-dd HH:mm'（或带秒）或 Unix 秒时间戳。"""
+    """Parse 'yyyy-MM-dd HH:mm' (optionally with seconds) or a Unix timestamp in seconds."""
     v = value.strip()
     if v.isdigit():
         return int(v)
@@ -283,53 +283,53 @@ def parse_time(value: str) -> int:
             return int(datetime.strptime(v, fmt).timestamp())
         except ValueError:
             continue
-    raise SystemExit(f"无法解析时间: {value}（支持 yyyy-MM-dd HH:mm 或 Unix 秒时间戳）")
+    raise SystemExit(f"Could not parse time: {value} (expected yyyy-MM-dd HH:mm or a Unix timestamp in seconds)")
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="临时密码下发探针（cmd=246）")
-    parser.add_argument("--type", type=int, default=2, help="授权类型：1=限时 2=临时 3=周期（默认 2）")
-    parser.add_argument("--minutes", type=int, default=1440, help="有效期（分钟，默认 1440=24h）")
-    parser.add_argument("--number", type=int, default=None, help="可用次数（type=2 默认 1；type=1 默认 0 不限）")
-    parser.add_argument("--name", default="", help="临时用户名（默认自动生成）")
-    parser.add_argument("--start-offset", type=int, default=0, help="开始时间偏移（秒，type=1 可设未来时间）")
-    parser.add_argument("--start", default="", help="开始时间 yyyy-MM-dd HH:mm（type=1 用，替代默认 now）")
-    parser.add_argument("--end", default="", help="结束时间 yyyy-MM-dd HH:mm（type=1 用，替代默认 now+minutes）")
-    parser.add_argument("--phone", default="", help="下发时同步短信通知的手机号（可选）")
-    parser.add_argument("--delete", type=int, default=0, help="删除指定 authorizedId 的授权（不下发）")
-    parser.add_argument("--list-auth", action="store_true", help="查询授权/消息列表（cmd=171，打印原始响应）")
+    parser = argparse.ArgumentParser(description="Temporary password probe (cmd=246)")
+    parser.add_argument("--type", type=int, default=2, help="Authorization type: 1=time-limited, 2=temporary, 3=recurring (default: 2)")
+    parser.add_argument("--minutes", type=int, default=1440, help="Validity in minutes (default: 1440=24h)")
+    parser.add_argument("--number", type=int, default=None, help="Allowed uses (type=2 defaults to 1; type=1 defaults to 0/unlimited)")
+    parser.add_argument("--name", default="", help="Temporary username (generated automatically by default)")
+    parser.add_argument("--start-offset", type=int, default=0, help="Start time offset in seconds (type=1 can start in the future)")
+    parser.add_argument("--start", default="", help="Start time yyyy-MM-dd HH:mm (type=1; replaces the default now)")
+    parser.add_argument("--end", default="", help="End time yyyy-MM-dd HH:mm (type=1; replaces default now+minutes)")
+    parser.add_argument("--phone", default="", help="Optional phone number for an SMS notification")
+    parser.add_argument("--delete", type=int, default=0, help="Delete the authorization with this authorizedId; do not create one")
+    parser.add_argument("--list-auth", action="store_true", help="Query the authorization/message list (cmd=171) and print the raw response")
     parser.add_argument(
-        "--list", action="store_true", help="仅列出门锁信息（预留，暂未实现 cmd171 查询）"
+        "--list", action="store_true", help="List lock information only (reserved; cmd171 query is not implemented yet)"
     )
-    parser.add_argument("--family-id", help="家庭 ID（默认第一个家庭）")
-    parser.add_argument("--device-id", help="门锁 deviceId（w- 前缀；默认自动识别）")
-    parser.add_argument("--device-uid", help="门锁 uid（无 w- 前缀；默认自动识别）")
+    parser.add_argument("--family-id", help="Family ID (uses the first family by default)")
+    parser.add_argument("--device-id", help="Door lock deviceId (w- prefix; auto-detected by default)")
+    parser.add_argument("--device-uid", help="Door lock uid (without w- prefix; auto-detected by default)")
     args = parser.parse_args()
 
     username = os.environ.get("ORVIBO_USERNAME") or ""
     password = os.environ.get("ORVIBO_PASSWORD") or ""
     if not username or not password:
-        print("请设置环境变量 ORVIBO_USERNAME / ORVIBO_PASSWORD")
+        print("Set ORVIBO_USERNAME and ORVIBO_PASSWORD environment variables")
         return 2
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     api = Https(username, password)
     if not await api.login():
-        print("登录失败")
+        print("Login failed")
         return 1
-    print(f"[1/4] 登录成功 user_id={api.uid[:8]}...")
+    print(f"[1/4] Login succeeded user_id={api.uid[:8]}...")
 
     fs = await api.families()
     if not fs:
-        print("账号下没有家庭")
+        print("No families found for this account")
         return 1
     fam = next((f for f in fs if f.get("familyId") == args.family_id), None) if args.family_id else fs[0]
     if not fam:
-        print(f"未找到家庭 {args.family_id}")
+        print(f"Family not found: {args.family_id}")
         return 1
     fid = fam.get("familyId", "")
-    print(f"[2/4] 家庭: {fam.get('familyName', '?')} ({fid[:8]}...)")
+    print(f"[2/4] Family: {fam.get('familyName', '?')} ({fid[:8]}...)")
 
     devs = await api.devices(fid)
     if args.device_id and args.device_uid:
@@ -337,32 +337,32 @@ async def main() -> int:
     else:
         dev = next((d for d in devs if _is_lock_device(d)), None)
         if not dev:
-            print("未识别到门锁，请用 --device-id / --device-uid 指定")
+            print("No door lock identified; specify --device-id or --device-uid")
             return 1
     device_id, device_uid = dev["deviceId"], dev["uid"]
-    print(f"[3/4] 门锁: {dev.get('deviceName', '?')} deviceId={device_id} uid={device_uid}")
+    print(f"[3/4] Door lock: {dev.get('deviceName', '?')} deviceId={device_id} uid={device_uid}")
 
     if args.delete:
         sslc = TempPwdSsl(api.username, api.password, fid)
         if not await sslc.connect():
-            print("SSL 连接/登录失败")
+            print("SSL connection or login failed")
             await api.close()
             return 1
         resp = await sslc.delete_authorization(device_id, device_uid, args.delete)
         await sslc.close()
         await api.close()
         if not resp:
-            print("未收到 cmd=247 响应")
+            print("Did not receive a cmd=247 response")
             return 1
-        print(f"删除响应: {json.dumps(resp, ensure_ascii=False)[:400]}")
+        print(f"Delete response: {json.dumps(resp, ensure_ascii=False)[:400]}")
         if resp.get("status") in (None, 0, "0"):
-            print(f"删除成功 authorizedId={args.delete}")
+            print(f"Delete succeeded authorizedId={args.delete}")
             return 0
-        print(f"删除失败 status={resp.get('status')}")
+        print(f"Delete failed status={resp.get('status')}")
         return 1
 
     if args.list_auth:
-        # 1) readtable（REST 全量同步）里是否有授权表
+        # 1) Check whether REST readtable's full sync contains the authorization table.
         try:
             ret = HomemateJsonData.get_devices_status(
                 api.token, "", api.uid, api.username, fid, device_flag=0
@@ -374,7 +374,7 @@ async def main() -> int:
             print("[readtable] data keys:", list(data.keys()))
             auth_list = data.get("authorizedUnlock") or []
             if isinstance(auth_list, list):
-                print(f"[readtable] authorizedUnlock 共 {len(auth_list)} 条，前 3 条:")
+                print(f"[readtable] authorizedUnlock has {len(auth_list)} entries; first 3:")
                 for item in auth_list[:3]:
                     if isinstance(item, dict):
                         print(
@@ -400,51 +400,51 @@ async def main() -> int:
             for k, v in data.items():
                 if isinstance(v, list):
                     sample = list(v[0].keys())[:15] if v else "-"
-                    print(f"  {k}: list[{len(v)}] 首项keys={sample}")
+                    print(f"  {k}: list[{len(v)}] first item keys={sample}")
                 elif isinstance(v, dict):
                     print(f"  {k}: dict keys={list(v.keys())[:15]}")
                 else:
                     print(f"  {k}: {type(v).__name__}")
         except Exception as e:
-            print("[readtable] 失败:", e)
+            print("[readtable] failed:", e)
 
-        # 2) SSL cmd=171 消息列表
+        # 2) Query the message list over SSL with cmd=171.
         sslc = TempPwdSsl(api.username, api.password, fid)
         if not await sslc.connect():
-            print("SSL 连接/登录失败")
+            print("SSL connection or login failed")
             await api.close()
             return 1
         result = await sslc.query_authorization_list(fid)
         await sslc.close()
         await api.close()
         if not result:
-            print("无响应")
+            print("No response")
             return 1
         for item in result:
             print(json.dumps(item, ensure_ascii=False)[:1200])
         return 0
 
-    name = args.name or f"临时用户 {time.strftime('%m%d%H%M')}"
+    name = args.name or f"Temporary User {time.strftime('%m%d%H%M')}"
     sslc = TempPwdSsl(api.username, api.password, fid)
     if not await sslc.connect():
-        print("SSL 连接/登录失败")
+        print("SSL connection or login failed")
         await api.close()
         return 1
     number = args.number if args.number is not None else (1 if args.type == 2 else 0)
     if args.type == 3:
-        print("type=3 周期密码需要 day（星期）参数，暂未实现，请先用 type=1/2")
+        print("type=3 recurring passwords require the day (weekday) parameter; not implemented yet. Use type=1 or 2.")
         await sslc.close()
         await api.close()
         return 1
     start_ts = parse_time(args.start) if args.start else None
     end_ts = parse_time(args.end) if args.end else None
     if args.type == 1 and (start_ts or end_ts) and not (start_ts and end_ts):
-        print("type=1 指定时间段需要同时提供 --start 和 --end")
+        print("type=1 requires both --start and --end for a specified time range")
         await sslc.close()
         await api.close()
         return 1
     if start_ts and end_ts and end_ts <= start_ts:
-        print("结束时间必须晚于开始时间")
+        print("End time must be later than start time")
         await sslc.close()
         await api.close()
         return 1
@@ -463,34 +463,34 @@ async def main() -> int:
     await sslc.close()
     await api.close()
     if not resp:
-        print("未收到 cmd=246 响应")
+        print("Did not receive a cmd=246 response")
         return 1
 
-    print(f"[4/4] cmd=246 响应: {json.dumps(resp, ensure_ascii=False)[:600]}")
+    print(f"[4/4] cmd=246 response: {json.dumps(resp, ensure_ascii=False)[:600]}")
     if resp.get("status") not in (None, 0, "0"):
-        print(f"下发失败 status={resp.get('status')} msg={resp.get('msg')}")
+        print(f"Request failed status={resp.get('status')} msg={resp.get('msg')}")
         return 1
     pwd = extract_password(resp)
     if not pwd:
-        print("响应里未找到临时密码")
+        print("No temporary password found in the response")
         return 1
     auth = resp.get("authorizedUnlock") or {}
     print("\n========================================")
-    print(f"  临时密码: {pwd}")
-    print(f"  用户名:   {name}")
-    print(f"  类型:     {args.type}（1=限时 2=临时 3=周期）")
-    print(f"  有效期:   {args.minutes} 分钟")
-    print(f"  次数:     {args.number if args.number else '不限'}")
-    print(f"  短信通知: {'发送到 ' + args.phone if args.phone else '未开启'}")
+    print(f"  Temporary password: {pwd}")
+    print(f"  Username:           {name}")
+    print(f"  Type:               {args.type} (1=time-limited, 2=temporary, 3=recurring)")
+    print(f"  Validity:           {args.minutes} minutes")
+    print(f"  Uses:               {args.number if args.number else 'Unlimited'}")
+    print(f"  SMS notification:   {'sent to ' + args.phone if args.phone else 'disabled'}")
     if resp.get("startTime"):
         print(
-            "  开始时间: %s (%s)",
+            "  Start time: %s (%s)",
             datetime.fromtimestamp(int(resp["startTime"])).strftime("%Y-%m-%d %H:%M"),
             resp["startTime"],
         )
     if resp.get("endTime"):
         print(
-            "  结束时间: %s (%s)",
+            "  End time: %s (%s)",
             datetime.fromtimestamp(int(resp["endTime"])).strftime("%Y-%m-%d %H:%M"),
             resp["endTime"],
         )
@@ -498,7 +498,7 @@ async def main() -> int:
         print(f"  authorizedId: {auth.get('authorizedId')}")
         print(f"  unlockNum:    {auth.get('unlockNum')}")
     print("========================================")
-    print("请在门锁上输入该 6 位密码验证")
+    print("Enter this six-digit password on the lock to verify it")
     return 0
 
 

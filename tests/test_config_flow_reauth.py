@@ -246,12 +246,12 @@ class TestOptionsReauth(unittest.IsolatedAsyncioTestCase):
         devices = [
             {
                 "device_id": "light-1",
-                "device_name": "客厅灯",
+                "device_name": "Living Room Light",
                 "device_type_raw": 38,
             },
             {
                 "device_id": "light-2",
-                "device_name": "卧室灯",
+                "device_name": "Bedroom Light",
                 "device_type_raw": 38,
             },
         ]
@@ -273,7 +273,7 @@ class TestOptionsReauth(unittest.IsolatedAsyncioTestCase):
     def test_p20_model_is_supported_without_type_metadata(self):
         device = {
             "device_id": "lock-1",
-            "device_name": "入户门锁",
+            "device_name": "Front Door Lock",
             "device_type_raw": 999999,
             "model": "dec7d494f0454110805c0d5f7e7cba73",
         }
@@ -289,27 +289,27 @@ class TestOptionsReauth(unittest.IsolatedAsyncioTestCase):
         ) as get_profile:
             label = self.module._device_option_label(device)
 
-        self.assertEqual(label, "入户门锁")
-        self.assertNotIn("暂未支持", label)
+        self.assertEqual(label, "Front Door Lock")
+        self.assertNotIn("Not supported yet", label)
         get_profile.assert_called_once_with(device)
 
     async def test_device_name_filter_saves_rules_and_preserves_options(self):
         flow, _ = self._flow()
 
         result = await flow.async_step_device_name_filter(
-            {"hidden_device_name_patterns": "测试\n*控制器*"}
+            {"hidden_device_name_patterns": "Test\n*Controller*"}
         )
 
         self.assertEqual(result["type"], "create_entry")
         self.assertEqual(
             result["data"]["hidden_device_name_patterns"],
-            ["测试", "*控制器*"],
+            ["Test", "*Controller*"],
         )
         self.assertEqual(result["data"]["selected_device_ids"], ["device-1"])
 
     async def test_device_name_filter_can_be_cleared(self):
         flow, entry = self._flow()
-        entry.options["hidden_device_name_patterns"] = ["测试"]
+        entry.options["hidden_device_name_patterns"] = ["Test"]
 
         result = await flow.async_step_device_name_filter(
             {"hidden_device_name_patterns": ""}
@@ -446,7 +446,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
             cloud=self.cloud,
             close=AsyncMock(),
         )
-        visible = {"device_id": "visible", "device_name": "客厅灯"}
+        visible = {"device_id": "visible", "device_name": "Living Room Light"}
 
         with (
             patch.object(self.module, "HttpsClient", return_value=cloud_client),
@@ -457,7 +457,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(
                     return_value=[
                         visible,
-                        {"device_id": "hidden", "device_name": "测试控制器"},
+                        {"device_id": "hidden", "device_name": "Test Controller"},
                     ]
                 ),
             ),
@@ -476,7 +476,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
                 {
                     "username": "account@example.com",
                     "password": "cloud-secret",
-                    "hidden_device_name_patterns": "测试\n*控制器*",
+                    "hidden_device_name_patterns": "Test\n*Controller*",
                     "use_independent_lan_credentials": True,
                     "lan_username": "mixpad@example.com",
                     "lan_password": "lan-secret",
@@ -488,7 +488,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             flow._pending_options,
             {
-                "hidden_device_name_patterns": ["测试", "*控制器*"],
+                "hidden_device_name_patterns": ["Test", "*Controller*"],
                 "use_independent_lan_credentials": True,
                 "lan_username": "mixpad@example.com",
                 "lan_password_hash": "hash:lan-secret",
@@ -504,7 +504,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
         flow._family_name = "Home"
         flow._pending_selected_ids = ["visible-device"]
         flow._pending_options = {
-            "hidden_device_name_patterns": ["测试", "*控制器*"],
+            "hidden_device_name_patterns": ["Test", "*Controller*"],
             "use_independent_lan_credentials": True,
             "lan_username": "mixpad@example.com",
             "lan_password_hash": "hash:lan-secret",
@@ -515,7 +515,7 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["type"], "create_entry")
         self.assertEqual(
             result["options"]["hidden_device_name_patterns"],
-            ["测试", "*控制器*"],
+            ["Test", "*Controller*"],
         )
         self.assertEqual(
             result["options"]["lan_password_hash"], "hash:lan-secret"
@@ -528,11 +528,11 @@ class TestInitialSetupOptions(unittest.IsolatedAsyncioTestCase):
     async def test_initial_device_step_hides_matching_names(self):
         flow = self.module.OrviboSmartControlConfigFlow()
         flow._devices = [
-            {"device_id": "visible", "device_name": "客厅灯"},
-            {"device_id": "hidden", "device_name": "测试控制器"},
+            {"device_id": "visible", "device_name": "Living Room Light"},
+            {"device_id": "hidden", "device_name": "Test Controller"},
         ]
         flow._pending_options = {
-            "hidden_device_name_patterns": ["测试"],
+            "hidden_device_name_patterns": ["Test"],
         }
 
         with (

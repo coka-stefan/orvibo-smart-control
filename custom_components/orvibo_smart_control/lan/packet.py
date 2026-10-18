@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Orvibo 局域网协议封包/解包层。
+"""Orvibo LAN protocol packet encoder and decoder.
 
-封包格式：42字节头 + AES-ECB 加密的 JSON payload
-头：hd(2B) + 包长度(2B) + 包类型(2B) + CRC32(4B) + sessionId(32B)
+Packet format: 42-byte header + AES-ECB encrypted JSON payload
+Header: hd(2B) + packet length (2B) + packet type (2B) + CRC32 (4B) + sessionId (32B)
 """
 
 import binascii
@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 _LOGGER = logging.getLogger(__name__)
 
-# === 常量 ===
+# === Constants ===
 MAGIC = b"\x68\x64"  # "hd"
 DEFAULT_KEY = "khggd54865SNJHGF"
 UDP_PORT = 10000
@@ -35,7 +35,7 @@ DEBUG_INFO = "Android_ZhiJia365_34_5.1.3.309"
 SIGN_KEY = "nQ45RjPtOws96jmH"
 HTTPS_HOST = "china.orvibo.com"
 
-# 命令常量
+# Command constants
 CMD_HELLO = 0
 CMD_LOGIN = 2
 CMD_CONTROL = 15
@@ -43,21 +43,21 @@ CMD_STATE_UPDATE = 42
 CMD_HEARTBEAT = 32
 
 ID_UNSET = b"\x20" * 32
-PK_TYPE = b"\x70\x6b"  # plain key (默认key加密)
-DK_TYPE = b"\x64\x6b"  # derived key (session key加密)
+PK_TYPE = b"\x70\x6b"  # plain key (encrypted with the default key)
+DK_TYPE = b"\x64\x6b"  # derived key (encrypted with the session key)
 
 
 def _crc32(data: bytes) -> bytes:
     return struct.pack(">I", binascii.crc32(data) & 0xFFFFFFFF)
 
 
-# AES cipher 单例（密钥固定不变，无需每次重新创建 cipher 对象 -- 高频控制场景下可显著减少临时对象）
+# Reuse the AES cipher singleton while the key remains unchanged; this reduces temporary objects during frequent control operations.
 _AES_BACKEND = default_backend()
 _AES_CIPHER_CACHE: dict[bytes, Cipher] = {}
 
 
 def _get_cipher(key: bytes, mode: modes.Mode) -> Cipher:
-    """获取或创建 AES cipher 单例。key 相同时复用 cipher 对象。"""
+    """Get or create the AES cipher singleton, reusing it when the key is unchanged."""
     if key not in _AES_CIPHER_CACHE:
         _AES_CIPHER_CACHE[key] = Cipher(algorithms.AES(key), mode, backend=_AES_BACKEND)
     return _AES_CIPHER_CACHE[key]
@@ -80,7 +80,7 @@ def _decrypt_aes_ecb(key: bytes, encrypted: bytes) -> str:
 
 
 def build_packet(packet_type: bytes, key: bytes, session_id: bytes, payload: dict) -> bytes:
-    """构造协议包。packet_type: b'pk'(0x706b) 或 b'dk'(0x646b)"""
+    """Build a protocol packet. packet_type is b'pk' (0x706b) or b'dk' (0x646b)."""
     payload_str = json.dumps(payload, separators=(",", ":"))
     encrypted = _encrypt_aes_ecb(key, payload_str)
     crc = _crc32(encrypted)
@@ -93,7 +93,7 @@ def parse_packet(
     data: bytes,
     keys: Mapping[bytes, bytes],
 ) -> dict[str, Any] | None:
-    """解析协议包。keys: {session_id_bytes: aes_key_bytes}"""
+    """Parse a protocol packet. keys maps session_id_bytes to aes_key_bytes."""
     if len(data) < 42:
         return None
     if data[0:2] != MAGIC:
@@ -120,5 +120,5 @@ def parse_packet(
         payload = json.loads(plain)
         return payload if isinstance(payload, dict) else None
     except Exception as error:
-        _LOGGER.error("解密/解析失败 (%s)", type(error).__name__)
+        _LOGGER.error("Decryption/parsing failed (%s)", type(error).__name__)
         return None

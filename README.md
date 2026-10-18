@@ -3,285 +3,237 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![Version](https://img.shields.io/badge/version-0.2.6b14-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
-ORVIBO Smart Control 是一个面向 Home Assistant 的独立自定义集成。它把 MixPad
-网关局域网直连与 ORVIBO 云端协议放在同一条设备、状态和控制链路中：能在 LAN
-完成的操作优先本地执行，无法本地接管的设备或失败请求由云端承接。
+ORVIBO Smart Control is an independent custom integration for Home Assistant. It combines direct MixPad gateway LAN access and the ORVIBO cloud protocol in one device, state, and control path: actions that can be completed over LAN are preferred locally, while devices that cannot be controlled locally and failed requests are handled by the cloud.
 
-## 通道策略
+This fork uses English throughout the repository. The only retained Chinese
+input strings are documented compatibility keywords and protocol fixtures;
+see [the language policy](LANGUAGE_POLICY.md). CI rejects unreviewed additions.
 
-默认的 `LAN 与云端结合` 模式会同时维护本地和云端能力，但每次控制只选择一个起始通道：
+## Transport policy
 
-```text
-设备请求
-  |
-  +-- 纯云端 ------------------------------------> 云端 TLS 长连接
-  |
-  +-- 纯 LAN + 设备支持 LAN + 网关可达 ----------> LAN TCP
-  |      +-- 不支持 / 不可达 / 执行失败 ----------> 返回失败，不走云端
-  |
-  +-- LAN 与云端结合 + 云专属设备 ---------------> 云端 TLS 长连接
-         +-- 支持 LAN + 网关可达 ----------------> LAN TCP
-         |      +-- LAN 失败一次 ----------------> 云端重试一次
-         +-- 其他情况 ---------------------------> 云端 TLS 长连接
-```
-
-状态更新统一进入字段级状态仓库，优先级为：
+The default `LAN + cloud` mode maintains both local and cloud capabilities, but each control action selects one initial path:
 
 ```text
-LAN > 云端实时推送（SSL）> 云端快照（REST）> 乐观状态 > 初始值
+Device request
+  |
+  +-- Pure cloud --------------------------------> Cloud TLS long connection
+  |
+  +-- Pure LAN + LAN-supported device + gateway reachable --> LAN TCP
+  |      +-- Unsupported / unreachable / execution failed --> Fail; no cloud fallback
+  |
+  +-- Combined mode + cloud-only device ----------> Cloud TLS long connection
+         +-- LAN-supported + gateway reachable ---> LAN TCP
+         |      +-- LAN fails once --------------> Retry through cloud once
+         +-- Other cases -------------------------> Cloud TLS long connection
 ```
 
-低优先级的旧值不会在保护窗口内回滚刚收到的 LAN 状态。相同值会被去重。门锁
-`107/522` 和晾衣机 `52` 属于云专属类型；门锁事件、媒体和临时密码始终使用云端。
-因此希望这些设备保持可用时应使用默认结合模式或纯云端模式。
+State updates enter a field-level state store with this priority:
 
-设备在线状态依据云端快照和实时上报；灯具长时间没有状态变化不会仅因未推送而变为
-“不可用”。没有新上报时保留最近已知状态，云端明确报告离线时仍会正常显示不可用。
+```text
+LAN > cloud live push (SSL) > cloud snapshot (REST) > optimistic state > initial value
+```
 
-纯 LAN 是运行阶段的传输限制，不是完全离线安装：首次启动和重载仍需登录 ORVIBO 云端，
-用于确认账号区域、家庭、设备库存、网关 UID 和可信地址；完成发现后不建立云端 TLS 实时
-连接，也不执行周期云快照轮询。
+Lower-priority stale values cannot roll back a newly received LAN state during its protection window. Identical values are deduplicated. Locks `107/522` and clothes dryers `52` are cloud-only types; lock events, media, and temporary passwords always use the cloud. Keep the default combined mode or use pure cloud mode to keep these devices available.
 
-实现细节和失败边界见 [运行时架构](FUSION_DESIGN.md)。
+Device availability is based on cloud snapshots and live reports. A light does not become “unavailable” merely because it has not reported a change for a long time. When there is no new report, the most recently known state is retained; an explicit cloud offline report is still shown as unavailable.
 
-## 安装
+Pure LAN is a runtime transport restriction, not a fully offline installation: first startup and reload still log in to the ORVIBO cloud to confirm the account region, family, device inventory, gateway UID, and trusted address. After discovery, it does not establish the cloud TLS live connection or run periodic cloud snapshot polling.
 
-### HACS 自定义仓库
+For implementation details and failure boundaries, see [Runtime Architecture](FUSION_DESIGN.md).
 
-[![在 HACS 中打开仓库](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maycode0-0&repository=orvibo-smart-control&category=integration)
+## Installation
 
-1. 在 HACS 的“集成”页面打开“自定义存储库”。
-2. 添加 `https://github.com/maycode0-0/orvibo-smart-control`，类别选择“集成”。
-3. 安装 **ORVIBO Smart Control** 并重启 Home Assistant。
-4. 进入“设置 -> 设备与服务 -> 添加集成”，搜索项目名称。
+### HACS custom repository
 
-### 摄像机与录像机实时画面
+[![Open repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maycode0-0&repository=orvibo-smart-control&category=integration)
 
-`0.2.6b5` 为匹配成功的 Meari XTS/p2p=2 摄像机及录像机在线通道创建 `camera` 实体。
-在 HACS 更新到 `v0.2.6b14` 并重启 Home Assistant，进入录像机设备页面，打开“通道 1”或
-“通道 3”等摄像头实体；也可把实体加入图片概览卡片并设置 `camera_view: live`。
-HAOS 使用自带 FFmpeg，无需单独安装视频服务。首次连接需要获取授权和建立设备连接，
-可能需要数十秒；首次缩略图超时后再次打开即可复用正在建立的连接。
+1. In HACS, open “Integrations” and choose “Custom repositories.”
+2. Add `https://github.com/maycode0-0/orvibo-smart-control` and select the “Integration” category.
+3. Install **ORVIBO Smart Control** and restart Home Assistant.
+4. Go to “Settings → Devices & Services → Add Integration” and search for the project name.
 
-已收到用户真实 1 号通道 HEVC 关键帧；本地合成 HEVC 到 H.264 转码、解码测试通过。
-用户已确认实时通道1可看，通道3等待加载后可恢复。“欧瑞博录像回放”仪表盘卡片
-可按设备日期查询硬盘或 SD/TF 存储卡录像片段并播放。`0.2.6b8` 为巨目 2K 智能摄像机
-S1 等匹配的 Meari XTS/p2p=2 摄像机新增“存储卡回放”实体；更新后请确认设备已在集成中勾选。
-**硬盘和存储卡查询与回放尚待真实设备验证**。当前无声音。
-添加手动卡片：`type: custom:orvibo-smart-control-nvr-card`，操作步骤见 [录像回放说明](docs/meari-hdd-playback.md)。
-在线通道列表变化后请重新加载集成。仅本地 LAN 模式无法取得必要的云授权。
-版本发布规则：默认使用 `v0.x.ybN` 临时诊断版本；只有明确要求“发布正式版”时才使用
-`v0.x.y` 这类正式版本。两种版本都按 GitHub 普通 Release / Latest 发布，不标记为
-Pre-release，以确保 HACS 能识别更新。
-详细说明与故障诊断见 [实时视频](docs/meari-live-video.md) 和
-[录像机诊断指南](docs/nvr-video-diagnostics.md)。
+### Live camera and NVR video
 
-### 手动安装
+`0.2.6b5` creates `camera` entities for matching Meari XTS/p2p=2 cameras and online NVR channels.
+Update to `v0.2.6b14` in HACS and restart Home Assistant, then open the NVR device page and select a camera entity such as “Channel 1” or “Channel 3.” You can also add the entity to a picture glance card and set `camera_view: live`.
+HAOS includes FFmpeg; no separate video service is needed. The first connection needs authorization and device setup and may take tens of seconds. If the first thumbnail request times out, open it again to reuse the connection being established.
 
-把 `custom_components/orvibo_smart_control` 目录放入 Home Assistant 配置目录下的
-`custom_components/`，确认最终路径如下，然后重启：
+A real HEVC keyframe was received on the user's channel 1; local synthetic HEVC-to-H.264 transcoding and decoding tests passed. The user confirmed that live channel 1 is viewable; channel 3 becomes viewable after waiting for it to load. The “ORVIBO Recording Playback” dashboard card searches hard-drive or SD/TF card clips by the date on the device and plays them. `0.2.6b8` added an “SD Card Playback” entity for matching Meari XTS/p2p=2 cameras such as the Jumu 2K Smart Camera S1; after updating, make sure the device is selected in the integration.
+**Hard-drive and SD card search and playback still need validation on real devices.** There is currently no audio.
+To add the manual card, use `type: custom:orvibo-smart-control-nvr-card`; see [Recording Playback Instructions](docs/meari-hdd-playback.md).
+Reload the integration if the online channel list changes. Pure LAN mode cannot obtain the required cloud authorization.
+By default, publish temporary diagnostic versions such as `v0.x.ybN`. Use a stable version such as `v0.x.y` only when explicitly asked to “publish a stable release.” Both version types are published as ordinary GitHub Releases / Latest, not marked as Pre-release, so HACS can detect updates.
+For details and troubleshooting, see [Live Video](docs/meari-live-video.md) and the [NVR Diagnostics Guide](docs/nvr-video-diagnostics.md).
+
+### Manual installation
+
+Place the `custom_components/orvibo_smart_control` directory under Home Assistant's configuration directory in `custom_components/`, confirm the final path below, then restart:
 
 ```text
 <ha-config>/custom_components/orvibo_smart_control/manifest.json
 ```
 
-升级时应整体替换该组件目录，避免旧模块残留。
+For upgrades, replace the entire component directory to avoid leaving old modules behind.
 
-## 首次配置
+## Initial setup
 
-配置流程依次完成账号验证、云区识别、家庭选择和设备选择。中国区与
-国际区按配置项分别保存，不会互相覆盖。账号密码只在提交时用于生成协议所需的大写
-MD5 摘要；配置项不保存明文，但该摘要仍可直接用于认证，必须按密码保护。
+The setup flow validates the account, detects its cloud region, selects a family, then selects devices. China and international regions are stored separately per config entry and do not overwrite one another. The account password is used only at submission time to generate the uppercase MD5 digest required by the protocol. The config entry does not store plaintext, but the digest can still be used directly for authentication and must be protected like a password.
 
-设备列表拉取完成后会根据实际设备名称和协议类型自动归类，无法识别的设备统一归入“其他
-设备”。同类设备使用复选列表显示，可连续勾选而无需反复展开；同类多台时在列表中提供
-“全部”选项。首次配置和“继续添加或移除设备”使用相同规则。
+After loading the device list, the integration automatically groups devices by their actual names and protocol types. Unrecognized devices are grouped under “Other Devices.” Devices of the same type appear in a checkbox list and can be selected consecutively without repeatedly expanding the group; groups with multiple devices include an “All” option. Initial setup and “Add or Remove Devices” use the same rules.
 
-安装完成后可以在集成的“配置”菜单中使用：
+After installation, the integration's “Configure” menu provides:
 
-| 入口                     | 用途                                                     |
-| ------------------------ | -------------------------------------------------------- |
-| 配置 LAN / 云端传输模式  | 选择纯 LAN、纯云端或默认 LAN 与云端结合                  |
-| 配置独立 MixPad LAN 凭据 | MixPad 账号与云账号不同时，单独保存 LAN 用户名和密码摘要 |
-| 继续添加或移除设备       | 按动态设备分类全选或逐台调整当前配置项管理的设备         |
-| 按名称隐藏设备           | 用名称关键词或通配符隐藏设备，不创建对应实体             |
-| 更新欧瑞博账号密码       | 更新云端认证信息，不删除实体和设备选择                   |
-| 同步云端设备名称         | 更新集成提供的设备名称，不覆盖用户自定义名称             |
-| 清理本地配置文件         | 删除本集成的本地门锁媒体，并可重置通用选项               |
-| 配置轮询间隔时间         | 设置云端快照轮询间隔，范围 5 到 1440 分钟                |
-| 配置设备上下线通知       | 分别控制上线/离线通知，可指定 `domain.service`           |
-| 配置集成更新检查         | 每 6 到 168 小时检查一次 GitHub 稳定版本                 |
-| 锁用户映射               | 按设备、开锁方式和授权编号映射姓名                       |
-| 门锁抓拍保留数量         | 每把锁保留最近 30 张，可配置为 1–500 张                  |
+| Option | Purpose |
+| --- | --- |
+| Configure LAN / cloud transport mode | Choose pure LAN, pure cloud, or the default combined mode |
+| Configure separate MixPad LAN credentials | Store a separate LAN username and password digest if the MixPad account differs from the cloud account |
+| Add or remove devices | Select all devices by dynamic category or adjust them individually for this config entry |
+| Hide devices by name | Hide devices by name keyword or wildcard; do not create their entities |
+| Update ORVIBO account password | Update cloud authentication without deleting entities or device selection |
+| Sync cloud device names | Update names supplied by the integration without overwriting user-customized names |
+| Clear local configuration files | Delete this integration's local door-lock media and optionally reset general options |
+| Configure polling interval | Set cloud snapshot polling to 5–1440 minutes |
+| Configure device online/offline notifications | Control online and offline notifications separately; specify `domain.service` |
+| Configure integration update checks | Check GitHub stable releases every 6–168 hours |
+| Lock user mapping | Map names by device, unlock method, and authorization number |
+| Door-lock snapshot retention count | Keep the most recent 30 per lock by default; configure 1–500 |
 
-独立 MixPad 密码与云端密码一样只保存协议摘要，不保存明文。清理操作不会删除账号、家庭、
-设备选择、锁用户映射、实体注册或 Home Assistant `.storage`；执行前必须在 UI 中确认。
-选项保存后 Home Assistant 会重载配置项，使传输和定时任务立即按新设置重建。
+The separate MixPad password is stored as a protocol digest, like the cloud password; plaintext is not saved. Cleanup does not delete accounts, families, device selection, lock-user mappings, entity registry entries, or Home Assistant `.storage`. The UI requires confirmation before cleanup.
+After options are saved, Home Assistant reloads the config entry so transport and scheduled tasks are rebuilt immediately with the new settings.
 
-“按名称隐藏设备”支持每行一条规则。普通文本会匹配名称中的任意位置，例如 `测试`；包含
-通配符时按完整设备名称匹配，例如 `*控制器*`、`卧室?灯`。匹配不区分英文字母大小写，设备
-会同时从实体平台和设备选择页面排除。规则不会改写已保存的设备 ID，删除规则后设备会重新
-出现。
+“Hide devices by name” accepts one rule per line. Plain text matches anywhere in the device name, such as `test`; a rule containing a wildcard matches the complete device name, such as `*controller*` or `bedroom?light`. Matching is case-insensitive for English letters. Matching devices are excluded from both entity platforms and the device-selection page. Rules do not rewrite saved device IDs; a device reappears when its rule is removed.
 
-### 设备传输标识
+### Device transport indicator
 
-每台已接入且具有 Home Assistant 平台的设备都会创建一个诊断实体“传输通道”，不会修改
-原设备名称、业务实体名称或唯一 ID。实体状态含义如下：
+Each configured device with a Home Assistant platform gets a “Transport Path” diagnostic entity. It does not change the device name, business-entity names, or unique IDs. Entity states mean:
 
-| 状态                 | 含义                                                       |
-| -------------------- | ---------------------------------------------------------- |
-| `LAN`                | 纯 LAN 模式下，设备状态或控制使用 MixPad                   |
-| `云端`               | 纯云端模式，或该设备按能力表固定使用云端                   |
-| `LAN 优先，云端回退` | 默认结合模式下优先 LAN，必要时走云端                       |
-| `当前模式不可用`     | 纯 LAN 模式下设备没有 LAN 路径，例如门锁、晾衣机或云控地暖 |
+| State | Meaning |
+| --- | --- |
+| `LAN` | In pure LAN mode, device state or control uses MixPad |
+| `Cloud` | Pure cloud mode, or a device that the capability table assigns to cloud |
+| `LAN preferred, cloud fallback` | In default combined mode, prefer LAN and use cloud when needed |
+| `Unavailable in current mode` | In pure LAN mode, the device has no LAN path, such as a lock, clothes dryer, or cloud-controlled floor heating |
 
-实体属性还会显示配置模式、LAN/云控制能力、网关连接状态，以及本次 Home Assistant 运行期间
-最近一次成功控制实际使用的 `lan` 或 `cloud` 通道。
+Entity attributes also show the configured mode, LAN/cloud control capabilities, gateway connection state, and the actual `lan` or `cloud` transport used by the most recent successful control during the current Home Assistant run.
 
-## 支持范围
+## Supported scope
 
-当前平台包括 `light`、`switch`、`cover`、`climate`、`fan`、`sensor`、
-`binary_sensor` 和 `camera`。主要能力如下：
+Current platforms include `light`, `switch`, `cover`, `climate`, `fan`, `sensor`, `binary_sensor`, and `camera`. Main capabilities:
 
-| 类别                 | 已实现能力                                | 典型控制通道        |
-| -------------------- | ----------------------------------------- | ------------------- |
-| 灯光与墙壁开关       | 开关、亮度、色温                          | LAN 优先，云兜底    |
-| 窗帘与管状电机       | 开合、位置、停止；梦幻帘叶片角度          | 依型号选择 LAN 或云 |
-| 风机盘管、地暖、新风 | 模式、温度、风速或预设模式                | 依型号选择 LAN 或云 |
-| 安防与环境传感器     | 人体、门窗、烟雾、燃气、水浸、温湿度      | 只读状态            |
-| 智能门锁             | 锁/门磁、电池、事件、截图、录像、临时密码 | 云专属              |
-| 智能晾衣机           | 灯、消毒、风干、热干、升降                | 云专属              |
-| 摄像机 / NVR `14/162` | Meari XTS 在线通道实时画面；其他协议仅诊断 | 云授权 + P2P/中继 |
+| Category | Implemented capabilities | Typical control path |
+| --- | --- | --- |
+| Lights and wall switches | On/off, brightness, color temperature | LAN preferred, cloud fallback |
+| Curtains and tubular motors | Open/close, position, stop; Dream Curtain blade angle | LAN or cloud, depending on model |
+| Fan-coil, floor heating, fresh air | Mode, temperature, fan speed, or preset mode | LAN or cloud, depending on model |
+| Security and environmental sensors | Motion, doors/windows, smoke, gas, water leak, temperature/humidity | Read-only state |
+| Smart locks | Lock/door contact, battery, events, snapshots, recordings, temporary passwords | Cloud-only |
+| Smart clothes dryers | Light, sterilization, air-dry, heat-dry, raise/lower | Cloud-only |
+| Camera / NVR `14/162` | Live Meari XTS channel video; diagnostics only for other protocols | Cloud authorization + P2P/relay |
 
-完整的已验证型号、`deviceType`、限制和通道标记见
-[设备支持矩阵](docs/DEVICE_SUPPORT.md)。未列出的型号可能会被识别并展示，但不会据此
-推测控制命令；这是防止未知设备收到错误动作的安全约束。
+See the [Device Support Matrix](docs/DEVICE_SUPPORT.md) for verified models, `deviceType`, limitations, and transport markings. Unlisted models may be recognized and displayed, but their control commands are not inferred. This safety constraint prevents sending incorrect actions to unknown devices.
 
-## 门锁功能
+## Door-lock features
 
-每把已支持的门锁会按实际能力创建状态、电池、事件和截图实体。事件截图不是猫眼实时
-视频流；实时流使用的私有协议目前不在支持范围内。
+Each supported lock gets state, battery, event, and snapshot entities according to its actual capabilities. Event snapshots are not a live door-view video stream; the private protocol for live video is currently outside the supported scope.
 
-集成还提供：
+The integration also provides:
 
-- `orvibo_smart_control_lock_event` 事件，用于开锁、门铃、撬锁和门未关等自动化；
-- 门锁事件图片签名、H.264 录像归档及 Home Assistant 媒体浏览器索引；
-- 临时密码下发、查询、撤销和每 6 小时的过期回收；
-- 内置门锁总览卡片和独立的临时密码管理卡片。
+- `orvibo_smart_control_lock_event` events for automations involving unlocks, doorbells, picking attempts, doors left open, and similar events;
+- Signed door-lock event images, H.264 recording archives, and Home Assistant media-browser indexing;
+- Temporary-password creation, listing, revocation, and expiration cleanup every 6 hours;
+- A built-in door-lock overview card and a separate temporary-password management card.
 
-`0.2.6b13` 优化门锁总览卡片：主锁、门磁与反锁分别显示，顶部展示有效电池电量；
-最近开门突出姓名、内外开方向、方式和时间，内开不显示旧的外开人员或凭据。
-猫眼抓拍增加最新图片大预览、横滑历史缩略图和可用键盘翻页的大图；刷新失败保留已有图片。
-相关状态更新保留正在填写的内容与输入焦点，卡片适配手机窄列和深浅色主题。
-`0.2.6b14` 修复升级后资源地址可能回退、需要删除并重新添加 JavaScript 资源的问题：
-Home Assistant 启动完成后再次核对并原地更新资源，保留资源条目与卡片配置。
-同时修正抓拍解析参数与媒体引用路径，使用集成独立的鉴权媒体源读取现有图片和录像，
-无需配置 `media_dirs` 或搬动已保存的文件。
-在 HACS 更新到 **v0.2.6b14**，**重启 Home Assistant 后强制刷新浏览器**。
-本地回归与模拟浏览器验证已通过，实际 HA 升级后的资源更新和抓拍读取仍需设备确认。
-详见 [本版说明](docs/releases/0.2.6b14.md)。
+`0.2.6b13` improved the overview card: it shows the main lock, door contact, and deadbolt separately, with a valid battery level at the top. Recent openings emphasize the person, inside/outside direction, method, and time; an inside opening does not display the old outside-opening person or credential. Door-view snapshots add a large preview of the newest image, horizontally scrollable history thumbnails, and keyboard navigation in the large view; failed refreshes retain existing images. Related state updates preserve text being entered and input focus. The card adapts to narrow phone columns and light/dark themes.
 
-`0.2.6b12` 补齐旧式门锁的 `battery_power` 电量字段，兼容 `deviceType=300`、
-`subDeviceType=400` 的 5 号干电池门锁；用户诊断中的库存和 6 次实时推送回放均读出 60%。
-继续支持干电池、锂电池管理器的扁平与嵌套字段，有效管理器数据优先；只显示有有效电量的
-来源，无值项由集成隐藏，收到有效电量后自动恢复，保留用户手动隐藏设置。
-缺少电量的局部推送不清空最近有效读数，0% 仍有效。主锁、门磁和反锁独立解析，
-“未反锁”不覆盖主锁的已上锁状态。更新后重启 Home Assistant，实际实体显示仍需设备确认。
+`0.2.6b14` fixed resource URLs reverting after upgrade and requiring users to delete and re-add JavaScript resources. After Home Assistant starts, it checks the URL again and updates it in place, preserving the resource entry and card configuration. It also corrected snapshot parsing parameters and media references, using the integration's authenticated media source to read existing images and recordings without configuring `media_dirs` or moving saved files.
+Update to **v0.2.6b14** in HACS, **restart Home Assistant, then force-refresh the browser**.
+Local regression and simulated browser checks passed; resource updates and snapshot reads after a real HA upgrade still need device confirmation.
+See the [release notes](docs/releases/0.2.6b14.md).
 
-全家诊断保留全部设备，修复超过 50 台时门锁可能被截断的问题；门锁诊断同时提供库存和
-最新状态的属性，继续执行脱敏。详见 [旧式门锁电量兼容说明](docs/releases/0.2.6b12.md)。
+`0.2.6b12` added the `battery_power` field for older locks with five dry-cell batteries, covering `deviceType=300`, `subDeviceType=400`. The user's inventory and six live-push replays all reported 60%. The integration continues to support flat and nested fields for dry cells and lithium-battery managers, preferring valid manager data. It shows only sources with valid readings; entries without a value are hidden and restored when a valid reading arrives, preserving user-hidden settings.
+Partial pushes without battery data do not clear the latest valid reading; 0% is valid. The main lock, door contact, and deadbolt are parsed independently, so “not deadbolted” does not overwrite an engaged main lock. Restart Home Assistant after updating; the actual entity display still needs device confirmation.
 
-从 `0.2.6b10` 起，开门方向按四类凭据规则判断：密码（含临时密码）、指纹、钥匙和卡片判为外开；
-其余开锁方式及没有匹配到四类凭据的门磁开门统一判为内开，内开不沿用上次外开人员。
-这是集成的判定规则；内开没有可确认的身份时显示“人员未知”。
-在集成选项“锁用户映射”中可使用 `设备ID/指纹方式/用户编号=姓名`，例如
-`deviceID/fingerprint/7=张三`，也兼容 `deviceID/7=张三` 和 `7=张三`。
+Whole-home diagnostics now retain all devices, fixing truncation of locks when there are more than 50. Lock diagnostics also include inventory and latest-state properties, with redaction retained. See [Legacy Lock Battery Compatibility](docs/releases/0.2.6b12.md).
 
-猫眼抓拍默认每把锁保留最近 **30 张**，集成选项“门锁抓拍保留数量”可设为 **1–500**。
-下载失败会重试；同秒多图分别保存；重启恢复最新图片，迟到的旧图不会覆盖新画面。
-总览卡片默认展示 30 张，使用 `history_limit` 调整展示数量。更新后重启 Home Assistant，
-卡片仍显示旧内容时强制刷新浏览器。详见[门锁方向、开锁人及抓拍](docs/lock-opening-and-snapshots.md)。
+Since `0.2.6b10`, opening direction follows four credential categories: password (including temporary password), fingerprint, key, and card count as opening from outside. Other unlock methods and door-contact openings not matched to one of these four credential types count as opening from inside; an inside opening does not inherit the previous outside person's identity. This is the integration's classification rule; an inside opening with no confirmed identity displays “Person unknown.”
+In the “Lock User Mapping” integration option, use `deviceID/method/userID=name`, for example `deviceID/fingerprint/7=John Doe`; `deviceID/7=John Doe` and `7=John Doe` also work.
 
-只管理临时密码时，添加以下 Lovelace 卡片：
+Door-view snapshot retention defaults to **30 images** per lock; set **1–500** in the “Door Lock Snapshot Retention Count” integration option. Failed downloads are retried; images captured in the same second are saved separately; restart restores the latest image and a delayed old image does not overwrite a new one.
+The overview card displays 30 images by default; use `history_limit` to change its display count. Restart Home Assistant after updating; if the card still shows old content, force-refresh the browser. See [Door Lock Direction, Unlocker Identity, and Snapshots](docs/lock-opening-and-snapshots.md).
+
+To manage temporary passwords only, add this Lovelace card:
 
 ```yaml
 type: custom:orvibo-smart-control-temp-password-card
 device_id: w-example-door-lock-id
 ```
 
-需要同时查看门锁状态、事件和临时密码时使用总览卡片：
+To view lock state, events, and temporary passwords together, use the overview card:
 
 ```yaml
 type: custom:orvibo-smart-control-door-lock-card
 device_id: w-example-door-lock-id
 ```
 
-服务字段、响应、事件载荷和自动化示例统一记录在
-[服务与事件参考](docs/SERVICES_AND_EVENTS.md)。
+Service fields, responses, event payloads, and automation examples are documented in the [Services and Events Reference](docs/SERVICES_AND_EVENTS.md).
 
-## 故障定位
+## Troubleshooting
 
-| 现象                       | 优先检查                                                                    |
-| -------------------------- | --------------------------------------------------------------------------- |
-| 能登录但没有设备           | 账号所在云区、家庭选择、设备筛选选项；随后执行 `refresh_devices`            |
-| 控制一直走云端             | 模式是否为“纯云端”、设备是否在 LAN 能力表、网关是否完成认证                 |
-| 网关无法连接               | HA 与 MixPad 是否同一可达网络，UDP 发现和 TCP `8088` 是否被 VLAN/防火墙阻断 |
-| LAN 控制失败后状态稍慢     | 查看云端长连接是否在线；LAN 失败只会向云端重试一次                          |
-| 纯 LAN 下门锁/晾衣机不可用 | 这是预期限制；改用默认结合模式，让 LAN 不支持的 Wi-Fi 设备走云端            |
-| 独立 MixPad 凭据仍登录失败 | 确认 LAN 用户名和密码属于该 MixPad；留空密码只会保留已经配置过的摘要        |
-| 门锁没有图片或录像         | 检查云端凭据、HA 的 `media` 目录权限；MP4 转封装还需要可用的 ffmpeg         |
-| 出现重复实体               | 检查是否仍加载其他 ORVIBO 集成，并按迁移文档确认实体归属                    |
+| Symptom | Check first |
+| --- | --- |
+| Login succeeds but no devices appear | Account cloud region, selected family, and device-filter options; then run `refresh_devices` |
+| Control always uses cloud | Whether mode is “Pure cloud,” whether the device is in the LAN capability table, and whether gateway authentication completed |
+| Gateway cannot connect | Whether HA and MixPad are on mutually reachable networks, and whether VLAN/firewall blocks UDP discovery or TCP `8088` |
+| State updates are slow after LAN control fails | Whether the cloud long connection is online; a LAN failure retries through cloud once only |
+| Locks/clothes dryers unavailable in pure LAN | Expected limitation; use default combined mode so Wi-Fi devices without LAN support use cloud |
+| Separate MixPad credentials still fail to log in | Confirm LAN username/password belong to that MixPad; leaving the password empty preserves only a previously configured digest |
+| Lock images or recordings are missing | Check cloud credentials and HA `media` directory permissions; MP4 remuxing also needs working ffmpeg |
+| Duplicate entities appear | Check whether another ORVIBO integration is still loaded and use the migration guide to identify entity ownership |
 
-需要提交问题时，请附 Home Assistant 版本、集成版本、设备公开型号、接入方式、相关日志
-和可复现步骤。不要附账号、密码摘要、token、家庭/设备标识、IP、MAC、签名媒体 URL
-或未经处理的诊断文件。完整规则见 [安全策略](SECURITY.md)。
+When submitting an issue, include the Home Assistant and integration versions, public device model, connection method, relevant logs, and reproduction steps. Do not include accounts, password digests, tokens, family/device identifiers, IPs, MACs, signed media URLs, or unredacted diagnostics. See the [Security Policy](SECURITY.md) for complete rules.
 
-## 升级与迁移
+## Upgrades and migration
 
-本项目是新的 Home Assistant 集成域，其他 ORVIBO 集成的配置条目不会自动转入。建议先
-并行验证新集成，再处理旧实体和历史数据。操作顺序、回退方法和内部配置版本迁移的区别
-见 [迁移指南](docs/MIGRATION.md)。
+This project uses a new Home Assistant integration domain, so config entries from other ORVIBO integrations do not transfer automatically. First validate the new integration in parallel, then handle old entities and history. See the [Migration Guide](docs/MIGRATION.md) for operation order, rollback, and the distinction from internal config-version migration.
 
-## 开发与验证
+## Development and validation
 
-代码按运行时职责组织：
+Code is organized by runtime responsibility:
 
 ```text
 custom_components/orvibo_smart_control/
-  capabilities.py       设备分类、平台和可用通道
-  device_selection.py   配置流中的名称/类型动态分组与选择合并
-  coordinator.py        Home Assistant 生命周期及双通道编排
-  lan/                  网关发现、认证、TCP 会话和控制适配
-  https_client.py       云端 REST 登录与设备快照
-  ssl_client.py         云端 TLS 实时推送和控制
-  parsers/              LAN/SSL 共用的状态归一化
-  state_store.py        字段级来源优先级和去重
-  control_router.py     与传输无关的设备动作路由
-  control_executor.py   通道选择、执行和单次云回退
-  runtime_options.py    上下线通知和可选更新检查
-  lock_* / temp_*       门锁事件、媒体与临时密码
-  www/                  内置门锁卡片
+  capabilities.py       Device categories, platforms, and available transports
+  device_selection.py   Dynamic name/type grouping and selection merging in config flow
+  coordinator.py        Home Assistant lifecycle and dual-channel orchestration
+  lan/                  Gateway discovery, authentication, TCP sessions, and control adapter
+  https_client.py       Cloud REST login and device snapshots
+  ssl_client.py         Cloud TLS live pushes and control
+  parsers/              Shared LAN/SSL state normalization
+  state_store.py        Field-level source priority and deduplication
+  control_router.py     Transport-independent device-action routing
+  control_executor.py   Channel selection, execution, and one cloud fallback
+  runtime_options.py    Online/offline notifications and optional update checks
+  lock_* / temp_*       Lock events, media, and temporary passwords
+  www/                  Built-in door-lock cards
 ```
 
-项目使用标准库 `unittest` 运行不依赖完整 Home Assistant 的测试，并由 CI 执行语法、
-身份、HACS 和 hassfest 校验。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。
+The project uses the standard-library `unittest` to run tests that do not require a full Home Assistant installation. CI runs syntax, identity, HACS, and hassfest checks. Read the [Contribution Guide](CONTRIBUTING.md) before contributing.
 
-## 文档索引
+## Documentation index
 
-| 文档                                          | 面向读者         | 内容                               |
-| --------------------------------------------- | ---------------- | ---------------------------------- |
-| [设备支持矩阵](docs/DEVICE_SUPPORT.md)        | 用户、设备贡献者 | 已验证型号、通道和限制             |
-| [服务与事件参考](docs/SERVICES_AND_EVENTS.md) | 自动化作者       | 服务字段、响应和事件载荷           |
-| [迁移指南](docs/MIGRATION.md)                 | 现有集成用户     | 独立域迁移、去重和回退             |
-| [运行时架构](FUSION_DESIGN.md)                | 维护者           | 数据流、路由、状态合并和 ADR       |
-| [贡献指南](CONTRIBUTING.md)                   | 贡献者           | 开发流程、测试、真机证据和 PR 要求 |
-| [安全策略](SECURITY.md)                       | 所有人           | 漏洞报告、秘密处理和媒体风险       |
-| [变更记录](CHANGELOG.md)                      | 所有人           | 版本历史和未发布变更               |
-| [MIT 许可证](LICENSE)                         | 所有人           | 使用与再分发条款                   |
+| Document | Audience | Contents |
+| --- | --- | --- |
+| [Device Support Matrix](docs/DEVICE_SUPPORT.md) | Users and device contributors | Verified models, transports, and limitations |
+| [Services and Events Reference](docs/SERVICES_AND_EVENTS.md) | Automation authors | Service fields, responses, and event payloads |
+| [Migration Guide](docs/MIGRATION.md) | Users of existing integrations | Separate-domain migration, deduplication, and rollback |
+| [Runtime Architecture](FUSION_DESIGN.md) | Maintainers | Data flow, routing, state merging, and ADRs |
+| [Contribution Guide](CONTRIBUTING.md) | Contributors | Development workflow, tests, real-device evidence, and PR requirements |
+| [Security Policy](SECURITY.md) | Everyone | Vulnerability reports, secret handling, and media risks |
+| [Changelog](CHANGELOG.md) | Everyone | Version history and unreleased changes |
+| [MIT License](LICENSE) | Everyone | Use and redistribution terms |
 
-## 许可证与致谢
+## License and acknowledgements
 
-项目以 [MIT License](LICENSE) 发布。协议研究和早期设备支持受益于 ORVIBO 社区贡献者与真机测试者。
+The project is released under the [MIT License](LICENSE). Protocol research and early device support benefited from ORVIBO community contributors and real-device testers.
 
-ORVIBO、HomeMate 和智家 365 是其各自权利人的商标。本项目是社区维护的软件，不代表
-厂商官方支持。
+ORVIBO, HomeMate, and Smart Home 365 are trademarks of their respective owners. This is community-maintained software and is not officially supported by the vendor.

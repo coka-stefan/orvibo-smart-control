@@ -69,7 +69,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
 
     def platform(self, options=None):
         coordinator = types.SimpleNamespace(devices={
-            "nvr": {"device_id": "nvr", "uid": "vendor-nvr", "device_type_raw": 162, "device_name": "录像机"},
+            "nvr": {"device_id": "nvr", "uid": "vendor-nvr", "device_type_raw": 162, "device_name": "NVR"},
             "other": {"device_id": "other", "device_type_raw": 14, "camera_type": 4},
             "lock": {"device_id": "lock", "device_type_raw": 522},
         }, register_lock_camera=MagicMock())
@@ -85,7 +85,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.module, "LiveCameraBootstrap", return_value=bootstrap):
             await self.module.async_setup_entry(hass, entry, entities.extend)
         self.assertEqual([e._description.channel_id for e in entities], [1, 1, 3, 3])
-        self.assertEqual([e._attr_name for e in entities], ["录像机 通道 1", "录像机 通道 1 硬盘回放", "录像机 通道 3", "录像机 通道 3 硬盘回放"])
+        self.assertEqual([e._attr_name for e in entities], ["NVR Channel 1", "NVR Channel 1 Disk playback", "NVR Channel 3", "NVR Channel 3 Disk playback"])
         self.assertEqual(entities[0].device_info["identifiers"], {("orvibo_smart_control", "nvr")})
         self.assertNotEqual(entities[0]._attr_unique_id, entities[1]._attr_unique_id)
         self.assertEqual(list(bootstrap.discover.call_args.args[0]), ["nvr"])
@@ -93,7 +93,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
     async def test_selected_s1_gets_live_and_storage_card_playback_without_changing_nvr_ids(self):
         coordinator, hass, entry = self.platform({"selected_device_ids": ["s1"]})
         coordinator.devices["s1"] = {"device_id": "s1", "uid": "vendor-s1",
-            "device_type_raw": 14, "camera_type": 9, "device_name": "巨目2K智能摄像机S1"}
+            "device_type_raw": 14, "camera_type": 9, "device_name": "Jumu 2K Smart Camera S1"}
         description = self.module.LiveCameraDescription("s1", "vendor-s1", 0, False)
         bootstrap = types.SimpleNamespace(discover=AsyncMock(return_value=[description]))
         entities = []
@@ -104,7 +104,7 @@ class CameraLiveTests(unittest.IsolatedAsyncioTestCase):
         playback.entity_id = "camera.s1_sd"
         self.assertEqual(live._attr_unique_id, "orvibo_smart_control_live_s1_0")
         self.assertEqual(playback._attr_unique_id, "orvibo_smart_control_sd_s1_0")
-        self.assertEqual(playback._attr_name, "巨目2K智能摄像机S1 存储卡回放")
+        self.assertEqual(playback._attr_name, "Jumu 2K Smart Camera S1 Memory-card playback")
         self.assertEqual(playback.device_info["identifiers"], {("orvibo_smart_control", "s1")})
         self.assertEqual(playback.extra_state_attributes["video_mode"], "sd_playback")
         self.assertEqual(playback.extra_state_attributes["recording_storage"], "sd_card")

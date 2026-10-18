@@ -1,9 +1,9 @@
-"""门锁事件录像归档：下载 .h264 事件录像并转封装为 MP4。
+"""Lock event video archive: download .h264 event recordings and remux them to MP4.
 
-事件录像（撬锁/离家告警等）的 videoUrl 是 COS 对象键，可通过预签名 URL
-直接下载（URL 自带 x-cos-security-token）。裸 H.264 无法被浏览器/HA
-直接播放，用 ffmpeg 无损转封装（-c copy，不改编码）成 MP4 后存到
-HA 标准 media 目录，媒体浏览器与通知即可引用。
+For event recordings (tampering, away alerts, etc.), videoUrl is a COS object key that can be downloaded using a presigned URL.
+The URL includes x-cos-security-token. Browsers and HA cannot play raw H.264
+directly, so ffmpeg remuxes it losslessly (-c copy, no re-encoding) to MP4 and saves it in
+the standard HA media directory for use by the media browser and notifications.
 """
 
 from __future__ import annotations
@@ -20,26 +20,26 @@ from typing import Optional
 
 _LOGGER = logging.getLogger(__name__)
 
-# 事件录像对象键形如 /uid/videoPicklockEvent/picklockEvent_<ts>.h264
+# Event video object keys look like /uid/videoPicklockEvent/picklockEvent_<ts>.h264
 _EVENT_PATTERN = re.compile(
     r"/(?:video|picture)([A-Za-z]+)Event/(?:[A-Za-z]+)_(\d+)\.\w+$"
 )
 
 
 def _sanitize(name: str) -> str:
-    """文件名安全化：只保留字母数字与 _-。"""
+    """Sanitize filenames by keeping only alphanumeric characters, underscores, and hyphens."""
     return re.sub(r"[^A-Za-z0-9_-]", "_", name) or "device"
 
 
 def _event_dir(media_root: Path, device_id: str) -> Path:
-    """事件归档目录（与 history.history_dir 一致）。"""
+    """Event archive directory, matching history.history_dir."""
     d = Path(media_root) / "orvibo_smart_control" / _sanitize(device_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def infer_event_name(object_key: str) -> Optional[tuple[str, str]]:
-    """从对象键推断事件名与时间戳，如 ('picklock', '1785652830')。"""
+    """Infer the event name and timestamp from an object key, e.g. ('picklock', '1785652830')."""
     m = _EVENT_PATTERN.search(object_key.replace("\\", "/"))
     if not m:
         return None
@@ -72,7 +72,7 @@ def build_media_paths(
     device_id: str,
     object_key: str,
 ) -> Optional[tuple[Path, Path]]:
-    """返回 (h264 原始路径, mp4 目标路径)；无法推断事件名时返回 None。"""
+    """Return the (raw h264 path, target mp4 path), or None if the event name cannot be inferred."""
     object_key = normalize_event_object_key(object_key) or ""
     info = infer_event_name(object_key)
     if not info:
@@ -84,12 +84,12 @@ def build_media_paths(
 
 
 def find_ffmpeg() -> Optional[str]:
-    """查找 ffmpeg 可执行文件（HA 环境通常自带）。"""
+    """Find the ffmpeg executable (usually included in HA environments)."""
     return shutil.which("ffmpeg")
 
 
 def download(url: str, dest: Path, timeout: int = 60) -> bool:
-    """下载预签名 URL 到目标路径（同步阻塞，调用方应放线程池）。"""
+    """Download a presigned URL to the target path (blocking; callers should use an executor)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
@@ -105,11 +105,11 @@ def download(url: str, dest: Path, timeout: int = 60) -> bool:
     except urllib.error.HTTPError as e:
         if e.code == 404:
             _LOGGER.warning(
-                "录像对象不存在（可能已过期或尚未上传完成）: %s", dest.name
+                "Video object does not exist (it may have expired or not finished uploading): %s", dest.name
             )
         else:
             _LOGGER.warning(
-                "录像下载 HTTP %s: %s",
+                "Video download HTTP %s: %s",
                 e.code,
                 e.read(300).decode("utf-8", "replace")[:200],
             )
@@ -119,7 +119,7 @@ def download(url: str, dest: Path, timeout: int = 60) -> bool:
             pass
         return False
     except (urllib.error.URLError, OSError) as e:
-        _LOGGER.warning("录像下载失败: %s", e)
+        _LOGGER.warning("Video download failed: %s", e)
         try:
             tmp.unlink(missing_ok=True)
         except OSError:
@@ -128,9 +128,9 @@ def download(url: str, dest: Path, timeout: int = 60) -> bool:
 
 
 def transcode_to_mp4(src: Path, dest: Path, ffmpeg: Optional[str]) -> bool:
-    """ffmpeg -c copy 无损转封装 h264 → mp4；无 ffmpeg 时返回 False。
+    """Losslessly remux h264 to mp4 with ffmpeg -c copy; return False when ffmpeg is unavailable.
 
-    转码成功后删除原始 h264（避免重复占用）；失败保留 h264 供手动处理。
+    Delete the original h264 after successful remux to avoid duplicate storage; keep it for manual handling on failure.
     """
     if not ffmpeg or not src.exists():
         return False
@@ -155,10 +155,10 @@ def transcode_to_mp4(src: Path, dest: Path, ffmpeg: Optional[str]) -> bool:
             cmd, capture_output=True, text=True, timeout=120, check=False
         )
     except (OSError, subprocess.TimeoutExpired) as e:
-        _LOGGER.warning("ffmpeg 转码失败: %s", e)
+        _LOGGER.warning("ffmpeg remux failed: %s", e)
         return False
     if proc.returncode != 0 or not tmp.exists():
-        _LOGGER.warning("ffmpeg 转码返回 %s: %s", proc.returncode, proc.stderr.strip()[:300])
+        _LOGGER.warning("ffmpeg remux returned %s: %s", proc.returncode, proc.stderr.strip()[:300])
         try:
             tmp.unlink(missing_ok=True)
         except OSError:
@@ -173,7 +173,7 @@ def transcode_to_mp4(src: Path, dest: Path, ffmpeg: Optional[str]) -> bool:
 
 
 class VideoArchiver:
-    """事件录像下载 + 转码 + 文件管理。"""
+    """Download, remux, and manage event video files."""
 
     def __init__(
         self,
@@ -188,13 +188,13 @@ class VideoArchiver:
         return self._ffmpeg is not None
 
     def paths_for(self, device_id: str, object_key: str) -> Optional[tuple[Path, Path]]:
-        """按对象键计算确定性文件路径（h264 原始, mp4 目标）。"""
+        """Calculate deterministic file paths from the object key (raw h264 and target mp4)."""
         return build_media_paths(self._media_root, device_id, object_key)
 
     def event_paths(
         self, device_id: str, kind: str, ts: int | str
     ) -> tuple[Path, Path]:
-        """按事件类型+时间戳计算路径（与截图历史命名一致）。"""
+        """Calculate paths from event type and timestamp, matching snapshot history naming."""
         kind = re.sub(r"[^A-Za-z0-9_]", "_", str(kind)) or "event"
         base = _event_dir(self._media_root, device_id) / f"{kind}_{ts}"
         return base.with_suffix(".h264"), base.with_suffix(".mp4")
@@ -211,13 +211,13 @@ class VideoArchiver:
         object_key: str,
         url: str,
     ) -> Optional[dict[str, str]]:
-        """下载并转码录像，返回 {h264_file, mp4_file, media_id} 或 None。"""
+        """Download and remux a recording; return {h264_file, mp4_file, media_id} or None."""
         paths = self.paths_for(device_id, object_key)
         if paths is None:
             return None
         h264_path, mp4_path = paths
         if mp4_path.exists() and mp4_path.stat().st_size > 0:
-            # 已归档过（同一事件去重）
+            # Already archived; deduplicate the same event
             return self._result(h264_path, mp4_path)
         if not download(url, h264_path):
             return None
@@ -231,7 +231,7 @@ class VideoArchiver:
         ts: int | str,
         url: str,
     ) -> Optional[dict[str, str]]:
-        """按事件类型+时间戳归档录像（历史目录统一命名）。"""
+        """Archive the recording by event type and timestamp using consistent history naming."""
         h264_path, mp4_path = self.event_paths(device_id, kind, ts)
         if mp4_path.exists() and mp4_path.stat().st_size > 0:
             return self._result(h264_path, mp4_path)

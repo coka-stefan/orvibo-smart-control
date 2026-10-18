@@ -40,10 +40,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
-    MOTION_RESET_DELAY = 30  # 人体传感器触发后恢复延时（秒）
-    EMERGENCY_RESET_DELAY = 180  # 紧急按钮触发后恢复延时（秒），3分钟
-    LOCK_RESET_DELAY = 5  # 门锁门铃/开锁事件触发后恢复延时（秒）
-    LOCK_DOOR_OPEN_WINDOW = 30  # 开锁 → 开门 的归属窗口（秒）
+    MOTION_RESET_DELAY = 30  # Reset delay after motion sensor activation (seconds)
+    EMERGENCY_RESET_DELAY = 180  # Reset delay after emergency button activation (seconds), 3 minutes
+    LOCK_RESET_DELAY = 5  # Reset delay after lock doorbell/unlock events (seconds)
+    LOCK_DOOR_OPEN_WINDOW = 30  # Attribution window from unlock to door opening (seconds)
     
     def __init__(
         self,
@@ -77,21 +77,21 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._lan_discover_task: Optional[asyncio.Task] = None
         self._lan_closed = False
         
-        self._motion_reset_tasks: Dict[str, asyncio.Task] = {}  # 人体传感器重置任务
-        self._emergency_reset_tasks: Dict[str, asyncio.Task] = {}  # 紧急按钮重置任务
-        self._lock_reset_tasks: Dict[tuple, asyncio.Task] = {}  # 门锁事件复位任务
-        self._lock_user_names: Dict[str, Dict[str, str]] = {}  # device_id -> {user_id: 名称}
-        self._lock_user_names_shared: Dict[str, str] = dict(lock_user_names or {})  # 持久化映射（entry 级）
+        self._motion_reset_tasks: Dict[str, asyncio.Task] = {}  # Motion sensor reset tasks
+        self._emergency_reset_tasks: Dict[str, asyncio.Task] = {}  # Emergency button reset tasks
+        self._lock_reset_tasks: Dict[tuple, asyncio.Task] = {}  # Lock event reset tasks
+        self._lock_user_names: Dict[str, Dict[str, str]] = {}  # device_id -> {user_id: name}
+        self._lock_user_names_shared: Dict[str, str] = dict(lock_user_names or {})  # Persistent mapping (config-entry level)
         self.lock_events = LockEventManager(
             self.lock_user_name,
             credential_name=self.lock_user_name,
             door_open_window=self.LOCK_DOOR_OPEN_WINDOW,
         )
         
-        # 调试信息：记录最近收到的原始状态推送（仅内存，日志/诊断均脱敏）
+        # Debug: retain recent raw state pushes in memory only; logs and diagnostics are redacted
         self._cmd42_log: list[dict] = []
         self._redaction_salt = secrets.token_bytes(32)
-        self._last_update_time: Dict[str, float] = {}  # 设备最后更新时间戳
+        self._last_update_time: Dict[str, float] = {}  # Timestamp of the last device update
 
         super().__init__(
             hass,
@@ -225,7 +225,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             self._cancel_emergency_reset(device_id)
 
     async def _schedule_motion_reset(self, device_id: str) -> None:
-        """安排人体传感器状态重置"""
+        """Schedule a motion sensor state reset."""
         self._cancel_motion_reset(device_id)
         
         async def reset_motion():
@@ -233,19 +233,19 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             state = self.device_states.get(device_id)
             if state and state.get("motion_detected"):
                 state["motion_detected"] = False
-                _LOGGER.debug(f"[人体传感器] {device_id[:12]}... 延时{self.MOTION_RESET_DELAY}秒后恢复为未触发")
+                _LOGGER.debug(f"[Motion sensor] {device_id[:12]}... resetting to inactive after {self.MOTION_RESET_DELAY} seconds")
                 self.async_update_listeners()
         
         self._motion_reset_tasks[device_id] = asyncio.create_task(reset_motion())
 
     def _cancel_motion_reset(self, device_id: str) -> None:
-        """取消人体传感器状态重置任务"""
+        """Cancel the motion sensor state reset task."""
         task = self._motion_reset_tasks.pop(device_id, None)
         if task and not task.done():
             task.cancel()
 
     async def _schedule_emergency_reset(self, device_id: str) -> None:
-        """安排紧急按钮状态重置（3分钟后自动恢复为正常）"""
+        """Schedule an emergency button state reset (automatically resets after 3 minutes)."""
         self._cancel_emergency_reset(device_id)
 
         async def reset_emergency():
@@ -253,13 +253,13 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             state = self.device_states.get(device_id)
             if state and state.get("emergency_state"):
                 state["emergency_state"] = False
-                _LOGGER.debug(f"[紧急按钮] {device_id[:12]}... 延时{self.EMERGENCY_RESET_DELAY}秒后恢复为正常")
+                _LOGGER.debug(f"[Emergency button] {device_id[:12]}... resetting to normal after {self.EMERGENCY_RESET_DELAY} seconds")
                 self.async_update_listeners()
 
         self._emergency_reset_tasks[device_id] = asyncio.create_task(reset_emergency())
 
     def _cancel_emergency_reset(self, device_id: str) -> None:
-        """取消紧急按钮状态重置任务"""
+        """Cancel the emergency button state reset task."""
         task = self._emergency_reset_tasks.pop(device_id, None)
         if task and not task.done():
             task.cancel()
@@ -275,7 +275,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             self._schedule_lock_reset(device_id, update.reset_kind)
 
     def _schedule_lock_reset(self, device_id: str, kind: str) -> None:
-        """安排门锁事件状态复位（默认5秒后恢复为未触发），同设备同类型只保留一个任务。"""
+        """Schedule a lock event state reset (inactive after 5 seconds by default), keeping one task per device and event type."""
         key = (device_id, kind)
         task = self._lock_reset_tasks.pop(key, None)
         if task and not task.done():
@@ -298,7 +298,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._lock_reset_tasks[key] = asyncio.create_task(reset_lock())
 
     def _publish_lock_event(self, device_id: str, raw_status: dict) -> None:
-        """把归一化后的门锁状态/事件发布到 HA 事件总线（日志脱敏）。"""
+        """Publish normalized lock states/events to the HA event bus (redacted in logs)."""
         from .const import LOCK_EVENT
 
         data = self.lock_events.build_event(device_id, raw_status)
@@ -320,7 +320,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             data.update(self.lock_media.attach_urls(device_id, raw_status, data))
         self.hass.bus.async_fire(LOCK_EVENT, data)
         _LOGGER.debug(
-            "[门锁事件总线] device=%s locked=%s door=%s kind=%s",
+            "[Lock event bus] device=%s locked=%s door=%s kind=%s",
             fingerprint(device_id, self._redaction_salt),
             data.get("locked"),
             data.get("door_open"),
@@ -380,7 +380,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         end_time: Optional[int] = None,
         device_uid: str = "",
     ) -> Dict[str, Any]:
-        """下发临时密码并返回归一化结果。"""
+        """Send a temporary password and return the normalized result."""
         return await self.temp_passwords.grant(
             device_id,
             auth_type,
@@ -399,33 +399,33 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         authorized_id: int,
         device_uid: str = "",
     ) -> Dict[str, Any]:
-        """删除临时密码（cmd=247）。"""
+        """Delete a temporary password (cmd=247)."""
         return await self.temp_passwords.revoke(
             device_id, authorized_id, device_uid
         )
 
     async def async_list_temp_passwords(self, device_id: str = "") -> Dict[str, Any]:
-        """列出服务器端全部临时密码（readtable authorizedUnlock，含过期状态）。"""
+        """List all server-side temporary passwords from readtable authorizedUnlock, including expired entries."""
         return await self.temp_passwords.list(device_id)
 
     async def async_fetch_server_temp_passwords(self) -> list[dict]:
-        """从 readtable（REST 全量同步）拉取 authorizedUnlock 表。"""
+        """Fetch the authorizedUnlock table from readtable (full REST sync)."""
         return await self.temp_passwords.fetch_server_records()
 
     def temp_password_state(self, device_id: str) -> Optional[dict]:
-        """给传感器用：返回最近一条有效临时密码的展示信息。"""
+        """Return display information for the latest valid temporary password for sensors."""
         return self.temp_passwords.state(device_id)
 
     def start_temp_password_cleanup(self) -> None:
-        """启动临时密码自动回收：每 6 小时清理过期/次数用尽的密码。"""
+        """Start automatic temporary password cleanup, removing expired or exhausted passwords every 6 hours."""
         self.temp_passwords.start_cleanup()
 
     def stop_temp_password_cleanup(self) -> None:
-        """取消临时密码回收定时任务（集成卸载时调用）。"""
+        """Cancel the scheduled temporary password cleanup task when the integration unloads."""
         self.temp_passwords.stop_cleanup()
 
     def lock_user_name(self, device_id: str, user_id: object, method: Optional[str] = None) -> Optional[str]:
-        """返回门锁 userId 配置的显示名称（无配置返回 None）。"""
+        """Return the configured display name for a lock userId, or None if unset."""
         if not isinstance(user_id, (str, int)):
             return None
         key = str(user_id)
@@ -441,7 +441,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return name if isinstance(name, str) and name else None
 
     def set_lock_user_name(self, device_id: str, user_id: str, name: str) -> bool:
-        """为门锁 userId 设置/清除显示名称。"""
+        """Set or clear a display name for a lock userId."""
         device_id = str(device_id or "")
         user_id = str(user_id) if user_id is not None else ""
         if not device_id or not user_id:
@@ -452,7 +452,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return True
 
     def _publish_lock_message(self, device_id: str, raw_status: dict) -> None:
-        """发布 cmd=82 推送消息事件（门锁文本消息/告警，日志脱敏）。"""
+        """Publish a cmd=82 push-message event (lock text messages/alerts; logs are redacted)."""
         from .const import LOCK_EVENT
 
         event = self.lock_events.build_message(device_id, raw_status)
@@ -462,7 +462,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         event.update(self.lock_media.attach_urls(device_id, raw_status, event))
         self.hass.bus.async_fire(LOCK_EVENT, event)
         _LOGGER.debug(
-            "[门锁消息] device=%s kind=%s is_alarm=%s text=%s",
+            "[Lock message] device=%s kind=%s is_alarm=%s text=%s",
             fingerprint(device_id, self._redaction_salt),
             event.get("kind"),
             event.get("is_alarm"),
@@ -470,7 +470,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         )
 
     async def _discover_devices(self):
-        """拉取并解析设备列表：readtable → getDeviceDesc → queryHomepageData 三层回退"""
+        """Fetch and parse devices, falling back through readtable -> getDeviceDesc -> queryHomepageData."""
         return await self.inventory.discover()
 
     async def _async_setup(self):
@@ -480,15 +480,15 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 self.https_client.family_name = None
 
             if not await self.https_client.async_detect_cloud(self.family_id):
-                raise ConfigEntryAuthFailed("HTTPS登录失败")
+                raise ConfigEntryAuthFailed('HTTPS login failed')
 
-            _LOGGER.debug("第一步：拉取设备列表（三层回退）...")
+            _LOGGER.debug("Step 1: fetching device list (three fallback paths)...")
             device_status_data, devices = await self._discover_devices()
 
             if not devices:
                 fallback_cloud = cloud_candidates(self.https_client.cloud)[1]
                 _LOGGER.warning(
-                    "%s 云端未发现设备，尝试 %s 云端 ...",
+                    "No devices found in %s cloud; trying %s cloud ...",
                     self.https_client.cloud.region.value,
                     fallback_cloud.region.value,
                 )
@@ -500,19 +500,19 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     device_status_data, devices = await self._discover_devices()
                     if devices:
                         _LOGGER.warning(
-                            "%s 云端发现 %s 个设备，本实例将使用该区域",
+                            "Found %s devices in %s cloud; this instance will use that region",
                             fallback_cloud.region.value,
                             len(devices),
                         )
                 else:
-                    _LOGGER.error("%s 云端登录失败", fallback_cloud.region.value)
+                    _LOGGER.error("Failed to log in to %s cloud", fallback_cloud.region.value)
 
             if device_status_data is None and not devices:
-                raise UpdateFailed("获取设备列表失败")
+                raise UpdateFailed('Device discovery failed')
 
             self.inventory.initialize(devices)
 
-            _LOGGER.info(f"设备列表拉取完成，共 {len(self.devices)} 个设备")
+            _LOGGER.info("Device list retrieval complete: %s devices", len(self.devices))
 
             if self._transport_mode != TransportMode.LAN_ONLY:
                 await self._init_ssl_client()
@@ -521,26 +521,26 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 ssl_ok = await self.ssl_client.connect_and_login()
                 login_status = getattr(self.ssl_client, "_login_status", None)
                 if not ssl_ok and login_status is not None and login_status != 0:
-                    # 服务器明确拒绝了登录（如密码错误 status=12），触发 HA 重新认证
+                    # The server explicitly rejected login (e.g. incorrect password, status=12); trigger HA reauthentication
                     raise ConfigEntryAuthFailed(
-                        f"SSL 登录被服务器拒绝 (status={login_status})"
+                        f'Cloud login rejected by server (status={login_status})'
                     )
                 if ssl_ok:
                     await self._query_clothes_horse_initial_status()
-                    # 后台预热门锁 COS 媒体凭证，事件到达时可直接签名出 URL
+                    # Prefetch lock COS media credentials so event URLs can be signed immediately
                     self.hass.async_create_task(self._prewarm_cos_credentials())
                 else:
                     _LOGGER.warning(
-                        "SSL 连接/登录未就绪（非认证拒绝），将在后台重试"
+                        "SSL connection/login is not ready (not an authentication rejection); will retry in the background"
                     )
 
             if self._transport_mode != TransportMode.CLOUD_ONLY:
                 try:
                     await self._init_lan_gateways()
                 except Exception as e:  # noqa: BLE001
-                    _LOGGER.warning("LAN 网关初始化失败: %s", e)
+                    _LOGGER.warning("LAN gateway initialization failed: %s", e)
 
-            _LOGGER.info(f"初始化完成，共 {len(self.devices)} 个设备")
+            _LOGGER.info("Initialization complete: %s devices", len(self.devices))
             for device_id, dev in self.devices.items():
                 state = self.device_states.get(device_id, {})
                 category = classify_device(dev)
@@ -567,7 +567,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     self._apply_registered_state_parser(category, state, {"properties": state.get("properties", {}), "value1": state.get("value1")})
                 
                 _LOGGER.debug(
-                    f"  设备: name={dev.get('device_name')}, device_id={device_id}, "
+                    f"  Device: name={dev.get('device_name')}, device_id={device_id}, "
                     f"deviceType={dev.get('device_type_raw')}, uid={dev.get('uid')}, "
                     f"online={state.get('online')}, state={state.get('state')}"
                 )
@@ -576,10 +576,10 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         except ConfigEntryAuthFailed:
             raise
         except Exception as e:
-            raise UpdateFailed(f"初始化失败: {str(e)}") from e
+            raise UpdateFailed(f'Initialization failed: {str(e)}') from e
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        _LOGGER.debug("正在更新设备数据...")
+        _LOGGER.debug("Updating device data...")
         if self._transport_mode == TransportMode.LAN_ONLY:
             return self.device_states
         try:
@@ -593,21 +593,21 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 )
             return self.device_states
         except Exception as e:
-            raise UpdateFailed(f"更新失败: {str(e)}") from e
+            raise UpdateFailed(f'Update failed: {str(e)}') from e
 
     async def _init_ssl_client(self):
         if self.ssl_client is not None:
             return
 
         while not self.https_client.family_id:
-            _LOGGER.debug("等待family_id...")
+            _LOGGER.debug("Waiting for family_id...")
             await asyncio.sleep(1)
 
         def on_session_id_obtained(session_id: str):
-            _LOGGER.debug("设置session_id: %s", session_id)
+            _LOGGER.debug("Set session_id: %s", session_id)
             self.https_client.set_session_id(session_id)
 
-        # SSL 控制通道跟随当前客户端的云端区域，不依赖模块级全局状态。
+        # The SSL control channel follows the current client cloud region, not module-level global state.
         ssl_host = self.https_client.cloud.ssl_host
         self.ssl_client = SSLClient(
             hass=self.hass,
@@ -626,7 +626,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         )
 
     async def _init_lan_gateways(self) -> None:
-        """发现并连接局域网 MixPad 网关，接入 LAN 实时状态推送。"""
+        """Discover and connect to LAN MixPad gateways to receive live state updates."""
         if self.gateway_manager is not None:
             return
         lan_credentials = self.lan_credentials
@@ -664,7 +664,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     if isinstance(result, Exception) and hasattr(result, "reason")
                     else type(result).__name__
                 )
-                _LOGGER.debug("LAN 网关 %s 未就绪: %s", uid, reason)
+                _LOGGER.debug("LAN gateway %s is not ready: %s", uid, reason)
 
     def _lan_gateway_connected(self, device_uid: str) -> bool:
         if self.gateway_manager is None:
@@ -672,7 +672,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return self.gateway_manager.is_connected(device_uid)
 
     async def _lan_discover_loop(self) -> None:
-        """周期刷新网关端点并保持连接（与 lan-control 的 5 分钟节奏一致）。"""
+        """Refresh gateway endpoints periodically and keep connections alive (matching lan-control's five-minute interval)."""
         while not self._lan_closed:
             await asyncio.sleep(300)
             if self._lan_closed or self.gateway_manager is None:
@@ -683,11 +683,11 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
-                _LOGGER.debug("LAN 网关发现失败: %s", e)
+                _LOGGER.debug("LAN gateway discovery failed: %s", e)
 
     @staticmethod
     def _lan_payload_device_id(payload: dict) -> Optional[str]:
-        """兼容 deviceId / deviceID / device_id 三种推送字段。"""
+        """Support deviceId, deviceID, and device_id push fields."""
         for field in ("deviceId", "deviceID", "device_id"):
             value = payload.get(field)
             if isinstance(value, bool) or not isinstance(value, (str, int)):
@@ -707,7 +707,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     @staticmethod
     def _lan_valid_state_payload(payload: dict) -> bool:
-        """拒绝畸形状态值，避免污染实体状态。"""
+        """Reject malformed state values to avoid corrupting entity state."""
         properties = payload.get("properties")
         if properties is not None and not isinstance(properties, dict):
             return False
@@ -737,7 +737,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return True
 
     def _on_lan_status_update(self, gateway_uid: str, payload: dict) -> None:
-        """网关推送 → 校验 → 与云端同一条解析链（StateSource.LAN 优先）。"""
+        """Validate gateway pushes and process them through the same parsing path as cloud updates (StateSource.LAN takes priority)."""
         device_id = self._lan_payload_device_id(payload)
         if device_id is None or not self._lan_valid_state_payload(payload):
             return
@@ -776,7 +776,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         await self.lock_media.prewarm()
 
     async def _query_clothes_horse_initial_status(self) -> None:
-        """SSL 登录成功后，对所有晾衣架设备下发 cmd=100 查询初始状态。"""
+        """After SSL login succeeds, send cmd=100 to all clothes dryers to query their initial state."""
         if not self.ssl_client:
             return
         for device_id, device in self.devices.items():
@@ -785,12 +785,12 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 continue
             try:
                 await self.ssl_client.send_clothes_horse_query(device_id=device_id)
-                _LOGGER.debug(f"[晾衣架初始查询] 已下发 cmd=100 device={device_id}")
+                _LOGGER.debug(f"[Initial clothes dryer query] Sent cmd=100: device={device_id}")
             except Exception as e:
-                _LOGGER.warning(f"[晾衣架初始查询] {device_id} 失败: {e}")
+                _LOGGER.warning(f"[Initial clothes dryer query] {device_id} failed: {e}")
 
     async def _wait_for_control_response(self, device_id: str) -> dict | None:
-        """发送控制后等待设备返回状态，3秒超时兜底。"""
+        """Wait for the device state after sending a control command, with a 3-second timeout fallback."""
         return await self.control.wait_for_response(device_id)
 
     def _apply_optimistic_state(
@@ -802,23 +802,23 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.control.apply_optimistic(device_id, values)
 
     async def async_turn_on(self, device_id: str, brightness: int = None, color_temp: int = None) -> bool:
-        """打开设备（基于 category 路由控制命令）。
+        """Open a device, routing the control command by category.
 
-        可选参数 brightness/color_temp 用于灯光一次性下发。
+        Optional brightness/color_temp parameters send light settings in one request.
         """
         return await self.control.turn_on(
             device_id, brightness, color_temp
         )
 
     async def async_turn_off(self, device_id: str) -> bool:
-        """关闭设备（基于 category 路由控制命令）。"""
+        """Close a device, routing the control command by category."""
         return await self.control.turn_off(device_id)
 
     async def async_set_cover_position(self, device_id: str, position: int) -> bool:
         return await self.control.set_cover_position(device_id, position)
 
     async def async_stop_cover(self, device_id: str) -> bool:
-        """停止窗帘电机。"""
+        """Stop the curtain motor."""
         return await self.control.stop_cover(device_id)
 
     async def async_dream_curtain_action(self, device_id: str, action: str) -> bool:
@@ -831,43 +831,43 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         return await self.control.set_floor_heating_temperature(device_id, temperature)
 
     async def async_set_brightness(self, device_id: str, brightness: int) -> bool:
-        """设置亮度（HA LightEntity 使用 0-255 范围）。"""
+        """Set brightness using the HA LightEntity range (0-255)."""
         return await self.control.set_brightness(device_id, brightness)
 
     async def async_set_color_temp(self, device_id: str, color_temp_k: int) -> bool:
-        """单独设置色温（Kelvin）"""
+        """Set color temperature separately (Kelvin)."""
         return await self.control.set_color_temp(device_id, color_temp_k)
 
     async def async_set_light_param(self, device_id: str, brightness: Optional[int], color_temp_k: Optional[int]) -> bool:
-        """一次性下发亮度+色温（合并单条cmd15指令，避免两次请求不同步）"""
+        """Send brightness and color temperature together in one cmd=15 to avoid out-of-sync requests."""
         return await self.control.set_light_param(
             device_id, brightness, color_temp_k
         )
 
     # ------------------------------------------------------------------
-    # 空调控制（deviceType=36，cmd=15 set property）
+    # AC control (deviceType=36, cmd=15 set property)
     # ------------------------------------------------------------------
     async def _async_ac_control_raw(self, device_id: str, device_uid: str,
                                     value1=None, value2=None, value3=None, value4=None,
                                     order: str = "set property") -> bool:
-        """下发空调原始指令（value1~value4）。
+        """Send a raw AC command (value1-value4).
 
-        根据智家365 App 抓包实测（2026-07-17），AC 控制使用以下 order：
-          - 开机:     order="on",               value1=0, value2=模式, value3=风速, value4=温度<<16
-          - 关机:     order="off",              value1=1, value2=模式, value3=风速, value4=温度<<16
-          - 切模式:   order="mode setting",     value1=0, value2=模式
-          - 设温度:   order="temperature setting",  value1=0, value2=模式, value3=风速, value4=(temp*100)<<16
-          - 设风速:   order="wind setting",     value1=0, value2=模式, value3=风速, value4=温度<<16
+        Based on a 2026-07-17 Smart Home 365 app packet capture, AC control uses these orders:
+          - Power on:  order="on",               value1=0, value2=mode, value3=fan speed, value4=temperature<<16
+          - Power off: order="off",              value1=1, value2=mode, value3=fan speed, value4=temperature<<16
+          - Set mode:  order="mode setting",     value1=0, value2=mode
+          - Set temp:  order="temperature setting", value1=0, value2=mode, value3=fan speed, value4=(temp*100)<<16
+          - Set fan:   order="wind setting",     value1=0, value2=mode, value3=fan speed, value4=temperature<<16
         """
         from .packet import HomemateJsonData
 
         owner, scope = self.control._transport(device_id)
         if owner is None:
-            _LOGGER.error("控制通道未初始化，无法下发空调指令")
+            _LOGGER.error("Control channel is not initialized; cannot send AC command")
             return False
 
         _LOGGER.debug(
-            f"下发空调控制 {device_id} scope={scope} order={order} "
+            f"Sending AC control {device_id} scope={scope} order={order} "
             f"v1={value1}, v2={value2}, v3={value3}, v4={value4}"
         )
         if scope == "lan":
@@ -885,7 +885,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 )
             except Exception as error:  # noqa: BLE001 - cloud fallback is intentional
                 _LOGGER.debug(
-                    "LAN 空调控制失败，回退云端: device=%s error=%s",
+                    "LAN AC control failed; falling back to cloud: device=%s error=%s",
                     device_id,
                     type(error).__name__,
                 )
@@ -893,14 +893,14 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             if ok:
                 self._apply_ac_optimistic(device_id, value1, value2, value3, value4)
                 return ok
-            _LOGGER.debug("LAN 空调控制未确认，回退 SSL: device=%s", device_id)
+            _LOGGER.debug("LAN AC control unconfirmed; falling back to SSL: device=%s", device_id)
 
         if (
             not self.ssl_client
             or not self.ssl_client.session_key
             or self.ssl_client.session_key == DEFAULT_KEY.encode("utf-8")
         ):
-            _LOGGER.warning("会话密钥无效，无法下发空调指令")
+            _LOGGER.warning("Session key is invalid; cannot send AC command")
             return False
 
         payload = HomemateJsonData.ssl_control_ac(
@@ -915,13 +915,13 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         )
         await self.ssl_client._send_packet(payload, self.ssl_client.session_key)
 
-        # ★ 等待空调设备响应
+        # Wait for the AC device response
         response = await self._wait_for_control_response(device_id)
         if not response:
-            # 超时，保留乐观更新兜底
+            # On timeout, keep the optimistic update as a fallback
             self._apply_ac_optimistic(device_id, value1, value2, value3, value4)
         else:
-            # 有响应就触发 coordinator 更新（SSL 推送会回调 on_status_update）
+            # If a response arrives, update the coordinator (SSL pushes call on_status_update)
             dev_state = self.get_device_state(device_id)
             if dev_state:
                 self.async_set_updated_data(self.device_states)
@@ -935,7 +935,7 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         value3,
         value4,
     ) -> None:
-        """空调控制后的乐观状态回写（等待回显超时时使用）。"""
+        """Write back an optimistic state after AC control when waiting for the echo times out."""
         dev_state = self.get_device_state(device_id)
         if not dev_state:
             return
@@ -971,17 +971,17 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.async_set_updated_data(self.device_states)
 
     async def async_set_ac_mode(self, device_id: str, ac_mode: str) -> bool:
-        """控制空调模式（cool/dehumidify/heat/fan_only）"""
+        """Control the AC mode (cool/dehumidify/heat/fan_only)."""
         device = self.devices.get(device_id)
         if not device:
             return False
         mode_map = {"dehumidify": 2, "cool": 3, "heat": 4, "fan_only": 7}
         mode_value = mode_map.get(ac_mode.lower())
         if mode_value is None:
-            _LOGGER.error(f"无效的空调模式: {ac_mode}")
+            _LOGGER.error("Invalid AC mode: %s", ac_mode)
             return False
-        # 切模式：order="mode setting", value1=0, value2=模式码
-        # 并继承当前温度
+        # Change mode: order="mode setting", value1=0, value2=mode code
+        # Inherit the current temperature
         dev_state = self.get_device_state(device_id) or {}
         cur_v4 = dev_state.get("value4", 0)
         if not cur_v4:
@@ -992,12 +992,12 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                                                 order="mode setting")
 
     async def async_set_ac_temperature(self, device_id: str, temperature: float) -> bool:
-        """控制空调温度（摄氏度）"""
+        """Control the AC temperature in Celsius."""
         device = self.devices.get(device_id)
         if not device:
             return False
         
-        # 温度设定：order="temperature setting", value2=当前模式, value3=当前风速, value4=(temp*100)<<16
+        # Set temperature: order="temperature setting", value2=current mode, value3=current fan speed, value4=(temp*100)<<16
         dev_state = self.get_device_state(device_id) or {}
         cur_v2 = dev_state.get("ac_mode_raw", 3)
         cur_v3 = dev_state.get("fan_speed_raw", 1)
@@ -1011,16 +1011,16 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                                                 order="temperature setting")
 
     async def async_set_ac_fan_speed(self, device_id: str, fan_speed: str) -> bool:
-        """控制空调风速（low/medium/high）"""
+        """Control the AC fan speed (low/medium/high)."""
         device = self.devices.get(device_id)
         if not device:
             return False
         speed_map = {"low": 1, "medium": 2, "high": 3}
         speed_value = speed_map.get(fan_speed.lower())
         if speed_value is None:
-            _LOGGER.error(f"无效的风速: {fan_speed}")
+            _LOGGER.error("Invalid fan speed: %s", fan_speed)
             return False
-        # 风速设定：order="wind setting", value2=当前模式, value3=风速, value4=当前温度<<16
+        # Set fan speed: order="wind setting", value2=current mode, value3=fan speed, value4=current temperature<<16
         dev_state = self.get_device_state(device_id) or {}
         cur_v2 = dev_state.get("ac_mode_raw", 3)
         cur_v4 = dev_state.get("value4", 0)
@@ -1032,28 +1032,28 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                                                 order="wind setting")
 
     # ------------------------------------------------------------------
-    # 新风系统控制（deviceType=516, cmd=15 set property）
+    # Ventilation system control (deviceType=516, cmd=15 set property)
     # ------------------------------------------------------------------
     async def async_ventilation_state_update(self, device_id: str, value1: int) -> bool:
-        """新风系统控制（value1 格式）。
-        value1: 0=慢, 50=停, 100=快
+        """Ventilation system control (value1 format).
+        value1: 0=slow, 50=stop, 100=fast
         """
         return await self.control.ventilation_state_update(device_id, value1)
 
     async def async_set_ventilation_preset_mode(self, device_id: str, preset_mode: str) -> bool:
-        """设置新风系统预设模式（停/慢/快）"""
+        """Set the ventilation preset mode (stop/slow/fast)."""
         return await self.control.set_ventilation_preset_mode(
             device_id, preset_mode
         )
 
     # ------------------------------------------------------------------
-    # 晾衣架控制（cmd=98）
+    # Clothes dryer control (cmd=98)
     # ------------------------------------------------------------------
     async def async_clothes_horse_control(self, device_id: str, feature: str, value: str) -> bool:
-        """晾衣架控制。
+        """Control a clothes dryer.
 
         feature: lighting/sterilizing/wind_drying/heat_drying/main_switch/motor
-        value: on/off (开关类) 或 up/down/stop (电机类)
+        value: on/off for switch controls or up/down/stop for motor controls
         """
         return await self.control.clothes_horse_control(
             device_id, feature, value
@@ -1081,10 +1081,10 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         if self.gateway_manager is not None:
             await self.gateway_manager.close()
             self.gateway_manager = None
-            _LOGGER.debug("LAN 网关已清理")
+            _LOGGER.debug("LAN gateway cleaned up")
         if self.ssl_client:
             await self.ssl_client._disconnect()
-            _LOGGER.debug("SSL连接已断开清理")
+            _LOGGER.debug("SSL connection closed and cleaned up")
         if self.https_client:
             await self.https_client.close()
-            _LOGGER.debug("HTTPS客户端已清理")
+            _LOGGER.debug("HTTPS client cleaned up")

@@ -1,4 +1,4 @@
-"""通过 SSL 发送控制命令到 COCO 智能插线板 (type=43)"""
+"""Send an SSL control command to a COCO smart power strip (type=43)."""
 import asyncio, hashlib, json, ssl, sys, time
 import os
 from pathlib import Path
@@ -25,8 +25,8 @@ DEVICE_ID = os.environ.get("ORVIBO_DEVICE_ID", "")
 DEVICE_UID = os.environ.get("ORVIBO_DEVICE_UID", "")
 if not all((USERNAME, PASSWORD, FAMILY_ID, DEVICE_ID, DEVICE_UID)):
     sys.exit(
-        "请设置 ORVIBO_USERNAME / ORVIBO_PASSWORD / ORVIBO_FAMILY_ID / "
-        "ORVIBO_DEVICE_ID / ORVIBO_DEVICE_UID 环境变量"
+        "Set the ORVIBO_USERNAME, ORVIBO_PASSWORD, ORVIBO_FAMILY_ID, "
+        "ORVIBO_DEVICE_ID, and ORVIBO_DEVICE_UID environment variables"
     )
 
 pw_md5 = hashlib.md5(PASSWORD.encode()).hexdigest().upper()
@@ -41,7 +41,7 @@ async def main():
     r, w = await asyncio.wait_for(
         asyncio.open_connection(SSL_HOST, SSL_PORT, ssl=ctx, server_hostname=SSL_HOST), timeout=15
     )
-    print("✅ SSL 连接成功")
+    print("✅ SSL connection succeeded")
 
     async def send(data: dict, key: bytes):
         if key == DEFAULT_KEY.encode():
@@ -67,37 +67,37 @@ async def main():
     if hello_resp and hello_resp.get("cmd") == CMD_HELLO:
         session_key = str(hello_resp["key"]).encode()
         session_id = hello_resp.get("sessionId", str(hello_resp))
-        print(f"✅ HELLO: session_id 获取成功")
+        print("✅ HELLO: session_id retrieved")
 
     # LOGIN
     login_payload = HomemateJsonData.ssl_login(USERNAME, pw_md5, FAMILY_ID)
     await send(login_payload, session_key)
     await asyncio.sleep(2)
-    print("✅ LOGIN 已发送")
+    print("✅ LOGIN sent")
 
-    # 发送控制命令 - 先 off (关)
+    # Send control commands, starting with off.
     serial = generate_serial()
     uni_serial = generate_serial(use_time=True)
-    # 测试多种控制格式 - 重点试 endpoint 相关参数
+    # Try multiple control formats, focusing on endpoint parameters.
     test_commands = [
-        # order=on/off 各种 value 组合
+        # Combinations of order=on/off and values.
         ("on", 0, 0, 0, 0, None),
         ("on", 1, 0, 0, 0, None),
         ("off", 1, 0, 0, 0, None),
         ("off", 0, 0, 0, 0, None),
-        # set property 格式
+        # Set property format.
         ("set property", 0, 0, 0, 0, {"onoff": {"status": "on"}}),
         ("set property", 0, 0, 0, 0, {"onoff": {"status": "off"}}),
-        # 尝试 endpoint=1 (gdid=1)
+        # Try endpoint=1 (gdid=1).
         ("on", 0, 0, 0, 0, {"endpoint": 1}),
         ("off", 0, 0, 0, 0, {"endpoint": 1}),
-        # 尝试 endpoint=0
+        # Try endpoint=0.
         ("on", 0, 0, 0, 0, {"endpoint": 0}),
         ("off", 0, 0, 0, 0, {"endpoint": 0}),
-        # 尝试 order=open/close (老款设备)
+        # Try order=open/close for older devices.
         ("open", 100, 0, 0, 0, None),
         ("close", 0, 0, 0, 0, None),
-        # 尝试 value2=1 或 value3=1 (老款可能不一样)
+        # Try value2=1 or value3=1; older devices may differ.
         ("on", 1, 1, 0, 0, None),
         ("off", 0, 1, 0, 0, None),
     ]
@@ -116,14 +116,14 @@ async def main():
         }
         if props:
             control_payload["properties"] = props
-        print(f"📤 发送: order={order}, v1={v1}, props={props}")
+        print(f"📤 Sending: order={order}, v1={v1}, props={props}")
         await send(control_payload, session_key)
         await asyncio.sleep(2)
         try:
             resp = await recv(session_key)
-            print(f"📥 响应: {json.dumps(resp, ensure_ascii=False)}")
+            print(f"📥 Response: {json.dumps(resp, ensure_ascii=False)}")
         except Exception as e:
-            print(f"📥 无响应: {e}")
+            print(f"📥 No response: {e}")
 
     w.close()
     await asyncio.sleep(0.5)

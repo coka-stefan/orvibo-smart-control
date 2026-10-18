@@ -1,15 +1,15 @@
 """
-ORVIBO 设备协议诊断工具
+ORVIBO device protocol diagnostic utility.
 
-用法：
-  python3 tests/orvibo_probe.py 用户名 密码 [mode]
+Usage:
+  python3 tests/orvibo_probe.py USERNAME PASSWORD [mode]
 
-模式:
-  list      - 列出所有设备（默认）
-  listen    - 监听模式（捕获App操作时的云端推送）
-  control   - 原始控制模式（手动发送命令）
-  lock      - 门锁事件抓包（自动识别门锁设备，动作标记 + 脱敏 JSONL）
-              用法: python3 tests/orvibo_probe.py 用户名 密码 lock [家庭索引] [时长秒]
+Modes:
+  list      - List all devices (default)
+  listen    - Listen for cloud pushes while operating devices in the app
+  control   - Send raw control commands
+  lock      - Capture door lock events (automatic lock detection, action markers, redacted JSONL)
+              Usage: python3 tests/orvibo_probe.py USERNAME PASSWORD lock [FAMILY_INDEX] [DURATION_SECONDS]
 """
 
 import asyncio
@@ -55,7 +55,7 @@ def _normalize_key(key) -> str:
 
 
 def _scrub(value):
-    """本地抓包脱敏：凭据类字段打码，保留设备/家庭标识便于后续分析。"""
+    """Redact local packet captures: mask credentials but retain device and family identifiers for analysis."""
     if isinstance(value, dict):
         result = {}
         for k, v in value.items():
@@ -68,7 +68,7 @@ def _scrub(value):
 
 
 def _is_lock_device(dev: dict) -> bool:
-    """识别门锁设备：分类、deviceType（522/107）、classId（462/463）或名称兜底。"""
+    """Identify door locks by category, deviceType (522/107), classId (462/463), or name fallback."""
     if classify_device(dev) == DeviceCategory.DOOR_LOCK:
         return True
     dt = dev.get("deviceType")
@@ -88,9 +88,10 @@ def _is_lock_device(dev: dict) -> bool:
     if cid in (462, 463):
         return True
     name = str(dev.get("deviceName", dev.get("name", "")))
+    # Chinese "lock" is retained because vendor device names may use it.
     return "锁" in name or "lock" in name.lower()
 
-# 加载项目模块
+# Load project modules.
 PROJECT_ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "custom_components"))
 _tmp_init = Path(sys.path[0]) / "orvibo_smart_control" / "__init__.py"
@@ -139,7 +140,7 @@ class Https:
     async def login(self) -> bool:
         s = await self._s()
         url = f"https://{HTTPS_HOST}/getOauthToken?userName={self.username}&type=0&password={self.pw_md5}"
-        _LOGGER.info(f"登录 {url.replace(self.pw_md5,'***')}")
+        _LOGGER.info(f"Logging in to {url.replace(self.pw_md5,'***')}")
         async with s.get(url, headers={**HTTP_HEADERS, "Accept": "*/*"}, ssl=False) as r:
             text = await r.text()
             j = json.loads(text)
@@ -209,7 +210,7 @@ class Ssl:
     async def connect(self) -> bool:
         try:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            # 加载项目证书
+            # Load project certificates.
             cert_dir = Path(__file__).parents[1] / "custom_components" / "orvibo_smart_control" / "certs"
             cert_file = cert_dir / "client_cert.pem"
             key_file = cert_dir / "client_key.pem"
@@ -224,11 +225,11 @@ class Ssl:
             self.r, self.w = await asyncio.wait_for(
                 asyncio.open_connection(SSL_HOST, SSL_PORT, ssl=ctx, server_hostname=SSL_HOST), timeout=15
             )
-            _LOGGER.info("✅ SSL 连接成功")
-            # 发送 HELLO（必须用完整的 ssl_get_session）
+            _LOGGER.info("✅ SSL connection succeeded")
+            # Send HELLO using the full ssl_get_session implementation.
             await self._send(HomemateJsonData.ssl_get_session(), DEFAULT_KEY.encode())
-            _LOGGER.info("HELLO 已发送，等待响应...")
-            # 等待 HELLO 响应获取 session_key
+            _LOGGER.info("HELLO sent; waiting for response...")
+            # Wait for the HELLO response and session_key.
             try:
                 hdr = await asyncio.wait_for(self.r.readexactly(42), timeout=10)
                 ln = HomematePacket.parse_length(hdr)
@@ -240,17 +241,17 @@ class Ssl:
                     if kv:
                         self.key = str(kv).encode()
                         self.sid = bytes(pkt.session_id).decode()
-                        _LOGGER.info(f"✅ HELLO 响应: session_id={self.sid}")
+                        _LOGGER.info(f"✅ HELLO response: session_id={self.sid}")
             except Exception as e:
-                _LOGGER.error(f"❌ HELLO 响应异常: {e}")
+                _LOGGER.error(f"❌ HELLO response error: {e}")
                 return False
 
             if self.key:
                 await self._send(HomemateJsonData.ssl_login(self.username, self.pw_md5, self.family_id), self.key)
-                _LOGGER.info("LOGIN 已发送")
+                _LOGGER.info("LOGIN sent")
                 await asyncio.sleep(2)
 
-                # 发送一次 device list 查询，订阅设备推送
+                # Send a device list query to subscribe to device pushes.
                 from orvibo_smart_control.const import CMD_GET_DEVICE_LIST
                 query = {
                     "cmd": CMD_GET_DEVICE_LIST, "familyId": self.family_id,
@@ -259,7 +260,7 @@ class Ssl:
                     "ver": SOFTWARE_VER, "debugInfo": DEBUG_INFO,
                 }
                 await self._send(query, self.key)
-                _LOGGER.info("📋 设备列表查询已发送")
+                _LOGGER.info("📋 Device list query sent")
                 await asyncio.sleep(1)
                 return True
             return False
@@ -288,10 +289,10 @@ class Ssl:
         }
         if props: p["properties"] = props
         await self._send(p, self.key)
-        _LOGGER.info(f"控制已发送: {did} order={order} v1={v1}")
+        _LOGGER.info(f"Control sent: {did} order={order} v1={v1}")
 
     async def listen(self, duration=180) -> list:
-        _LOGGER.info(f"🎧 监听 {duration}s，请在 App 操作设备...")
+        _LOGGER.info(f"🎧 Listening for {duration}s; operate a device in the app...")
         start = time.time()
         msgs = []
         while time.time() - start < duration:
@@ -324,7 +325,7 @@ class Ssl:
                 continue
             except (asyncio.IncompleteReadError, ConnectionError, OSError):
                 break
-        _LOGGER.info(f"停止监听，捕获 {len(msgs)} 条")
+        _LOGGER.info(f"Stopped listening; captured {len(msgs)} messages")
         return msgs
 
     async def close(self):
@@ -338,12 +339,12 @@ class Ssl:
 
 async def cmd_list(api: Https):
     fs = await api.families()
-    print(f"\n📋 {len(fs)} 个家庭")
+    print(f"\n📋 {len(fs)} families")
     for f in fs:
         fid, fn = f.get("familyId","?"), f.get("familyName","?")
         print(f"\n🏠 {fn} (ID: {fid})")
         devs = await api.devices(fid)
-        print(f"  {'✅/❓':<5} {'deviceId':<24} {'名称':<16} {'type':<6} {'分类':<20}")
+        print(f"  {'✅/❓':<5} {'deviceId':<24} {'Name':<16} {'type':<6} {'Category':<20}")
         print(f"  {'-'*71}")
         for d in devs:
             did = d.get("deviceId","")
@@ -367,22 +368,22 @@ async def cmd_listen(api: Https):
 
 
 async def cmd_lock(api: Https, family_index: int = 0, duration: int = 300):
-    """门锁事件抓包：连接 SSL 订阅推送，动作前按 Enter 打标记，输出脱敏 JSONL。"""
+    """Capture door lock events over SSL, mark each action with Enter, and write redacted JSONL."""
     fs = await api.families()
     if not fs:
-        print("❌ 账号下没有家庭")
+        print("❌ No families found for this account")
         return
     if family_index >= len(fs):
-        print(f"❌ 家庭索引 {family_index} 越界（共 {len(fs)} 个）")
+        print(f"❌ Family index {family_index} is out of range ({len(fs)} families total)")
         return
     fid = fs[family_index].get("familyId", "")
     fname = fs[family_index].get("familyName", "?")
     devs = await api.devices(fid)
     locks = [d for d in devs if _is_lock_device(d)]
-    print(f"\n🔒 家庭[{family_index}] {fname} 门锁设备:")
+    print(f"\n🔒 Family [{family_index}] {fname} door locks:")
     if not locks:
-        print("  （未识别到门锁设备）")
-        print("  提示：若门锁在其他家庭，加参数指定家庭索引；仍不行就把 list 模式输出发我。")
+        print("  (No door locks identified)")
+        print("  Note: if the lock is in another family, specify its family index. If it still fails, share the list mode output.")
         return
     for i, d in enumerate(locks):
         info = {
@@ -395,11 +396,11 @@ async def cmd_lock(api: Https, family_index: int = 0, duration: int = 300):
     out_path = Path(f"lock_capture_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     sslc = Ssl(api.username, api.password, fid)
     if not await sslc.connect():
-        print("❌ SSL 连接失败")
+        print("❌ SSL connection failed")
         return
 
-    print(f"\n🎧 监听 {duration}s（输入 q 可提前结束）。")
-    print(f"   每个动作前按一次 Enter 记录标记；输出文件: {out_path}")
+    print(f"\n🎧 Listening for {duration}s (enter q to stop early).")
+    print(f"   Press Enter before each action to record a marker; output file: {out_path}")
     start = time.time()
     write_lock = asyncio.Lock()
 
@@ -459,13 +460,13 @@ async def cmd_lock(api: Https, family_index: int = 0, duration: int = 300):
             except (asyncio.IncompleteReadError, ConnectionError, OSError):
                 break
             except Exception as e:
-                print(f"  ⚠️ 单个包处理异常（已跳过，不会中断监听）: {e}")
+                print(f"  ⚠️ Error processing one packet (skipped; listening continues): {e}")
         stop.set()
 
     task = asyncio.create_task(listener())
     try:
         while time.time() - start < duration and not stop.is_set():
-            line = await asyncio.to_thread(input, "  按 Enter 标记下一个动作（q=结束）: ")
+            line = await asyncio.to_thread(input, "  Press Enter to mark the next action (q=quit): ")
             if line.strip().lower() in ("q", "quit"):
                 break
             await write_rec(
@@ -485,7 +486,7 @@ async def cmd_lock(api: Https, family_index: int = 0, duration: int = 300):
         except (asyncio.CancelledError, Exception):
             pass
         await sslc.close()
-    print(f"\n✅ 抓包完成，已保存到 {out_path}")
+    print(f"\n✅ Capture complete; saved to {out_path}")
 
 async def cmd_control(api: Https):
     fs = await api.families()
@@ -493,7 +494,7 @@ async def cmd_control(api: Https):
     fid = fs[0].get("familyId","")
     sslc = Ssl(api.username, api.password, fid)
     if not await sslc.connect(): return
-    print("\n🔧 原始控制: deviceId uid order [v1 v2 v3 v4]")
+    print("\n🔧 Raw control: deviceId uid order [v1 v2 v3 v4]")
     print("  order: on/off/open/close/stop/set property\n")
     while True:
         try:
@@ -516,7 +517,7 @@ async def main():
     api = Https(sys.argv[1], sys.argv[2])
     try:
         if not await api.login():
-            print("❌ 登录失败"); return
+            print("❌ Login failed"); return
         mode = sys.argv[3] if len(sys.argv)>3 else "list"
         if mode == "lock":
             family_index = int(sys.argv[4]) if len(sys.argv) > 4 else 0

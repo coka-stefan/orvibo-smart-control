@@ -1,8 +1,8 @@
 """Normalized door-lock state and event parsing (pure stdlib, no HA deps).
 
-门锁状态存在两种已观察到的协议形态：
+Two observed protocol forms exist for lock state:
 
-- 形态 A（type=522 / classId=463，V5 Eyes 门锁）::
+- Form A (type=522 / classId=463, V5 Eyes lock)::
 
     properties.doorLock = {
         "lockState": "on" | "off",
@@ -10,7 +10,7 @@
         "insideLockState": "on" | "off",
     }
 
-- 形态 B（属性型 ThingModel，type=300/522 子类型）::
+- Form B (property-based ThingModel, type=300/522 subtypes)::
 
     properties = {
         "door_status":  "open" | "closed",
@@ -19,10 +19,10 @@
         "clild_lock":   "on" | "off",
     }
 
-电池（形态 A）: ``properties.batteryManager``（干电池）与
-``properties.batteryManager1``（锂电池），值为 ``{"level": int, "isSetupBattery": "on"|"off"}``。
+Battery (Form A): ``properties.batteryManager`` (disposable batteries) and
+``properties.batteryManager1`` (lithium batteries), with value ``{"level": int, "isSetupBattery": "on"|"off"}``.
 
-事件（cmd=352）::
+Events (cmd=352)::
 
     {"event": {"server": "doorLock" | "doorbell",
                "name": "unlockEvent" | "ring" | "answered" | "bye",
@@ -122,9 +122,9 @@ def normalize_door_lock_properties(properties: Any) -> dict[str, Any]:
 
     door_lock = _property_group(props, "doorLock")
     if door_lock:
-        # V5 Eyes（type=522/classId=463）实机验证（反语义，与 App 显示一致）：
-        # lockState="on"=已解锁、"off"=已锁定；
-        # insideLockState="off"=门内反锁中、"on"=反锁解除（181826 反锁/解除抓包）。
+        # Verified on a V5 Eyes lock (type=522/classId=463); field semantics are reversed to match the app display:
+        # lockState="on" means unlocked; "off" means locked.
+        # insideLockState="off" means deadbolted from inside; "on" means the deadbolt is released (181826 capture).
         lock_raw = _normalize_state(door_lock.get("lockState"))
         result["locked"] = None if lock_raw is None else not lock_raw
         result["door_open"] = _normalize_state(door_lock.get("doorState"))
@@ -191,8 +191,8 @@ def normalize_battery_properties(properties: Any) -> dict[str, Any]:
         setup = _normalize_state(manager.get("isSetupBattery"))
         if setup is not None:
             result[f"{out_prefix}_battery_setup"] = setup
-            # isSetupBattery=off 表示电池被取出/未安装（实测：扣电池触发推送），
-            # level=0 无意义，置为未知
+            # isSetupBattery=off means the battery was removed or is not installed (observed push triggered by removing the battery),
+            # level=0 is not meaningful, so treat it as unknown
             if not setup:
                 result[f"{out_prefix}_battery_level"] = None
     return result
@@ -295,7 +295,7 @@ def normalize_lock_event(payload: Any) -> Optional[dict[str, Any]]:
 
 
 def normalize_message_event(payload: Any) -> Optional[dict[str, Any]]:
-    """Normalize cmd=82 push-message packets (门锁等文本消息/告警)。"""
+    """Normalize cmd=82 push-message packets, including lock text messages and alerts."""
     if not isinstance(payload, Mapping):
         return None
     if payload.get("cmd") != 82:
@@ -330,7 +330,7 @@ def resolve_opened_by(
     elapsed: float,
     window: float = 30,
 ) -> Optional[dict[str, Any]]:
-    """把一次开门事件归属到窗口内最近一次开锁（返回 user_id + 开锁方式）。"""
+    """Associate a door-open event with the most recent unlock in the time window; return user_id and unlock method."""
     if not isinstance(last_unlock, Mapping):
         return None
     if (
@@ -353,10 +353,10 @@ def derive_lock_status(
     door_open: Optional[bool],
     inside_locked: Optional[bool],
 ) -> Optional[str]:
-    """从归一化字段推导面向用户的锁状态。
+    """Derive user-facing lock state from normalized fields.
 
-    规则（绑定门磁）：门磁开 + 锁上锁 = 异常（异常关门/测试状态）；
-    门磁开 = 未上锁；门磁关 = 门内反锁/上锁/未上锁。
+    Rule when a door contact is bound: open contact + locked state means an inconsistency (unexpected closure/test state);
+    open contact = unlocked; closed contact = deadbolted from inside, locked, or unlocked.
     """
     if door_open is True and locked is True:
         return "abnormal"
@@ -375,30 +375,30 @@ def format_unlock_label(
     user_id: Any, name: Optional[str], direction: Optional[str] = None,
     method: Optional[str] = None,
 ) -> str:
-    """生成"xxx开门"显示文本（未配置名称时回退为 用户{id}）。"""
+    """Build the display text "xxx door opened"; use "user {id}" when no name is configured."""
     if direction is not None:
         direction = unlock_direction(method)
         if direction == "inside":
-            return "内开（人员未知）"
+            return 'Opened from inside (person unknown)'
         who = str(name).strip() if name else ""
         if not who and user_id not in (None, ""):
-            who = f"用户{user_id}"
-        label = {"outside": "外开", "unknown": "开门（方向未知）"}.get(direction, "开门（方向未知）")
+            who = f'User {user_id}'
+        label = {"outside": ' opened from outside', "unknown": ' opened (direction unknown)'}.get(direction, ' opened (direction unknown)')
         method_label = {
-            "fingerprint": "指纹", "password": "密码", "card": "卡片",
-            "key": "钥匙", "face": "人脸", "temporary_password": "临时密码",
+            "fingerprint": 'Fingerprint', "password": 'Password', "card": 'Card',
+            "key": 'Key', "face": 'Face', "temporary_password": 'Temporary password',
         }.get(method)
-        details = "，".join(item for item in (method_label, "人员未知" if not who else None) if item)
-        return f"{who}{label}" + (f"（{details}）" if details else "")
+        details = ", ".join(item for item in (method_label, 'Unknown person' if not who else None) if item)
+        return f"{who}{label}".strip() + (f" ({details})" if details else "")
     if name and str(name).strip():
-        return f"{name}开门"
+        return f'{name} opened'
     if user_id not in (None, ""):
-        return f"用户{user_id}开门"
-    return "无"
+        return f'User {user_id} opened'
+    return 'None'
 
 
 def parse_lock_user_names(text: Any) -> dict[str, str]:
-    """解析多行"用户ID=名称"文本为映射，兼容冒号分隔，忽略空行/坏行。"""
+    """Parse multiline "user ID=name" text into a mapping; accept colon separators and ignore blank or malformed lines."""
     result: dict[str, str] = {}
     for raw_line in str(text or "").splitlines():
         line = raw_line.strip()
@@ -416,7 +416,7 @@ def parse_lock_user_names(text: Any) -> dict[str, str]:
 
 
 def format_lock_user_names(mapping: Any) -> str:
-    """把映射格式化为多行"用户ID=名称"，数字 ID 优先排序。"""
+    """Format a mapping as multiline "user ID=name" text, sorting numeric IDs first."""
     if not isinstance(mapping, Mapping):
         return ""
     def sort_key(item: tuple[str, Any]) -> tuple[int, str]:

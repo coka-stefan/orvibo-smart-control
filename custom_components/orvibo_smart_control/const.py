@@ -20,9 +20,9 @@ CMD_GET_DEVICE_LIST = 263
 CMD_CLOTHES_HORSE_CONTROL = 98
 CMD_CLOTHES_HORSE_STATE = 99
 CMD_CLOTHES_HORSE_QUERY = 100
-CMD_COS_AUTH = 313  # Skill.GetCOSAuthorization：换取门锁媒体（图片/视频）COS 凭证
-CMD_TEMP_PASSWORD = 246  # 下发临时密码（type/effectTime/number/phone）
-CMD_DELETE_AUTHORIZATION = 247  # 删除授权（uid/deviceId/authorizedId）
+CMD_COS_AUTH = 313  # Skill.GetCOSAuthorization: obtain COS credentials for lock media (images/videos)
+CMD_TEMP_PASSWORD = 246  # Send a temporary password (type/effectTime/number/phone)
+CMD_DELETE_AUTHORIZATION = 247  # Delete an authorization (uid/deviceId/authorizedId)
 
 SOFTWARE_NAME = "ZhiJia365"
 SOFTWARE_VERSION = "50103309"
@@ -36,12 +36,12 @@ DEBUG_INFO = "Android_ZhiJia365_34_5.1.3.309"
 DOMAIN = "orvibo_smart_control"
 MANUFACTURER = "ORVIBO"
 
-# HA 事件总线：门锁状态/事件（解锁、门铃、锁状态、门状态）
+# HA event bus: lock states/events (unlock, doorbell, lock state, door state)
 LOCK_EVENT = "orvibo_smart_control_lock_event"
 TEMP_PASSWORD_EVENT = "orvibo_smart_control_temp_password_event"
 
 HTTPS_HOST = "china.orvibo.com"
-# 国际区集群（Orvibo Home 海外用户，数据与中国区独立分区）
+# International cluster for Orvibo Home users outside China; data is partitioned separately from the China region
 HTTPS_HOST_GLOBAL = "homemate.orvibo.com"
 SSL_HOST_GLOBAL = "homemate.orvibo.com"
 HTTP_HEADERS = {
@@ -67,12 +67,12 @@ DEVICE_TYPE_SENSOR = "sensor"
 DEVICE_TYPE_CLIMATE = "climate"
 DEVICE_TYPE_FAN = "fan"
 
-# HA 平台路由映射（device_type_raw → HA 平台字符串）
-# 注意：隐藏类别（114/135/136/137/143/518/150/511）不在本表，由
-# device_types.HIDDEN_CATEGORIES 在 coordinator 层过滤。
+# HA platform routing map (device_type_raw -> HA platform string)
+# Note: hidden categories (114/135/136/137/143/518/150/511) are omitted here and filtered by
+# device_types.HIDDEN_CATEGORIES in the coordinator.
 DEVICE_TYPE_MAP = {
-    14: DEVICE_TYPE_SENSOR,        # WiFi 摄像机：仅 SDK 诊断
-    162: DEVICE_TYPE_SENSOR,       # Meari NVR：仅 SDK 诊断
+    14: DEVICE_TYPE_SENSOR,        # WiFi camera: SDK diagnostics only
+    162: DEVICE_TYPE_SENSOR,       # Meari NVR: SDK diagnostics only
     1: DEVICE_TYPE_LIGHT,           # SIMPLE_ZIGBEE_LIGHT
     34: DEVICE_TYPE_COVER,          # ZIGBEE_CURTAIN
     35: DEVICE_TYPE_COVER,          # ZIGBEE_ROLLING_SHUTTER
@@ -91,19 +91,19 @@ DEVICE_TYPE_MAP = {
     502: DEVICE_TYPE_LIGHT,         # DIMMABLE_LIGHT
     506: DEVICE_TYPE_COVER,         # DREAM_CURTAIN (subDeviceType=408)
     46: DEVICE_TYPE_SENSOR,         # DOOR_WINDOW_SENSOR
-    516: DEVICE_TYPE_FAN,           # VENTILATION_SYSTEM 新风系统
+    516: DEVICE_TYPE_FAN,           # VENTILATION_SYSTEM
     22: DEVICE_TYPE_SENSOR,         # TEMP_HUMIDITY_SENSOR
     23: DEVICE_TYPE_SENSOR,         # TEMP_HUMIDITY_SENSOR
-    81: DEVICE_TYPE_CLIMATE,        # FAN_COIL_AC (同 type=36)
-    112: DEVICE_TYPE_CLIMATE,       # 旧协议地暖控制面板（orb_floorheat）
-    43: DEVICE_TYPE_SWITCH,         # COCO智能插线板
+    81: DEVICE_TYPE_CLIMATE,        # FAN_COIL_AC (same as type=36)
+    112: DEVICE_TYPE_CLIMATE,       # Legacy underfloor-heating control panel (orb_floorheat)
+    43: DEVICE_TYPE_SWITCH,         # COCO smart power strip
 }
 
 CLASS_ID_MAP = {
     426: DEVICE_TYPE_LIGHT,
     429: DEVICE_TYPE_LIGHT,
     436: DEVICE_TYPE_LIGHT,         # CCT_LIGHT_STRIP
-    1114: DEVICE_TYPE_FAN,          # VENTILATION_SYSTEM 新风系统
+    1114: DEVICE_TYPE_FAN,          # VENTILATION_SYSTEM
 }
 
 CONF_USERNAME = "username"
@@ -111,7 +111,7 @@ CONF_PASSWORD = "password"
 CONF_PASSWORD_HASH = "password_hash"
 CONF_CLOUD_REGION = "cloud_region"
 CONF_FAMILY_ID = "family_id"
-CONF_LOCK_USER_NAMES = "lock_user_names"  # {user_id: 名称}，持久化于 entry.options
+CONF_LOCK_USER_NAMES = "lock_user_names"  # {user_id: name}, persisted in entry.options
 CONF_LOCK_SNAPSHOT_LIMIT = "lock_snapshot_limit"
 DEFAULT_LOCK_SNAPSHOT_LIMIT = 30
 MAX_LOCK_SNAPSHOT_LIMIT = 500

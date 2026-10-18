@@ -15,11 +15,9 @@ class KnownDeviceModel:
 
     @property
     def display_name(self) -> str:
-        if self.names:
-            return self.names[0]
-        if self.internal_models:
-            return self.internal_models[0]
-        return "官方目录已登记设备"
+        return self.names[0] if self.names else (
+            self.internal_models[0] if self.internal_models else "Catalogued device"
+        )
 
 
 def _load_official_catalog() -> dict[str, KnownDeviceModel]:

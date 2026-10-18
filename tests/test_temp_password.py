@@ -47,7 +47,7 @@ def make_grant_response(
         "code": password,
         "fromMq": True,
         "type": 2,
-        "userName": "临时用户 08031634",
+        "userName": "Temporary User 08031634",
         "phone": "",
         "authorizedUnlock": auth,
         "cmd": 246,
@@ -126,7 +126,7 @@ class ParseAuthorizationItemTests(unittest.TestCase):
             "number": 1,
             "password": "121583",
             "phone": "13800138000",
-            "userName": "访客",
+            "userName": "Guest",
             "type": 2,
             "unlockNum": 0,
             "startTime": 1783341252,
@@ -140,7 +140,7 @@ class ParseAuthorizationItemTests(unittest.TestCase):
         self.assertEqual(rec["authorized_id"], 101)
         self.assertEqual(rec["number"], 1)
         self.assertEqual(rec["phone"], "13800138000")
-        self.assertEqual(rec["name"], "访客")
+        self.assertEqual(rec["name"], "Guest")
         self.assertEqual(rec["type"], 2)
         self.assertEqual(rec["end_time"], 1783341252 + 86400)
 
@@ -154,7 +154,7 @@ class ParseAuthorizationItemTests(unittest.TestCase):
         self.assertIsNone(temp_password.parse_authorization_item(item))
 
     def test_skips_invalid_status(self) -> None:
-        # App 实测：authorizeStatus=3 为已删除/失效（delFlag 恒为 0）
+        # Observed in the app: authorizeStatus=3 means deleted or invalid (delFlag remains 0).
         item = {
             "authorizedUnlockId": "x",
             "authorizedId": 101,

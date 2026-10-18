@@ -31,7 +31,7 @@ async def async_get_media_source(hass) -> LockMediaSource:
 class LockMediaSource(MediaSource):
     """Expose only this integration's existing image and video archives."""
 
-    name = "欧瑞博门锁抓拍"
+    name = 'ORVIBO door-lock snapshots'
 
     def __init__(self, hass):
         super().__init__(DOMAIN)

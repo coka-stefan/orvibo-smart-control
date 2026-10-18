@@ -1,9 +1,9 @@
-"""Orvibo 气候平台。
+"""Orvibo climate platform.
 
-支持设备类别：
-- FAN_COIL_AC (deviceType=36) 风机盘管空调面板
-  value1=0为开/1为关; value2模式(2除湿/3制冷/4制热/7送风);
-  value3风速(1低/2中/3高); value4温度*10000
+Supported device categories:
+- FAN_COIL_AC (deviceType=36) fan coil AC panel
+  value1=0 means on / 1 means off; value2 is the mode (2 dry / 3 cool / 4 heat / 7 fan only);
+  value3 is fan speed (1 low / 2 medium / 3 high); value4 is temperature * 10000
 """
 import logging
 from typing import Optional
@@ -23,7 +23,7 @@ from .device_types import DeviceCategory, classify_device
 _LOGGER = logging.getLogger(__name__)
 
 
-# Orvibo AC mode value → HA HVACMode
+# Orvibo AC mode value -> HA HVACMode
 _AC_MODE_TO_HVAC = {
     2: HVACMode.DRY,
     3: HVACMode.COOL,
@@ -32,7 +32,7 @@ _AC_MODE_TO_HVAC = {
 }
 _HVAC_TO_AC_MODE = {v: k for k, v in _AC_MODE_TO_HVAC.items()}
 
-# Orvibo AC fan speed value → HA fan mode string
+# Orvibo AC fan speed value -> HA fan mode string
 _FAN_SPEED_TO_HA = {
     1: "low",
     2: "medium",
@@ -67,7 +67,7 @@ async def async_setup_entry(
 
 
 class OrviboFanCoilAC(CoordinatorEntity, ClimateEntity):
-    """风机盘管空调面板（deviceType=36）。"""
+    """Fan coil AC panel (deviceType=36)."""
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 16.0
@@ -133,7 +133,7 @@ class OrviboFanCoilAC(CoordinatorEntity, ClimateEntity):
         if hvac_mode == HVACMode.OFF:
             await self.coordinator.async_turn_off(self._device_id)
             return
-        # 先开机
+        # Turn the unit on first
         state = self.coordinator.get_device_state(self._device_id)
         if not state or not state.get("state", False):
             await self.coordinator.async_turn_on(self._device_id)
@@ -157,7 +157,7 @@ class OrviboFanCoilAC(CoordinatorEntity, ClimateEntity):
 
 
 def _ac_mode_name(hvac_mode: HVACMode) -> str:
-    """HA HVACMode → coordinator 接受的字符串模式名。"""
+    """Map an HA HVACMode to the string mode name accepted by the coordinator."""
     return {
         HVACMode.DRY: "dehumidify",
         HVACMode.COOL: "cool",

@@ -1,9 +1,9 @@
-"""Orvibo 设备分类 taxonomy (HA 集成版)。
+"""Orvibo device classification taxonomy for the HA integration.
 
-按 deviceTypeId + subType 列表定义设备分类。classify_device 接受
-https_client.parse_device_status_list 输出的 device dict（含 device_type_raw /
-class_id / sub_device_type / ui_model 等字段），返回 DeviceCategory 枚举值；
-未识别返回 UNKNOWN。
+Device categories are defined by deviceTypeId and subType. classify_device accepts
+the device dict returned by https_client.parse_device_status_list (including device_type_raw,
+class_id, sub_device_type, and ui_model) and returns a DeviceCategory enum value;
+unrecognized devices return UNKNOWN.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -31,22 +31,22 @@ class DeviceCategory(Enum):
     LIGHT_VIRTUAL_GROUP = "light_virtual_group"        # deviceTypeId=10086
     DIM_COLOR_LIGHT = "dim_color_light"                # deviceTypeId=38
     LEGACY_LIGHT = "legacy_light"                      # deviceTypeId=102
-    LEGACY_CURTAIN = "legacy_curtain"                  # deviceTypeId=52（旧映射，保留兼容）
-    CLOTHES_HORSE = "clothes_horse"                    # deviceTypeId=52，智能电动晾衣机
+    LEGACY_CURTAIN = "legacy_curtain"                  # deviceTypeId=52 (legacy mapping, retained for compatibility)
+    CLOTHES_HORSE = "clothes_horse"                    # deviceTypeId=52, smart electric clothes dryer
     MOTION_SENSOR = "motion_sensor"                    # deviceTypeId=26
     SMOKE_SENSOR = "smoke_sensor"                      # deviceTypeId=27
     EMERGENCY_BUTTON = "emergency_button"              # deviceTypeId=56
-    WATER_LEAK_SENSOR = "water_leak_sensor"            # deviceTypeId=54，水浸探测器
-    GAS_SENSOR = "gas_sensor"                          # deviceTypeId=25，可燃气体探测器
+    WATER_LEAK_SENSOR = "water_leak_sensor"            # deviceTypeId=54, water-leak sensor
+    GAS_SENSOR = "gas_sensor"                          # deviceTypeId=25, gas sensor
     SMART_REMOTE = "smart_remote"                      # deviceTypeId=150
     MIXPAD_4WAY_BASE = "mixpad_4way_base"              # deviceTypeId=511
-    DIMMABLE_LIGHT = "dimmable_light"                  # deviceTypeId=502，可调光灯（仅亮度，无色温）
-    ZIGBEE_DIMMABLE_LIGHT = "zigbee_dimmable_light"    # deviceTypeId=0, subDeviceType=-2，0-10v调光灯
-    CCT_LIGHT = "cct_light"                            # statusType=503 subDeviceType=461，0-10v色温灯
-    TEMP_HUMIDITY_SENSOR = "temp_humidity_sensor"      # deviceTypeId=300 subType=491，温湿度传感器
-    DOOR_WINDOW_SENSOR = "door_window_sensor"          # deviceTypeId=46，门窗传感器
-    FAST_MOVE_DIM_COLOR_LIGHT = "fast_move_dim_color_light"  # statusType=2, subDeviceType=6，fast move to level调光调色灯
-    VENTILATION_SYSTEM = "ventilation_system"                # deviceType=516, classId=1114，新风系统
+    DIMMABLE_LIGHT = "dimmable_light"                  # deviceTypeId=502, dimmable light (brightness only, no color temperature)
+    ZIGBEE_DIMMABLE_LIGHT = "zigbee_dimmable_light"    # deviceTypeId=0, subDeviceType=-2, 0–10 V dimmable light
+    CCT_LIGHT = "cct_light"                            # statusType=503 subDeviceType=461, 0-10 V color temperature light
+    TEMP_HUMIDITY_SENSOR = "temp_humidity_sensor"      # deviceTypeId=300 subType=491, temperature and humidity sensor
+    DOOR_WINDOW_SENSOR = "door_window_sensor"          # deviceTypeId=46, door/window sensor
+    FAST_MOVE_DIM_COLOR_LIGHT = "fast_move_dim_color_light"  # statusType=2, subDeviceType=6, Fast Move dimmable color-temperature light
+    VENTILATION_SYSTEM = "ventilation_system"                # deviceType=516, classId=1114, ventilation system
     FLOOR_HEATING = "floor_heating"                          # deviceType=300, subType=481
     LEGACY_FLOOR_HEATING = "legacy_floor_heating"            # deviceType=112, orb_floorheat
     DREAM_CURTAIN = "dream_curtain"                          # deviceType=506, subType=408
@@ -75,223 +75,223 @@ class DeviceProfile:
 _CATEGORY_INFO: Dict[DeviceCategory, CategoryInfo] = {
     DeviceCategory.SIMPLE_ZIGBEE_LIGHT: CategoryInfo(
         category=DeviceCategory.SIMPLE_ZIGBEE_LIGHT,
-        label="简易 Zigbee 灯",
-        description="deviceTypeId=1, subType=-2/1/13（筒灯/吊灯/灯带），仅开关",
+        label="Simple Zigbee light",
+        description='deviceTypeId=1, subType=-2/1/13 (downlight/pendant/strip); on/off only',
         capabilities=("onoff",),
     ),
     DeviceCategory.ZIGBEE_CURTAIN: CategoryInfo(
         category=DeviceCategory.ZIGBEE_CURTAIN,
-        label="Zigbee 开合窗帘",
-        description="deviceTypeId=34, subType=-2，开度 0~100%",
+        label="Zigbee curtain",
+        description='deviceTypeId=34, subType=-2; position 0–100%',
         capabilities=("position",),
     ),
     DeviceCategory.ZIGBEE_ROLLING_SHUTTER: CategoryInfo(
         category=DeviceCategory.ZIGBEE_ROLLING_SHUTTER,
-        label="Zigbee 卷帘",
-        description="deviceTypeId=35，卷帘控制，同开合窗帘协议",
+        label="Zigbee roller blind",
+        description='deviceTypeId=35; roller-blind control using the curtain protocol',
         capabilities=("position",),
     ),
     DeviceCategory.FAN_COIL_AC: CategoryInfo(
         category=DeviceCategory.FAN_COIL_AC,
-        label="风机盘管空调面板",
-        description="deviceTypeId=36，开关/温度/模式/风速",
+        label="Fan-coil thermostat",
+        description='deviceTypeId=36; power, temperature, mode and fan speed',
         capabilities=("onoff", "temperature", "mode", "fan_speed"),
     ),
     DeviceCategory.MIXPAD_GATEWAY: CategoryInfo(
         category=DeviceCategory.MIXPAD_GATEWAY,
-        label="MixPad 中控网关",
-        description="deviceTypeId=114，Zigbee 中枢 + 背景音乐",
+        label="MixPad gateway",
+        description='deviceTypeId=114; Zigbee hub and background music',
         capabilities=("gateway", "music"),
         is_container=True,
     ),
     DeviceCategory.MUSIC_HOST: CategoryInfo(
         category=DeviceCategory.MUSIC_HOST,
-        label="独立背景音乐主机",
-        description="deviceTypeId=128，播放/音量/切歌",
+        label="Music controller",
+        description='deviceTypeId=128; playback, volume and track selection',
         capabilities=("music_play", "volume", "skip"),
     ),
     DeviceCategory.MIX_SWITCH: CategoryInfo(
         category=DeviceCategory.MIX_SWITCH,
-        label="MixSwitch 超级开关",
-        description="deviceTypeId=135/136/137/143，1/2/3/4 路，ui=MIXSWITCH",
+        label="MixSwitch",
+        description='deviceTypeId=135/136/137/143; 1/2/3/4 channels; ui=MIXSWITCH',
         capabilities=("multi_channel_switch",),
         is_container=True,
     ),
     DeviceCategory.MONO_LIGHT: CategoryInfo(
         category=DeviceCategory.MONO_LIGHT,
-        label="单色灯具",
-        description="deviceTypeId=501, subType=426/429 (lightStd)，仅开关",
+        label="Single-color light",
+        description='deviceTypeId=501, subType=426/429 (lightStd); on/off only',
         capabilities=("onoff",),
     ),
     DeviceCategory.CCT_LIGHT_STRIP: CategoryInfo(
         category=DeviceCategory.CCT_LIGHT_STRIP,
-        label="色温灯带",
-        description="deviceTypeId=503, subType=436 (colorTempLightStd)，亮度 2700-6500K 色温",
+        label="Color-temperature light strip",
+        description='deviceTypeId=503, subType=436 (colorTempLightStd); brightness and 2700–6500 K color temperature',
         capabilities=("onoff", "brightness", "color_temp"),
     ),
     DeviceCategory.BACH_SWITCH: CategoryInfo(
         category=DeviceCategory.BACH_SWITCH,
-        label="Bach 传统开关",
-        description="deviceTypeId=518, subType=424 (8路)/1107 (4路)",
+        label="Bach switch",
+        description='deviceTypeId=518, subType=424 (8 channels)/1107 (4 channels)',
         capabilities=("multi_channel_switch",),
         is_container=True,
     ),
     DeviceCategory.DOOR_LOCK: CategoryInfo(
         category=DeviceCategory.DOOR_LOCK,
-        label="智能门锁",
-        description="deviceTypeId=107/522, classId=462/463，锁状态/门状态/电量",
+        label="Smart door lock",
+        description='deviceTypeId=107/522, classId=462/463; lock, door and battery state',
         capabilities=("lock", "door_state", "battery"),
     ),
     DeviceCategory.WIFI_CAMERA: CategoryInfo(
         category=DeviceCategory.WIFI_CAMERA,
-        label="WiFi 摄像机",
-        description="deviceTypeId=14，匹配的 Meari XTS/p2p2 提供实时画面，其他协议仅诊断",
+        label="Wi-Fi camera",
+        description='deviceTypeId=14; live video for matching Meari XTS/p2p2 models, diagnostics only for other protocols',
         capabilities=(),
     ),
     DeviceCategory.CAMERA_NVR: CategoryInfo(
         category=DeviceCategory.CAMERA_NVR,
-        label="摄像机 NVR",
-        description="deviceTypeId=162，匹配的 Meari XTS/p2p2 在线通道提供实时画面；硬盘回放开发中",
+        label="Network video recorder",
+        description='deviceTypeId=162; live video for matching Meari XTS/p2p2 channels; disk playback in development',
         capabilities=(),
         is_container=True,
     ),
     DeviceCategory.LIGHT_VIRTUAL_GROUP: CategoryInfo(
         category=DeviceCategory.LIGHT_VIRTUAL_GROUP,
-        label="灯光虚拟分组",
-        description="deviceTypeId=10086",
+        label="Light group",
+        description='deviceTypeId=10086',
         capabilities=("group_onoff",),
     ),
     DeviceCategory.DIM_COLOR_LIGHT: CategoryInfo(
         category=DeviceCategory.DIM_COLOR_LIGHT,
-        label="调光调色灯",
-        description="deviceTypeId=38（兼容字段），亮度+色温",
+        label="Dimmable color-temperature light",
+        description='deviceTypeId=38 (legacy field); brightness and color temperature',
         capabilities=("onoff", "brightness", "color_temp"),
     ),
     DeviceCategory.LEGACY_LIGHT: CategoryInfo(
         category=DeviceCategory.LEGACY_LIGHT,
-        label="单色普通灯",
-        description="deviceTypeId=102（兼容字段），仅开关",
+        label="On/off light",
+        description='deviceTypeId=102 (legacy field); on/off only',
         capabilities=("onoff",),
     ),
     DeviceCategory.LEGACY_CURTAIN: CategoryInfo(
         category=DeviceCategory.LEGACY_CURTAIN,
-        label="普通窗帘",
-        description="deviceTypeId=52（兼容字段）",
+        label="Curtain",
+        description='deviceTypeId=52 (legacy field)',
         capabilities=("position",),
     ),
     DeviceCategory.CLOTHES_HORSE: CategoryInfo(
         category=DeviceCategory.CLOTHES_HORSE,
-        label="智能晾衣机",
-        description="deviceTypeId=52，电动晾衣机（照明/消毒/风干/热干/升降）",
+        label="Clothes dryer",
+        description='deviceTypeId=52; drying rack with light, disinfection, drying and lift controls',
         capabilities=("lighting", "sterilizing", "wind_drying", "heat_drying", "motor", "main_switch"),
     ),
     DeviceCategory.MOTION_SENSOR: CategoryInfo(
         category=DeviceCategory.MOTION_SENSOR,
-        label="人体传感器",
-        description="deviceTypeId=26，检测人体移动",
+        label="Motion sensor",
+        description='deviceTypeId=26; motion detection',
         capabilities=("motion_detection",),
     ),
     DeviceCategory.SMOKE_SENSOR: CategoryInfo(
         category=DeviceCategory.SMOKE_SENSOR,
-        label="烟雾传感器",
-        description="deviceTypeId=27，检测烟雾浓度",
+        label="Smoke sensor",
+        description='deviceTypeId=27; smoke detection',
         capabilities=("smoke_detection",),
     ),
     DeviceCategory.EMERGENCY_BUTTON: CategoryInfo(
         category=DeviceCategory.EMERGENCY_BUTTON,
-        label="紧急按钮",
-        description="deviceTypeId=56，紧急报警按钮",
+        label='Emergency button',
+        description='deviceTypeId=56; emergency button',
         capabilities=("emergency_alarm",),
     ),
     DeviceCategory.WATER_LEAK_SENSOR: CategoryInfo(
         category=DeviceCategory.WATER_LEAK_SENSOR,
-        label="水浸探测器",
-        description="deviceTypeId=54，水浸传感器",
+        label="Water-leak sensor",
+        description='deviceTypeId=54; water-leak detection',
         capabilities=("water_leak_detection",),
     ),
     DeviceCategory.GAS_SENSOR: CategoryInfo(
         category=DeviceCategory.GAS_SENSOR,
-        label="可燃气体探测器",
-        description="deviceTypeId=25，检测可燃气体浓度",
+        label="Gas sensor",
+        description='deviceTypeId=25; combustible-gas detection',
         capabilities=("gas_detection",),
     ),
     DeviceCategory.SMART_REMOTE: CategoryInfo(
         category=DeviceCategory.SMART_REMOTE,
-        label="智能遥控器",
-        description="deviceTypeId=150，红外遥控设备",
+        label="Smart remote control",
+        description='deviceTypeId=150; infrared remote control',
         capabilities=("ir_control",),
     ),
     DeviceCategory.MIXPAD_4WAY_BASE: CategoryInfo(
         category=DeviceCategory.MIXPAD_4WAY_BASE,
-        label="MixPad 四路底壳",
-        description="deviceTypeId=511，MixPad 扩展底壳",
+        label="MixPad four-channel base",
+        description='deviceTypeId=511; MixPad expansion base',
         capabilities=("multi_channel_switch",),
         is_container=True,
     ),
     DeviceCategory.DIMMABLE_LIGHT: CategoryInfo(
         category=DeviceCategory.DIMMABLE_LIGHT,
-        label="可调光灯",
-        description="deviceTypeId=502, subType=431，可调亮度，无色温",
+        label="Dimmable light",
+        description='deviceTypeId=502, subType=431; brightness without color temperature',
         capabilities=("onoff", "brightness"),
     ),
     DeviceCategory.ZIGBEE_DIMMABLE_LIGHT: CategoryInfo(
         category=DeviceCategory.ZIGBEE_DIMMABLE_LIGHT,
-        label="0-10v调光灯",
-        description="deviceTypeId=0, subDeviceType=-2，可调亮度，value1/value2格式",
+        label="0–10 V dimmable light",
+        description='deviceTypeId=0, subDeviceType=-2; dimming using value1/value2',
         capabilities=("onoff", "brightness"),
     ),
     DeviceCategory.TEMP_HUMIDITY_SENSOR: CategoryInfo(
         category=DeviceCategory.TEMP_HUMIDITY_SENSOR,
-        label="温湿度传感器",
-        description="deviceTypeId=300 subType=491，温度/湿度/电量",
+        label="Temperature and humidity sensor",
+        description='deviceTypeId=300 subType=491; temperature, humidity and battery',
         capabilities=("temperature", "humidity", "battery"),
     ),
     DeviceCategory.DOOR_WINDOW_SENSOR: CategoryInfo(
         category=DeviceCategory.DOOR_WINDOW_SENSOR,
-        label="门窗传感器",
-        description="deviceTypeId=46，门磁状态/电量",
+        label="Door/window sensor",
+        description='deviceTypeId=46; door and battery state',
         capabilities=("door_state", "battery"),
     ),
     DeviceCategory.FAST_MOVE_DIM_COLOR_LIGHT: CategoryInfo(
         category=DeviceCategory.FAST_MOVE_DIM_COLOR_LIGHT,
-        label="Fast Move调光调色灯",
-        description="statusType=2, subDeviceType=6，fast move to level协议，亮度+色温",
+        label="Fast Move dimmable color-temperature light",
+        description='statusType=2, subDeviceType=6; fast move to level protocol, brightness and color temperature',
         capabilities=("onoff", "brightness", "color_temp"),
     ),
     DeviceCategory.VENTILATION_SYSTEM: CategoryInfo(
         category=DeviceCategory.VENTILATION_SYSTEM,
-        label="新风系统",
-        description="deviceType=516, classId=1114，新风系统（停/慢/快三档）",
+        label="Ventilation system",
+        description='deviceType=516, classId=1114; ventilation with Off/Low/High presets',
         capabilities=("onoff", "fan_speed", "preset_mode"),
     ),
     DeviceCategory.FLOOR_HEATING: CategoryInfo(
         category=DeviceCategory.FLOOR_HEATING,
-        label="地暖控制器",
-        description="deviceType=300, subType=481, MixPadFloorHeat",
+        label="Floor-heating controller",
+        description='deviceType=300, subType=481, MixPadFloorHeat',
         capabilities=("onoff", "target_temperature", "temperature", "humidity"),
     ),
     DeviceCategory.LEGACY_FLOOR_HEATING: CategoryInfo(
         category=DeviceCategory.LEGACY_FLOOR_HEATING,
-        label="地暖控制面板",
-        description="deviceType=112, subType=-2, ui.model=orb_floorheat",
+        label="Floor-heating thermostat",
+        description='deviceType=112, subType=-2, ui.model=orb_floorheat',
         capabilities=("onoff", "target_temperature", "temperature"),
     ),
     DeviceCategory.DREAM_CURTAIN: CategoryInfo(
         category=DeviceCategory.DREAM_CURTAIN,
-        label="梦幻帘",
-        description="deviceType=506, subType=408, 开合位置与叶片角度",
+        label="Sheer curtain",
+        description='deviceType=506, subType=408; curtain position and slat angle',
         capabilities=("position", "stop", "angle"),
     ),
     DeviceCategory.OTHER: CategoryInfo(
         category=DeviceCategory.OTHER,
-        label="其他设备",
-        description="已识别 deviceType 但未在用户 taxonomy 中",
+        label="Other device",
+        description='Recognized deviceType outside the supported device categories',
         capabilities=(),
     ),
     DeviceCategory.UNKNOWN: CategoryInfo(
         category=DeviceCategory.UNKNOWN,
-        label="未识别设备",
-        description="无法匹配任何已知 deviceType / subType / ui.model",
+        label="Unrecognized device",
+        description='No matching deviceType, subType or ui.model',
         capabilities=(),
     ),
 }
@@ -301,7 +301,7 @@ def get_category_info(category: DeviceCategory) -> CategoryInfo:
     return _CATEGORY_INFO.get(category, _CATEGORY_INFO[DeviceCategory.UNKNOWN])
 
 
-# deviceTypeId → Category 主映射
+# Main mapping: deviceTypeId -> Category
 _DEVICE_TYPE_MAP: Dict[int, DeviceCategory] = {
     1: DeviceCategory.SIMPLE_ZIGBEE_LIGHT,
     34: DeviceCategory.ZIGBEE_CURTAIN,
@@ -319,13 +319,13 @@ _DEVICE_TYPE_MAP: Dict[int, DeviceCategory] = {
     518: DeviceCategory.BACH_SWITCH,
     107: DeviceCategory.DOOR_LOCK,
     522: DeviceCategory.DOOR_LOCK,
-    45: DeviceCategory.MIXPAD_GATEWAY,  # Zigbee Mini Hub (Hub100)，隐藏
+    45: DeviceCategory.MIXPAD_GATEWAY,  # Zigbee Mini Hub (Hub100), hidden
     14: DeviceCategory.WIFI_CAMERA,
     162: DeviceCategory.CAMERA_NVR,
     10086: DeviceCategory.LIGHT_VIRTUAL_GROUP,
     38: DeviceCategory.DIM_COLOR_LIGHT,
     52: DeviceCategory.CLOTHES_HORSE,
-    43: DeviceCategory.SIMPLE_ZIGBEE_LIGHT,   # COCO智能插线板 (order=on/off格式，同light控制)
+    43: DeviceCategory.SIMPLE_ZIGBEE_LIGHT,   # COCO smart power strip (order=on/off format, same as light control)
     26: DeviceCategory.MOTION_SENSOR,
     27: DeviceCategory.SMOKE_SENSOR,
     25: DeviceCategory.GAS_SENSOR,
@@ -366,7 +366,7 @@ _VERIFIED_DOOR_LOCK_MODELS = frozenset({
     "dec7d494f0454110805c0d5f7e7cba73",  # P20 / Z2
 })
 
-# 不需要展示、也不需要加入 HA 的设备类别
+# Device categories that should not be displayed or added to HA
 HIDDEN_CATEGORIES: set = {
     DeviceCategory.MIXPAD_GATEWAY,      # deviceTypeId=114
     DeviceCategory.MIX_SWITCH,          # deviceTypeId=135/136/137/143
@@ -375,8 +375,8 @@ HIDDEN_CATEGORIES: set = {
     DeviceCategory.MIXPAD_4WAY_BASE,    # deviceTypeId=511
 }
 
-# README 支持表由维护者使用真机验证；未列入此集合不等于不兼容，
-# 仅表示当前不作“真机验证通过”的能力承诺。
+# Maintainers verify devices listed in the README support table; omission from this set does not mean incompatibility,
+# it only means no capability is currently claimed as verified on physical devices.
 HARDWARE_VERIFIED_CATEGORIES = frozenset({
     DeviceCategory.SIMPLE_ZIGBEE_LIGHT,
     DeviceCategory.ZIGBEE_CURTAIN,
@@ -409,7 +409,7 @@ HARDWARE_VERIFIED_CATEGORIES = frozenset({
 
 
 def is_hidden_category(category: DeviceCategory) -> bool:
-    """判断该类别是否应被隐藏（不展示、不加入 HA）。"""
+    """Determine whether this category should be hidden (not displayed or added to HA)."""
     return category in HIDDEN_CATEGORIES
 
 
@@ -423,9 +423,9 @@ def get_device_profile(device: Dict[str, Any]) -> DeviceProfile:
             category=category,
             label=known_model.display_name,
             description=(
-                "家庭批量审计中已识别型号；尚未验证控制协议"
+                "Recognized model; control protocol not yet verified"
                 + (
-                    f"（内部型号：{', '.join(known_model.internal_models)}）"
+                    f" (internal model: {', '.join(known_model.internal_models)})"
                     if known_model.internal_models
                     else ""
                 )
@@ -458,14 +458,14 @@ def _safe_int(value: Any) -> Optional[int]:
 
 
 def classify_device(device: Dict[str, Any]) -> DeviceCategory:
-    """根据 device dict 字段判定分类。
+    """Determine the category from fields in the device dict.
 
-    优先级：
-    1. deviceType 主映射（type=300 需根据 subType 进一步区分）
-    2. 特殊组合：deviceType=0, subDeviceType=-2 为 Zigbee调光灯
-    3. ui.model 兜底
-    4. classId / subDeviceType 兜底
-    5. 返回 UNKNOWN
+    Priority:
+    1. Main deviceType mapping (type=300 requires further distinction by subType)
+    2. Special combination: deviceType=0 and subDeviceType=-2 is a Zigbee dimmable light
+    3. ui.model fallback
+    4. classId / subDeviceType fallback
+    5. Return UNKNOWN
     """
     if not isinstance(device, dict):
         return DeviceCategory.UNKNOWN
@@ -486,7 +486,7 @@ def classify_device(device: Dict[str, Any]) -> DeviceCategory:
     ):
         return DeviceCategory.DOOR_LOCK
 
-    # 真机 Profile 必须先于裸 deviceType 映射。
+    # Physical-device profiles take precedence over bare deviceType mappings.
     if device_type_raw == 0:
         return DeviceCategory.ZIGBEE_DIMMABLE_LIGHT
     if device_type_raw == 102:
@@ -534,12 +534,12 @@ def classify_device(device: Dict[str, Any]) -> DeviceCategory:
         return DeviceCategory.DREAM_CURTAIN
 
     if device_type_raw is not None and device_type_raw in _DEVICE_TYPE_MAP:
-        # deviceType=38 且 subDeviceType=6 时，使用 fast move 协议
+        # Use the fast move protocol for deviceType=38 and subDeviceType=6.
         if device_type_raw == 38 and sub_type == 6:
             return DeviceCategory.FAST_MOVE_DIM_COLOR_LIGHT
         return _DEVICE_TYPE_MAP[device_type_raw]
 
-    # 特殊判断：statusType=2, subDeviceType=6 为fast move调光调色灯
+    # Special case: statusType=2 and subDeviceType=6 is a Fast Move dimmable color-temperature light.
     status_type = _safe_int(device.get("status_type") or device.get("statusType"))
     if status_type == 2 and sub_type == 6:
         return DeviceCategory.FAST_MOVE_DIM_COLOR_LIGHT
@@ -555,8 +555,8 @@ def classify_device(device: Dict[str, Any]) -> DeviceCategory:
     if class_id is not None and class_id in _CLASS_ID_MAP:
         return _CLASS_ID_MAP[class_id]
 
-    # subDeviceType 不是 classId。跨 deviceType 用它兜底会把地暖、网关、
-    # 人体传感器等大量 subType=-2 记录误识别成调光灯。
+    # subDeviceType is not classId. Using it as a cross-deviceType fallback would misclassify underfloor heating, gateways,
+    # and many motion sensor records with subType=-2 as dimmable lights.
     return (
         DeviceCategory.OTHER
         if identify_known_device(device) is not None

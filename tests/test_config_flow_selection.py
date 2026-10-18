@@ -66,15 +66,15 @@ selection = _import_module("selection")
 # ── Test data ──
 
 DEVICES = [
-    {"device_id": "dev-001", "device_name": "客厅灯", "room_name": "客厅",
+    {"device_id": "dev-001", "device_name": "Living room light", "room_name": "Living room",
      "device_type": 38, "device_type_raw": "38"},
-    {"device_id": "dev-002", "device_name": "卧室灯", "room_name": "卧室",
+    {"device_id": "dev-002", "device_name": "Bedroom light", "room_name": "Bedroom",
      "device_type": 38, "device_type_raw": "38"},
-    {"device_id": "dev-003", "device_name": "窗帘", "room_name": "客厅",
+    {"device_id": "dev-003", "device_name": "Curtain", "room_name": "Living room",
      "device_type": 34, "device_type_raw": "34"},
-    {"device_id": "dev-004", "device_name": "空调", "room_name": "客厅",
+    {"device_id": "dev-004", "device_name": "Air conditioner", "room_name": "Living room",
      "device_type": 36, "device_type_raw": "36"},
-    {"device_id": "dev-005", "device_name": "开关", "room_name": "厨房",
+    {"device_id": "dev-005", "device_name": "Switch", "room_name": "Kitchen",
      "device_type": 13, "device_type_raw": "13"},
 ]
 

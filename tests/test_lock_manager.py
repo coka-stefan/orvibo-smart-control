@@ -34,7 +34,7 @@ class LockEventManagerTests(unittest.TestCase):
     def test_recent_unlock_attributes_open_door(self) -> None:
         now = [100.0]
         manager = self.module.LockEventManager(
-            lambda device_id, user_id: "张三" if str(user_id) == "7" else None,
+            lambda device_id, user_id: "Alex" if str(user_id) == "7" else None,
             clock=lambda: now[0],
         )
         unlock = {
@@ -51,9 +51,9 @@ class LockEventManagerTests(unittest.TestCase):
         now[0] = 105.0
         opened_event = manager.build_event("lock", opened)
 
-        self.assertEqual(unlock_event["unlock_user_name"], "张三")
+        self.assertEqual(unlock_event["unlock_user_name"], "Alex")
         self.assertEqual(opened_event["opened_by_user_id"], "7")
-        self.assertEqual(opened_event["opened_by_name"], "张三")
+        self.assertEqual(opened_event["opened_by_name"], "Alex")
 
     def test_stale_unlock_does_not_attribute_open_door(self) -> None:
         now = [100.0]
@@ -112,6 +112,7 @@ class LockEventManagerTests(unittest.TestCase):
             {
                 "cmd": 82,
                 "infoType": 12,
+                # Exact vendor event text is retained to test event keyword matching.
                 "text": "检测到访客来访",
                 "data": {"deviceId": "wire-id"},
             },

@@ -43,7 +43,7 @@ class InferEventNameTests(unittest.TestCase):
         )
 
     def test_picture_ring(self) -> None:
-        # 门铃图片（pictureUploadRing）不是录像对象，不应推断为视频事件
+        # Doorbell images (pictureUploadRing) are not video objects and should not be classified as video events.
         key = "/uid/pictureUploadRing/ring_1785652287.jpg"
         self.assertIsNone(video_archive.infer_event_name(key))
 

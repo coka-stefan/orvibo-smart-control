@@ -15,7 +15,7 @@ class LockOpeningTests(unittest.TestCase):
         self.status = __import__(self.module.__package__ + '.lock_status', fromlist=['lock_status'])
         self.now = 100.0
         self.manager = self.module.LockEventManager(
-            lambda device, user: {('a', '0'): '管理员', ('a', '7'): '张三', ('b', '7'): '李四'}.get((device, str(user))),
+            lambda device, user: {('a', '0'): 'Administrator', ('a', '7'): 'Alex', ('b', '7'): 'Jordan'}.get((device, str(user))),
             clock=lambda: self.now,
         )
 
@@ -57,14 +57,14 @@ class LockOpeningTests(unittest.TestCase):
     def test_new_user_id_zero_is_a_valid_administrator(self):
         event = self.manager.build_event('a', self.unlock(user=0))
         self.assertEqual(event['unlock_user_id'], 0)
-        self.assertEqual(event['unlock_user_name'], '管理员')
+        self.assertEqual(event['unlock_user_name'], 'Administrator')
 
     def test_old_flat_event_has_authorized_id_and_snapshot(self):
         packet = {'cmd': 352, 'event': {'name': 'unlock', 'value': {
             'type': 'temp password', 'userID': 7, 'picture_url': '/a/picture.jpg'}}}
         before = copy.deepcopy(packet)
         event = self.manager.build_event('a', packet)
-        self.assertEqual(event['unlock_user_name'], '张三')
+        self.assertEqual(event['unlock_user_name'], 'Alex')
         self.assertEqual(event['pic_url'], '/a/picture.jpg')
         self.assertEqual(event['unlock_method'], 'temporary_password')
         self.assertEqual(packet, before)
@@ -107,7 +107,7 @@ class LockOpeningTests(unittest.TestCase):
         self.manager.build_event('a', self.unlock())
         first = self.manager.build_event('a', self.door(True))
         self.assertEqual(first['open_direction'], 'outside')
-        self.assertEqual(first['opened_by_name'], '张三')
+        self.assertEqual(first['opened_by_name'], 'Alex')
         self.manager.build_event('a', self.door(False))
         second = self.manager.build_event('a', self.door(True))
         self.assertEqual(second['open_direction'], 'inside')
@@ -138,7 +138,7 @@ class LockOpeningTests(unittest.TestCase):
         event = self.manager.build_event('b', self.door(True))
         self.assertIsNone(event['unlock_user_id'])
         event = self.manager.build_event('b', self.unlock())
-        self.assertEqual(event['unlock_user_name'], '李四')
+        self.assertEqual(event['unlock_user_name'], 'Jordan')
 
     def test_late_producer_timestamp_does_not_match_new_opening(self):
         self.manager.build_event('a', self.unlock(timestamp=10))
@@ -151,12 +151,12 @@ class LockOpeningTests(unittest.TestCase):
         self.assertEqual(event['open_direction'], 'inside')
 
     def test_label_cannot_call_an_inside_opening_fingerprint(self):
-        self.assertEqual(self.status.format_unlock_label(7, '张三', 'inside', None), '内开（人员未知）')
-        self.assertEqual(self.status.format_unlock_label(7, '张三', 'outside', 'fingerprint'), '张三外开（指纹）')
-        self.assertEqual(self.status.format_unlock_label(None, None, 'outside', 'key'), '外开（钥匙，人员未知）')
-        self.assertEqual(self.status.format_unlock_label(7, '张三', 'inside', 'fingerprint'), '张三外开（指纹）')
-        self.assertEqual(self.status.format_unlock_label(7, '张三', 'outside', 'face'), '内开（人员未知）')
-        self.assertEqual(self.status.format_unlock_label(7, '张三', 'unknown', None), '内开（人员未知）')
+        self.assertEqual(self.status.format_unlock_label(7, 'Alex', 'inside', None), 'Opened from inside (person unknown)')
+        self.assertEqual(self.status.format_unlock_label(7, 'Alex', 'outside', 'fingerprint'), 'Alex opened from outside (Fingerprint)')
+        self.assertEqual(self.status.format_unlock_label(None, None, 'outside', 'key'), 'opened from outside (Key, Unknown person)')
+        self.assertEqual(self.status.format_unlock_label(7, 'Alex', 'inside', 'fingerprint'), 'Alex opened from outside (Fingerprint)')
+        self.assertEqual(self.status.format_unlock_label(7, 'Alex', 'outside', 'face'), 'Opened from inside (person unknown)')
+        self.assertEqual(self.status.format_unlock_label(7, 'Alex', 'unknown', None), 'Opened from inside (person unknown)')
 
     def test_nonfinite_correlation_is_rejected(self):
         self.assertIsNone(self.status.resolve_opened_by({'user_id': 7}, float('nan')))
@@ -167,7 +167,7 @@ class LockOpeningTests(unittest.TestCase):
         self.assertTrue(old['historical'])
         self.assertEqual(old['pic_url'], '/old.jpg')
         opened = self.manager.build_event('a', self.door(True))
-        self.assertEqual(opened['opened_by_name'], '管理员')
+        self.assertEqual(opened['opened_by_name'], 'Administrator')
 
 
 class CoordinatorOpeningTests(unittest.TestCase):
@@ -183,7 +183,7 @@ class CoordinatorOpeningTests(unittest.TestCase):
         coordinator.device_states = {'a': {}}
         coordinator.state_store = store.StateStore(coordinator.device_states)
         coordinator._lock_user_names = {}
-        coordinator._lock_user_names_shared = {'a/7': '张三', 'b/7': '李四'}
+        coordinator._lock_user_names_shared = {'a/7': 'Alex', 'b/7': 'Jordan'}
         coordinator.lock_events = logic.LockEventManager(coordinator.lock_user_name)
         coordinator.lock_media = types.SimpleNamespace(attach_urls=lambda *args: {})
         coordinator.hass = types.SimpleNamespace(bus=types.SimpleNamespace(async_fire=MagicMock()))
@@ -213,8 +213,8 @@ class CoordinatorOpeningTests(unittest.TestCase):
 
     def test_number_name_mapping_resolves_each_outside_opening(self):
         status = __import__(self.coordinator.lock_events.__module__.rsplit('.', 1)[0] + '.lock_status', fromlist=['lock_status'])
-        self.coordinator._lock_user_names_shared = status.parse_lock_user_names('1=家人甲\n2=家人乙\n3=家人丙')
-        for user_id, name in ((1, '家人甲'), (2, '家人乙'), (3, '家人丙')):
+        self.coordinator._lock_user_names_shared = status.parse_lock_user_names('1=Family Member A\n2=Family Member B\n3=Family Member C')
+        for user_id, name in ((1, 'Family Member A'), (2, 'Family Member B'), (3, 'Family Member C')):
             with self.subTest(user_id=user_id):
                 packet = {'cmd': 352, 'time': user_id, 'event': {
                     'server': 'doorLock', 'name': 'unlockEvent',
@@ -225,18 +225,18 @@ class CoordinatorOpeningTests(unittest.TestCase):
                 self.assertEqual(event['open_direction'], 'outside')
 
     def test_service_names_are_scoped_per_lock_including_zero(self):
-        self.assertTrue(self.coordinator.set_lock_user_name('a', 0, '管理员'))
-        self.assertEqual(self.coordinator.lock_user_name('a', 0), '管理员')
+        self.assertTrue(self.coordinator.set_lock_user_name('a', 0, 'Administrator'))
+        self.assertEqual(self.coordinator.lock_user_name('a', 0), 'Administrator')
         self.assertIsNone(self.coordinator.lock_user_name('b', 0))
-        self.assertEqual(self.coordinator._lock_user_names_shared['a/0'], '管理员')
+        self.assertEqual(self.coordinator._lock_user_names_shared['a/0'], 'Administrator')
         self.coordinator.set_lock_user_name('a', 0, '')
         self.assertIsNone(self.coordinator.lock_user_name('a', 0))
 
     def test_credential_specific_name_prevents_same_id_from_sharing_person(self):
-        self.coordinator._lock_user_names_shared.update({'a/fingerprint/7': '张三指纹', 'a/password/7': '访客密码'})
-        self.assertEqual(self.coordinator.lock_user_name('a', 7, 'fingerprint'), '张三指纹')
-        self.assertEqual(self.coordinator.lock_user_name('a', 7, 'password'), '访客密码')
-        self.assertEqual(self.coordinator.lock_user_name('b', 7, 'password'), '李四')
+        self.coordinator._lock_user_names_shared.update({'a/fingerprint/7': 'Alex Fingerprint', 'a/password/7': 'Guest Password'})
+        self.assertEqual(self.coordinator.lock_user_name('a', 7, 'fingerprint'), 'Alex Fingerprint')
+        self.assertEqual(self.coordinator.lock_user_name('a', 7, 'password'), 'Guest Password')
+        self.assertEqual(self.coordinator.lock_user_name('b', 7, 'password'), 'Jordan')
 
 
 if __name__ == '__main__':

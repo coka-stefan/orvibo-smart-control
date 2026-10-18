@@ -1,4 +1,4 @@
-"""尝试通过 HTTPS 带签名的 API 控制 COCO 插线板"""
+"""Try controlling a COCO power strip through the signed HTTPS API."""
 import hashlib, json, asyncio, aiohttp, sys, time
 import os
 from pathlib import Path
@@ -15,7 +15,7 @@ if _orig: _init.write_bytes(_orig)
 USER = os.environ.get("ORVIBO_USERNAME", "")
 PASS = os.environ.get("ORVIBO_PASSWORD", "")
 if not USER or not PASS:
-    sys.exit("请先设置环境变量 ORVIBO_USERNAME 和 ORVIBO_PASSWORD")
+    sys.exit("Set the ORVIBO_USERNAME and ORVIBO_PASSWORD environment variables first")
 DEV = "example-device-id"
 
 async def main():
@@ -26,7 +26,7 @@ async def main():
         j = json.loads(await r.text())
         token = j["data"]["access_token"]
         uid = j["data"]["user_id"]
-        print(f"✅ 登录成功")
+        print("✅ Login succeeded")
 
         def sign_params(params: dict) -> dict:
             p = dict(params)
@@ -36,8 +36,8 @@ async def main():
             p["sign"] = hmac_sha256("nQ45RjPtOws96jmH", "&".join(sb))
             return p
 
-        # 方式1: /v2/device/write (旧版设备接口)
-        print(f"\n📡 方式1: POST /v2/device/write")
+        # Method 1: legacy device endpoint.
+        print("\n📡 Method 1: POST /v2/device/write")
         url = f"https://{HTTPS_HOST}/v2/device/write"
         for order, v1 in [("on", 0), ("on", 1)]:
             ts = int(time.time() * 1000)
@@ -56,8 +56,8 @@ async def main():
             async with s.post(url, data=json.dumps(params, ensure_ascii=False), headers=HTTP_HEADERS, ssl=False) as r:
                 print(f"  {order}(v1={v1}): {json.loads(await r.text())}")
 
-        # 方式2: /v2/cmd/app/readtable (写模式)
-        print(f"\n📡 方式2: POST /v2/cmd/app/write")
+        # Method 2: write mode through the app command endpoint.
+        print("\n📡 Method 2: POST /v2/cmd/app/write")
         url = f"https://{HTTPS_HOST}/v2/cmd/app/write"
         for order, v1 in [("on", 0), ("on", 1)]:
             ts = int(time.time() * 1000)
@@ -71,8 +71,8 @@ async def main():
             async with s.post(url, data=json.dumps(params), headers=HTTP_HEADERS, ssl=False) as r:
                 print(f"  {order}(v1={v1}): {json.loads(await r.text())}")
 
-        # 方式3: /v2/cmd/app/sendCmd
-        print(f"\n📡 方式3: POST /v2/cmd/app/sendCmd")
+        # Method 3: /v2/cmd/app/sendCmd.
+        print("\n📡 Method 3: POST /v2/cmd/app/sendCmd")
         url = f"https://{HTTPS_HOST}/v2/cmd/app/sendCmd"
         for order, v1 in [("on", 0), ("on", 1)]:
             ts = int(time.time() * 1000)
@@ -85,8 +85,8 @@ async def main():
             async with s.post(url, data=json.dumps(params), headers=HTTP_HEADERS, ssl=False) as r:
                 print(f"  {order}(v1={v1}): {json.loads(await r.text())}")
 
-        # 方式4: 查询当前状态确认
-        print(f"\n📡 验证状态...")
+        # Method 4: query the current state to confirm the result.
+        print("\n📡 Verify state...")
         ret = HomemateJsonData.get_family_statistics_users(uid, token)
         async with s.post(ret["url"], data=ret["data"], headers=HTTP_HEADERS, ssl=False) as r:
             families = json.loads(await r.text()).get("data", [])
@@ -97,7 +97,7 @@ async def main():
                 d = json.loads(await r.text()).get("data", {})
                 for st in d.get("deviceStatus", []):
                     if st.get("deviceId") == DEV:
-                        print(f"  最终状态: value1={st.get('value1')}")
+                        print(f"  Final state: value1={st.get('value1')}")
                         break
 
 asyncio.run(main())

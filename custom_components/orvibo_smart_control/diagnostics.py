@@ -1,7 +1,7 @@
 """Diagnostics support for orvibo_smart_control.
 
-在 HA 设备页面 → 三个点 → 诊断信息 中查看原始数据。
-包含：设备列表、状态、最近 50 条实时协议推送记录。
+View raw data on the HA device page: open the three-dot menu and select Diagnostics.
+Includes the device list, state, and the 50 most recent live protocol push records.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def _lock_diagnostics(device: dict[str, Any], state: dict[str, Any]) -> dict[str
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """返回配置条目的诊断信息。"""
+    """Return diagnostics for a config entry."""
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not coordinator:
         return {"error": "coordinator not found"}
@@ -59,7 +59,7 @@ async def async_get_config_entry_diagnostics(
     now = time.time()
     salt = getattr(coordinator, "_redaction_salt", b"") or b"orvibo_smart_control"
 
-    # 整理设备列表
+    # Prepare the device list
     devices_raw = {}
     for dev_id, dev in coordinator.devices.items():
         profile = get_device_profile(dev)
@@ -81,14 +81,14 @@ async def async_get_config_entry_diagnostics(
                 dev, coordinator.device_states.get(dev_id, {})
             )
 
-    # 整理当前状态
+    # Prepare the current state
     states_raw = {}
     for dev_id, st in coordinator.device_states.items():
         states_raw[dev_id] = dict(st)
-        # 去掉 over-length 属性
+        # Remove oversized properties
         states_raw[dev_id].pop("properties", None)
 
-    # 整理最近50条cmd42推送
+    # Prepare the 50 most recent cmd=42 pushes
     cmd42_entries = []
     for entry_ in getattr(coordinator, "_cmd42_log", [])[-50:]:
         cmd42_entries.append({
@@ -109,12 +109,12 @@ async def async_get_config_entry_diagnostics(
 async def async_get_device_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry, device: DeviceEntry
 ) -> dict[str, Any]:
-    """返回某个设备专有的诊断信息。"""
+    """Return diagnostics specific to a device."""
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not coordinator:
         return {"error": "coordinator not found"}
 
-    # 从 device identifier 反查 device_id
+    # Look up the device_id from the device identifier
     device_id = None
     for domain, identifier in device.identifiers:
         if domain == DOMAIN:
@@ -126,7 +126,7 @@ async def async_get_device_diagnostics(
 
     result: dict[str, Any] = {}
 
-    # 设备原始信息
+    # Raw device information
     if device_id and device_id in coordinator.devices:
         result["device_info"] = redact_packet(
             coordinator.devices[device_id], salt, strict=False
@@ -134,7 +134,7 @@ async def async_get_device_diagnostics(
     else:
         result["device_info"] = {"error": f"device {device_id} not found in coordinator"}
 
-    # 当前状态
+    # Current state
     if device_id and device_id in coordinator.device_states:
         result["current_state"] = redact_packet(
             dict(coordinator.device_states[device_id]), salt, strict=False
@@ -154,7 +154,7 @@ async def async_get_device_diagnostics(
                 strict=False,
             )
 
-    # 该设备的最近cmd42推送
+    # Recent cmd=42 pushes for this device
     device_cmd42 = []
     for entry_ in getattr(coordinator, "_cmd42_log", []):
         if entry_["device_id"] == device_id or entry_.get("raw", {}).get("uid") == device_id:

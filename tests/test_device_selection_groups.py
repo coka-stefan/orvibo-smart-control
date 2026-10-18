@@ -34,22 +34,23 @@ device_selection = _import_module("device_selection")
 
 
 DEVICES = [
-    {"device_id": "light-1", "device_type_raw": 38, "device_name": "客厅灯"},
-    {"device_id": "light-2", "device_type_raw": 501, "subDeviceType": 426, "device_name": "卧室灯"},
-    {"device_id": "light-3", "device_type_raw": 502, "subDeviceType": 431, "device_name": "书房灯"},
-    {"device_id": "switch-1", "device_type_raw": 135, "device_name": "玄关开关"},
-    {"device_id": "curtain-1", "device_type_raw": 34, "device_name": "客厅窗帘"},
-    {"device_id": "lock-1", "device_type_raw": 522, "subDeviceType": 463, "device_name": "入户门锁"},
-    {"device_id": "unknown-1", "device_type_raw": 999, "device_name": "未知设备"},
+    {"device_id": "light-1", "device_type_raw": 38, "device_name": "Living Room Light"},
+    {"device_id": "light-2", "device_type_raw": 501, "subDeviceType": 426, "device_name": "Bedroom Light"},
+    {"device_id": "light-3", "device_type_raw": 502, "subDeviceType": 431, "device_name": "Study Light"},
+    {"device_id": "switch-1", "device_type_raw": 135, "device_name": "Entryway Switch"},
+    {"device_id": "curtain-1", "device_type_raw": 34, "device_name": "Living Room Curtain"},
+    {"device_id": "lock-1", "device_type_raw": 522, "subDeviceType": 463, "device_name": "Front Door Lock"},
+    {"device_id": "unknown-1", "device_type_raw": 999, "device_name": "Unknown Device"},
 ]
 
 
 class TestGroupedDeviceSelection(unittest.TestCase):
     def test_name_classifies_device_without_type_metadata(self):
+        # Keep this vendor-language name to cover category inference without type metadata.
         group = device_selection.infer_device_group(
-            {"device_id": "named-light", "device_name": "楼梯感应灯"}
+            {"device_id": "named-light", "device_name": "Stair sensor 灯"}
         )
-        self.assertEqual(group, ("lights", "灯具"))
+        self.assertEqual(group, ("lights", "Lights"))
 
     def test_groups_keep_api_order_and_classify_devices(self):
         grouped = device_selection.grouped_devices(DEVICES)
@@ -65,7 +66,7 @@ class TestGroupedDeviceSelection(unittest.TestCase):
     def test_single_device_type_remains_its_own_group(self):
         groups = device_selection.device_selection_groups(DEVICES)
         switch_group = next(group for group in groups if group.key == "switches")
-        self.assertEqual(switch_group.label, "开关")
+        self.assertEqual(switch_group.label, "Switches")
         self.assertEqual(switch_group.device_ids, ("switch-1",))
 
     def test_all_checkbox_selects_every_device_in_category(self):

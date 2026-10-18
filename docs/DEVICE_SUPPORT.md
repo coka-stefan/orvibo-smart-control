@@ -1,156 +1,132 @@
-# 设备支持矩阵
+# Device Support Matrix
 
-本文记录 ORVIBO Smart Control `0.1.0` 的设备识别、Home Assistant 平台和传输边界。
-“已验证”表示维护者对该类别完成过真机状态与控制检查，不表示同一 `deviceType` 下的
-所有商品型号天然兼容。
+This document records device recognition, Home Assistant platforms, and transport boundaries for ORVIBO Smart Control `0.1.0`. “Verified” means the maintainer has checked real-device state and control for that category; it does not mean that every product model under the same `deviceType` is inherently compatible.
 
-## 标记说明
+## Legend
 
-| 标记     | 含义                                                            |
-| -------- | --------------------------------------------------------------- |
-| LAN 优先 | 控制先发往已认证且可达的 MixPad；失败后最多云端重试一次         |
-| 云控制   | 设备控制使用 ORVIBO 云端 TLS 长连接；LAN 推送仍可能参与状态合并 |
-| 云专属   | 状态和富功能不由 LAN 接管                                       |
-| 只读     | 不下发设备控制命令，只接收和展示状态                            |
-| 登记     | 可以展示设备信息，但没有经过验证的实体或控制路径                |
+| Label | Meaning |
+| --- | --- |
+| LAN preferred | Control is first sent to an authenticated, reachable MixPad; after failure it retries through the cloud at most once |
+| Cloud control | Device control uses the ORVIBO cloud TLS long connection; LAN pushes may still contribute to merged state |
+| Cloud-only | LAN does not take over state or rich features |
+| Read-only | No device control commands are sent; state is received and displayed |
+| Registered | Device information can be displayed, but no entity or control path has been verified |
 
-自动模式中的 LAN 可控 `deviceType` 集合为
-`0, 1, 34, 35, 36, 38, 81, 102, 501, 502, 503, 516`。实际设备还必须通过完整的
-`deviceType + subDeviceType + classId + ui.model` 分类，并且所属网关已连接。
+The LAN-controllable `deviceType` set in automatic mode is
+`0, 1, 34, 35, 36, 38, 81, 102, 501, 502, 503, 516`. Each actual device must also be classified using the complete `deviceType + subDeviceType + classId + ui.model` tuple, and its gateway must be connected.
 
-## 传输模式对设备支持的影响
+## How transport mode affects device support
 
-| 模式                   | LAN 可控设备                                       | 云控制 / 云专属设备    |
-| ---------------------- | -------------------------------------------------- | ---------------------- |
-| LAN 与云端结合（默认） | 网关在线时走 LAN，失败后云端重试一次               | 直接走云端             |
-| 纯 LAN                 | 仅通过已认证 MixPad 接收实时状态和执行控制，不回退 | 运行期状态和控制不可用 |
-| 纯云端                 | 不连接 MixPad，状态与控制走云端                    | 正常走云端             |
+| Mode | LAN-controllable devices | Cloud-controlled / cloud-only devices |
+| --- | --- | --- |
+| Combined LAN + cloud (default) | Uses LAN when the gateway is online; retries through cloud once after failure | Uses cloud directly |
+| Pure LAN | Receives live state and control only through an authenticated MixPad; no fallback | Runtime state and control unavailable |
+| Pure cloud | Does not connect to MixPad; state and control use cloud | Uses cloud normally |
 
-纯 LAN 启动时仍需云端登录和库存发现，以确认家庭、设备、网关 UID 与可信地址；它限制的是
-发现完成后的实时状态、控制和周期轮询。表格中的“LAN 优先”描述默认结合模式；切换到纯
-LAN 后，同一设备的 LAN 命令不再拥有云端失败回退。
+Startup in pure LAN mode still requires cloud login and inventory discovery to confirm the family, devices, gateway UID, and trusted address. Pure LAN limits live state, control, and periodic polling after discovery. “LAN preferred” in this table describes default combined mode; in pure LAN mode, the same device no longer has cloud fallback after a failed LAN command.
 
-Home Assistant 设备页面会出现诊断实体“传输通道”，把上述策略显示为 `LAN`、`云端`、
-`LAN 优先，云端回退` 或 `当前模式不可用`。它不会给设备名称添加后缀；最近一次实际控制
-通道和网关连接状态位于该实体的属性中。
+The Home Assistant device page includes a “Transport Path” diagnostic entity showing the policy above as `LAN`, `Cloud`, `LAN preferred, cloud fallback`, or `Unavailable in current mode`. It does not add a suffix to the device name; the latest actual control path and gateway connection status are in the entity attributes.
 
-## 灯光与开关
+## Lights and switches
 
-| 设备或协议档案                                 | Home Assistant      | 能力                       | 控制     |
-| ---------------------------------------------- | ------------------- | -------------------------- | -------- |
-| S2 智能防眩射灯                                | `light`             | 开关、亮度、色温           | LAN 优先 |
-| S3 / S5 / S10 系列射灯                         | `light`             | 开关、亮度、色温           | LAN 优先 |
-| 柔光系列射灯                                   | `light`             | 开关、亮度                 | LAN 优先 |
-| 磁吸轨道系列                                   | `light`             | 开关、亮度、色温           | LAN 优先 |
-| 智能灯带控制器                                 | `light`             | 开关、亮度、色温           | LAN 优先 |
-| 0-10V 调光模块                                 | `light`             | 调光模式；部分型号支持色温 | LAN 优先 |
-| MixSwitch / TouchClassic / Gauss / Defy / BACH | `switch` 或 `light` | 一至四路开关，依档案分类   | LAN 优先 |
-| `501`，子类型 `426/429`                        | `light`             | 单色灯开关                 | LAN 优先 |
-| `102`                                          | `switch`            | 普通开关                   | LAN 优先 |
-| `502`                                          | `light`             | 开关、亮度                 | LAN 优先 |
-| `38`                                           | `light`             | 开关、亮度、色温           | LAN 优先 |
-| `503`                                          | `light`             | 色温灯带                   | LAN 优先 |
+| Device or protocol profile | Home Assistant | Capabilities | Control |
+| --- | --- | --- | --- |
+| S2 anti-glare spotlight | `light` | On/off, brightness, color temperature | LAN preferred |
+| S3 / S5 / S10 series spotlights | `light` | On/off, brightness, color temperature | LAN preferred |
+| Soft-light series spotlights | `light` | On/off, brightness | LAN preferred |
+| Magnetic track-light series | `light` | On/off, brightness, color temperature | LAN preferred |
+| Smart light-strip controller | `light` | On/off, brightness, color temperature | LAN preferred |
+| 0–10V dimmer module | `light` | Dimming mode; some models support color temperature | LAN preferred |
+| MixSwitch / TouchClassic / Gauss / Defy / BACH | `switch` or `light` | One to four switches, classified by profile | LAN preferred |
+| `501`, subtypes `426/429` | `light` | Monochrome light on/off | LAN preferred |
+| `102` | `switch` | Standard switch | LAN preferred |
+| `502` | `light` | On/off, brightness | LAN preferred |
+| `38` | `light` | On/off, brightness, color temperature | LAN preferred |
+| `503` | `light` | Tunable-white light strip | LAN preferred |
 
-`deviceType=0` 目前按调光灯处理，`deviceType=102` 按普通开关处理。新型号如果表现
-不同，应提交协议样本并收紧分类，不能直接扩展猜测分支。
+`deviceType=0` is currently treated as a dimmable light and `deviceType=102` as a standard switch. If a new model behaves differently, submit protocol samples and tighten classification; do not add speculative branches.
 
-## 窗帘与电机
+## Curtains and motors
 
-| 设备或协议档案   | Home Assistant | 能力                       | 控制     |
-| ---------------- | -------------- | -------------------------- | -------- |
-| Zigbee 窗帘 `34` | `cover`        | 开、关、位置、停止         | LAN 优先 |
-| 管状电机 `35/-2` | `cover`        | 开、关、位置、停止         | LAN 优先 |
-| 梦幻帘 `506/408` | `cover`        | 开合、位置、停止、叶片角度 | 云控制   |
+| Device or protocol profile | Home Assistant | Capabilities | Control |
+| --- | --- | --- | --- |
+| Zigbee curtain `34` | `cover` | Open, close, position, stop | LAN preferred |
+| Tubular motor `35/-2` | `cover` | Open, close, position, stop | LAN preferred |
+| Dream Curtain `506/408` | `cover` | Open/close, position, stop, blade angle | Cloud control |
 
-梦幻帘只在完全关闭时允许调整叶片角度；设置开合位置前，集成会先确认叶片回到中位。
-强电电机模式 `37` 尚未进入支持范围。
+Dream Curtain blade angle can be adjusted only when fully closed; before setting the open/close position, the integration confirms that the blades have returned to the middle. High-voltage motor mode `37` is not yet supported.
 
-## 暖通与新风
+## HVAC and fresh air
 
-| 设备或协议档案                     | Home Assistant | 能力                       | 控制     |
-| ---------------------------------- | -------------- | -------------------------- | -------- |
-| 风机盘管空调 `36`                  | `climate`      | 开关、目标温度、模式、风速 | LAN 优先 |
-| MixPad 地暖 `300/481`              | `climate`      | 开关、目标/当前温度、湿度  | 云控制   |
-| 旧式地暖 `112/-2`，`orb_floorheat` | `climate`      | 开关、目标/当前温度        | 云控制   |
-| 新风系统 `516`                     | `fan`          | 开关、停/慢/快预设         | LAN 优先 |
+| Device or protocol profile | Home Assistant | Capabilities | Control |
+| --- | --- | --- | --- |
+| Fan-coil air conditioner `36` | `climate` | On/off, target temperature, mode, fan speed | LAN preferred |
+| MixPad floor heating `300/481` | `climate` | On/off, target/current temperature, humidity | Cloud control |
+| Legacy floor heating `112/-2`, `orb_floorheat` | `climate` | On/off, target/current temperature | Cloud control |
+| Fresh-air system `516` | `fan` | On/off, stop/low/high presets | LAN preferred |
 
-`deviceType=300` 不能整体标记为门锁或云专属：`481` 是可控地暖，`491` 是只读温湿度
-传感器，分类必须结合子类型。
+Do not classify all `deviceType=300` devices as locks or cloud-only: `481` is controllable floor heating, while `491` is a read-only temperature/humidity sensor. Classification must use the subtype.
 
-## 传感器
+## Sensors
 
-以下设备不接受控制命令。非云专属传感器的状态可由 LAN 实时推送、云端实时推送或
-REST 快照合并，最终仍服从状态来源优先级；纯 LAN 模式启动后只接收其中的 LAN 实时变化。
+The devices below do not accept control commands. State from sensors that are not cloud-only may be merged from LAN live pushes, cloud live pushes, or REST snapshots, following the configured source priority. In pure LAN mode after startup, only LAN live changes are received.
 
-| 设备或协议档案         | Home Assistant            | 状态                           |
-| ---------------------- | ------------------------- | ------------------------------ |
-| 人体传感器 `26`        | `binary_sensor`、`sensor` | 人体、电池                     |
-| 门窗传感器 `46`        | `binary_sensor`、`sensor` | 门磁、电池                     |
-| 温湿度传感器 `300/491` | `sensor`                  | 温度、湿度、电池               |
-| 烟雾传感器 `27`        | `binary_sensor`、`sensor` | 烟雾、电池                     |
-| 可燃气体探测器 `25`    | `binary_sensor`、`sensor` | 燃气；长供电型号不创建电池实体 |
-| 紧急按钮 `56`          | `binary_sensor`、`sensor` | 触发、电池；触发后定时恢复     |
-| 水浸探测器 `54`        | `binary_sensor`、`sensor` | 水浸、电池                     |
+| Device or protocol profile | Home Assistant | State |
+| --- | --- | --- |
+| Motion sensor `26` | `binary_sensor`, `sensor` | Motion, battery |
+| Door/window sensor `46` | `binary_sensor`, `sensor` | Door contact, battery |
+| Temperature/humidity sensor `300/491` | `sensor` | Temperature, humidity, battery |
+| Smoke detector `27` | `binary_sensor`, `sensor` | Smoke, battery |
+| Combustible-gas detector `25` | `binary_sensor`, `sensor` | Gas; no battery entity for line-powered models |
+| Emergency button `56` | `binary_sensor`, `sensor` | Trigger, battery; resets after a timer |
+| Water-leak detector `54` | `binary_sensor`, `sensor` | Water leak, battery |
 
-温湿度传感器保持独立设备，不会为了复用地暖读数而强制绑定到地暖面板。
+Temperature/humidity sensors remain independent devices; they are not forcibly linked to a floor-heating panel just to reuse its readings.
 
-## 门锁与晾衣机
+## Door locks and clothes dryers
 
-| 设备或协议档案   | Home Assistant                      | 能力                                      | 通道                 |
-| ---------------- | ----------------------------------- | ----------------------------------------- | -------------------- |
-| 智能门锁 `107/522` | `sensor`、`binary_sensor`、`camera` | 锁/门磁、电池、事件、截图、录像、临时密码 | 云专属、设备控制只读 |
-| 智能晾衣机 `52`    | `sensor` 及功能实体                 | 灯、消毒、风干、热干、升降                | 云专属、可控制       |
+| Device or protocol profile | Home Assistant | Capabilities | Channel |
+| --- | --- | --- | --- |
+| Smart lock `107/522` | `sensor`, `binary_sensor`, `camera` | Lock/door contact, battery, events, snapshots, recordings, temporary passwords | Cloud-only; device control is read-only |
+| Smart clothes dryer `52` | `sensor` and feature entities | Light, sterilization, air-dry, heat-dry, raise/lower | Cloud-only; controllable |
 
-门锁即使被 MixPad 发现，也不会接入 LAN 状态或控制分支。临时密码和媒体是云端服务，
-不属于普通设备控制通道。需要门锁或晾衣机时不要选择纯 LAN，应保留默认结合模式或使用
-纯云端模式。
+Even if MixPad discovers a door lock, it does not use the LAN state or control path. Temporary passwords and media use cloud services rather than the ordinary device-control channel. To use locks or clothes dryers, do not select pure LAN; keep the default combined mode or use pure cloud mode.
 
-## 摄像机与 NVR（只读诊断）
+## Cameras and NVRs (read-only diagnostics)
 
-普通摄像机 `deviceType=14` 和 NVR `deviceType=162` 会出现在“摄像头”设备选择分组。
-选中后只创建“传输通道”和“摄像头 SDK 识别”诊断传感器；不会创建实时摄像头实体。
-诊断在设备离线时仍可查看，SDK 类型取自最新库存快照，不代表实时连接成功。
+Ordinary cameras (`deviceType=14`) and NVRs (`deviceType=162`) appear in the “Cameras” device-selection group. If selected, the integration creates only “Transport Path” and “Camera SDK Recognition” diagnostic sensors; it does not create live camera entities. Diagnostics remain viewable when the device is offline. SDK type comes from the latest inventory snapshot and does not mean a live connection succeeded.
 
-`cameraInfo` 附表按硬件 `Device.uid` 关联；HA 的 `device_id` 仍是业务 `Device.deviceId`。
-只保留附表的 `type` 为 `camera_type`，不保存其中的 token、密码或 SDK 凭据。
-应用 `Device.deviceType`、应用 `CameraInfo.type` 和商品目录 `productType` 是独立字段。
+The `cameraInfo` supplementary table is associated by hardware `Device.uid`; HA's `device_id` remains the business `Device.deviceId`. Only the supplementary table's `type` is retained as `camera_type`; its token, password, and SDK credentials are not stored. App `Device.deviceType`, App `CameraInfo.type`, and catalog `productType` are separate fields.
 
-| 设备类型 / 摄像头附表类型 | SDK 提示 | 证据边界 |
-| ------------------------ | -------- | -------- |
-| `14` / `3–7`             | Danale   | 静态类型分支 |
-| `14` / `8–10`            | Meari    | 静态类型分支 |
-| `14` / `-1, 1, 2`        | 萤石     | 静态类型分支 |
-| `162`                    | Meari    | NVR 页面入口 |
-| `14` / 缺失或其他值      | 未知     | 可能是旧 SEP2P 分支或型号优先分支，暂不推测 |
+| Device type / camera table type | SDK hint | Evidence limit |
+| --- | --- | --- |
+| `14` / `3–7` | Danale | Static type branch |
+| `14` / `8–10` | Meari | Static type branch |
+| `14` / `-1, 1, 2` | EZVIZ | Static type branch |
+| `162` | Meari | NVR page entry |
+| `14` / missing or other value | Unknown | May be an older SEP2P or model-priority branch; no guess is made |
 
-结合模式和纯云端模式显示云端库存路径；纯 LAN 显示“当前模式不可用”，现有库存诊断
-仍可查看。这里的云端标记仅说明本集成的库存来源，不表示视频流必须走云端。
-设备不接入 MixPad LAN 状态/控制，也不开放 SDK 控制、NVR 通道播放或猜测的 RTSP URL。
-商品目录中的 `521` 尚未与主播放调用链建立对应关系，未扩展播放能力。
+Combined and pure-cloud modes show the cloud inventory path; pure LAN shows “Unavailable in current mode,” while existing inventory diagnostics remain visible. The cloud marker here means only that this integration's inventory comes from the cloud; it does not mean the video stream must use the cloud. Devices do not use MixPad LAN state/control, and SDK control, NVR channel playback, and guessed RTSP URLs are not exposed. Catalog `521` has not been connected to the main playback call path, so no playback support is inferred.
 
-类型分支来自 HomeMate APK `5.2.6.307` 的静态逆向：`ActivityTool.j` 和 Flutter
-`gc.b.d/c`。APK SHA-256：
-`6ea3f3eff41ad4657ca437d10c79022949a1f080af857a8800dc6b6819abac8c`。
-可复核的 REA Evidence 为
+Type branches come from static reverse engineering of HomeMate APK `5.2.6.307`: `ActivityTool.j` and Flutter `gc.b.d/c`. APK SHA-256:
+`6ea3f3eff41ad4657ca437d10c79022949a1f080af857a8800dc6b6819abac8c`.
+Reviewable REA Evidence:
 `ev_9d0f3dbb5f213df33b5f9acc09d5baf74c11dfc30bb2d40ee7497d17d8e00acc`
-和 `ev_1ae7d7ced477d6d3bbd9ed9db22d48080df5664ecf758855ad741c7eacf73acc`。
-原生应用还有型号优先分支，因此传感器显示的是 SDK 提示，不是全部型号的运行时断言。
-本次没有真机验证、厂商 SDK 鉴权实现或已验证 HTTP/RTSP 流地址，`hardware_verified`
-和 `stream_supported` 均为 false。APK 的旧摄像机 SEP2P 路径也不能证明所有门锁猫眼协议。
+and `ev_1ae7d7ced477d6d3bbd9ed9db22d48080df5664ecf758855ad741c7eacf73acc`.
+The native app also has model-priority branches, so the sensor reports an SDK hint, not a runtime assertion for every model.
+This work did not include real-device validation, vendor SDK authentication, or a verified HTTP/RTSP stream URL; `hardware_verified` and `stream_supported` are both false. The APK's legacy camera SEP2P path also does not prove that all door-view locks use the same protocol.
 
-## 有意不支持或隐藏
+## Deliberately unsupported or hidden
 
-| 类型             | 当前行为       | 原因                       |
-| ---------------- | -------------- | -------------------------- |
-| 虚拟灯组 `10086` | 不创建可控实体 | 避免与成员设备重复         |
-| 强电电机 `37`    | 登记或忽略     | 缺少完整控制与回包验证     |
-| 未知类别         | 只登记展示     | 禁止向未知设备发送推测命令 |
-| 网关和父容器     | 隐藏实体       | 只承担拓扑或传输职责       |
+| Type | Current behavior | Reason |
+| --- | --- | --- |
+| Virtual light group `10086` | No controllable entity | Avoid duplicate controls with member devices |
+| High-voltage motor `37` | Registered or ignored | No complete control and response validation |
+| Unknown category | Registered for display only | Never send speculative commands to an unknown device |
+| Gateway and parent container | Entities hidden | Topology or transport role only |
 
-集成内置由公开 ORVIBO 设备目录生成的精确型号目录。目录命中只证明“能够识别产品”，
-不等于“状态和控制已经支持”。
+The integration includes an exact model catalog generated from the public ORVIBO device catalog. A catalog match proves only that a product can be recognized, not that its state or control is supported.
 
-## 提交新设备
+## Submitting a new device
 
-新增型号至少需要脱敏后的初始快照、物理/App 状态推送、每项控制的请求与响应、数值单位
-及真机结果。具体采集方法、分类入口和测试矩阵见 [贡献指南](../CONTRIBUTING.md)。
+New models need at least a redacted initial snapshot, physical/App state pushes, request and response for each control, value units, and real-device results. See the [Contribution Guide](../CONTRIBUTING.md) for collection steps, classification entry points, and the test matrix.

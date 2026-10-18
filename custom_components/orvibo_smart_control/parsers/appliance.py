@@ -66,7 +66,7 @@ def parse_ventilation(
     value1 = raw_status.get("value1")
     if value1 is not None:
         value1 = int(value1)
-        value_state = {0: ("慢", True), 50: ("停", False), 100: ("快", True)}
+        value_state = {0: ('Low', True), 50: ('Off', False), 100: ('High', True)}
         if value1 in value_state:
             updates["fan_speed"], updates["state"] = value_state[value1]
         updates["value1"] = value1
@@ -76,9 +76,9 @@ def parse_ventilation(
         fan_mode = fan_control.get("fanMode")
         if fan_mode:
             updates["fan_speed"] = {
-                "off": "停",
-                "low": "慢",
-                "high": "快",
+                "off": 'Off',
+                "low": 'Low',
+                "high": 'High',
             }.get(fan_mode, fan_mode)
             updates["state"] = fan_mode != "off"
 

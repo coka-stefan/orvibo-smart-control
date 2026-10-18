@@ -87,7 +87,7 @@ class LockMediaManagerTests(unittest.TestCase):
             manager.fetch_video("missing", "video.h264")
         )
 
-        self.assertEqual(result, {"error": "设备不存在或不是门锁"})
+        self.assertEqual(result, {"error": "Device not found or is not a door lock"})
 
     def test_snapshot_is_saved_without_camera_entity(self) -> None:
         async def no_sleep(_delay):

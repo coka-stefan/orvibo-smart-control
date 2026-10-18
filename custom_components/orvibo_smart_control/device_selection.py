@@ -51,71 +51,72 @@ class DeviceSelectionGroup:
 # device names improve the UI without coupling config-flow rendering to the
 # integration's controllability enum.
 _NAME_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("lights", "灯具", ("灯", "灯带", "射灯", "筒灯", "照明")),
-    ("switches", "开关", ("开关", "面板", "插座")),
-    ("curtains", "窗帘", ("窗帘", "卷帘", "纱帘")),
-    ("clothes_horse", "晾衣机", ("晾衣", "晾衣架")),
-    ("climate", "暖通", ("空调", "地暖", "暖气", "风机盘管")),
-    ("ventilation", "新风", ("新风", "通风")),
+    # Chinese keywords are retained to recognize vendor-localized names in incoming device records.
+    ("lights", 'Lights', ("灯", "灯带", "射灯", "筒灯", "照明")),
+    ("switches", 'Switches', ("开关", "面板", "插座")),
+    ("curtains", 'Curtains', ("窗帘", "卷帘", "纱帘")),
+    ("clothes_horse", 'Clothes dryers', ("晾衣", "晾衣架")),
+    ("climate", 'Heating and cooling', ("空调", "地暖", "暖气", "风机盘管")),
+    ("ventilation", 'Ventilation', ("新风", "通风")),
     (
         "sensors",
-        "传感器",
+        'Sensors',
         ("传感器", "温湿度", "人体", "烟雾", "水浸", "燃气", "门磁", "门窗"),
     ),
-    ("locks", "门锁", ("门锁", "智能锁", "指纹锁")),
-    ("cameras", "摄像头", ("摄像头", "相机", "监控")),
+    ("locks", 'Locks', ("门锁", "智能锁", "指纹锁")),
+    ("cameras", 'Cameras', ("摄像头", "相机", "监控")),
 )
 
 # Fallback for records whose display name is generic or empty.
 _RAW_TYPE_GROUPS: dict[int, tuple[str, str]] = {
-    0: ("lights", "灯具"),
-    1: ("lights", "灯具"),
-    14: ("cameras", "摄像头"),
-    22: ("sensors", "传感器"),
-    23: ("sensors", "传感器"),
-    25: ("sensors", "传感器"),
-    26: ("sensors", "传感器"),
-    27: ("sensors", "传感器"),
-    34: ("curtains", "窗帘"),
-    35: ("curtains", "窗帘"),
-    36: ("climate", "暖通"),
-    38: ("lights", "灯具"),
-    43: ("lights", "灯具"),
-    46: ("sensors", "传感器"),
-    52: ("clothes_horse", "晾衣机"),
-    54: ("sensors", "传感器"),
-    56: ("sensors", "传感器"),
-    102: ("lights", "灯具"),
-    112: ("climate", "暖通"),
-    114: ("other", "其他设备"),
-    128: ("other", "其他设备"),
-    135: ("switches", "开关"),
-    136: ("switches", "开关"),
-    137: ("switches", "开关"),
-    143: ("switches", "开关"),
-    150: ("other", "其他设备"),
-    162: ("cameras", "摄像头"),
-    501: ("lights", "灯具"),
-    502: ("lights", "灯具"),
-    503: ("lights", "灯具"),
-    506: ("curtains", "窗帘"),
-    511: ("switches", "开关"),
-    516: ("ventilation", "新风"),
-    518: ("switches", "开关"),
-    522: ("locks", "门锁"),
-    10086: ("lights", "灯具"),
+    0: ("lights", 'Lights'),
+    1: ("lights", 'Lights'),
+    14: ("cameras", 'Cameras'),
+    22: ("sensors", 'Sensors'),
+    23: ("sensors", 'Sensors'),
+    25: ("sensors", 'Sensors'),
+    26: ("sensors", 'Sensors'),
+    27: ("sensors", 'Sensors'),
+    34: ("curtains", 'Curtains'),
+    35: ("curtains", 'Curtains'),
+    36: ("climate", 'Heating and cooling'),
+    38: ("lights", 'Lights'),
+    43: ("lights", 'Lights'),
+    46: ("sensors", 'Sensors'),
+    52: ("clothes_horse", 'Clothes dryers'),
+    54: ("sensors", 'Sensors'),
+    56: ("sensors", 'Sensors'),
+    102: ("lights", 'Lights'),
+    112: ("climate", 'Heating and cooling'),
+    114: ("other", 'Other devices'),
+    128: ("other", 'Other devices'),
+    135: ("switches", 'Switches'),
+    136: ("switches", 'Switches'),
+    137: ("switches", 'Switches'),
+    143: ("switches", 'Switches'),
+    150: ("other", 'Other devices'),
+    162: ("cameras", 'Cameras'),
+    501: ("lights", 'Lights'),
+    502: ("lights", 'Lights'),
+    503: ("lights", 'Lights'),
+    506: ("curtains", 'Curtains'),
+    511: ("switches", 'Switches'),
+    516: ("ventilation", 'Ventilation'),
+    518: ("switches", 'Switches'),
+    522: ("locks", 'Locks'),
+    10086: ("lights", 'Lights'),
 }
 
 _TYPE_NAME_GROUPS: dict[str, tuple[str, str]] = {
-    "light": ("lights", "灯具"),
-    "switch": ("switches", "开关"),
-    "cover": ("curtains", "窗帘"),
-    "climate": ("climate", "暖通"),
-    "fan": ("climate", "暖通"),
-    "sensor": ("sensors", "传感器"),
-    "binary_sensor": ("sensors", "传感器"),
-    "lock": ("locks", "门锁"),
-    "camera": ("cameras", "摄像头"),
+    "light": ("lights", 'Lights'),
+    "switch": ("switches", 'Switches'),
+    "cover": ("curtains", 'Curtains'),
+    "climate": ("climate", 'Heating and cooling'),
+    "fan": ("climate", 'Heating and cooling'),
+    "sensor": ("sensors", 'Sensors'),
+    "binary_sensor": ("sensors", 'Sensors'),
+    "lock": ("locks", 'Locks'),
+    "camera": ("cameras", 'Cameras'),
 }
 
 
@@ -149,7 +150,7 @@ def infer_device_group(device: Mapping[str, Any]) -> tuple[str, str]:
     # Confirmed camera types take precedence over user-defined name keywords.
     raw_type = _raw_type(device)
     if raw_type in (14, 162):
-        return "cameras", "摄像头"
+        return "cameras", 'Cameras'
 
     searchable = " ".join(
         _text(device.get(field))
@@ -162,9 +163,9 @@ def infer_device_group(device: Mapping[str, Any]) -> tuple[str, str]:
     if raw_type == 300:
         sub_type = _sub_type(device)
         if sub_type == 481:
-            return "climate", "暖通"
+            return "climate", 'Heating and cooling'
         if sub_type == 491:
-            return "sensors", "传感器"
+            return "sensors", 'Sensors'
     raw_group = _RAW_TYPE_GROUPS.get(raw_type)
     if raw_group is not None:
         return raw_group
@@ -173,7 +174,7 @@ def infer_device_group(device: Mapping[str, Any]) -> tuple[str, str]:
     named_group = _TYPE_NAME_GROUPS.get(type_name)
     if named_group is not None:
         return named_group
-    return "other", "其他设备"
+    return "other", 'Other devices'
 
 
 def device_selection_groups(

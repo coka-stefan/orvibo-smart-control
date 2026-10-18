@@ -170,7 +170,7 @@ class ControlExecutorTests(unittest.TestCase):
         result = asyncio.run(executor.ventilation_state_update("device", 100))
 
         self.assertTrue(result)
-        self.assertEqual(states["device"]["fan_speed"], "快")
+        self.assertEqual(states["device"]["fan_speed"], "High")
         self.assertTrue(states["device"]["state"])
         self.assertEqual(states["device"]["value1"], 100)
         self.assertTrue(updates)

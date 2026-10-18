@@ -42,5 +42,5 @@ class LockHistoryServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_user_zero_can_be_named_by_service(self):
         await self.handlers['set_lock_user_name'](types.SimpleNamespace(data={
-            'device_id': 'a', 'user_id': 0, 'name': '管理员'}))
-        self.coordinator.set_lock_user_name.assert_called_once_with('a', '0', '管理员')
+            'device_id': 'a', 'user_id': 0, 'name': 'Administrator'}))
+        self.coordinator.set_lock_user_name.assert_called_once_with('a', '0', 'Administrator')

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "74b62ee4f7a87d20e15cee7769a8fe41fc528d77f0ecf4b21ae4c05605515da7",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "05d9a8bad3177c587eb0522aeb0bee6e185ae572819eadf633a6fcfa5664742d",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "ed7ec0f3731d21e2354015d01a24bf6ee04d6a1f9cd093b060eef524c6cb67c6",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "9025a306e6b55a06edfd6f979a52f400e649aa6d5cc6a5a64030a7dd83664765",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "28be22968a74294ae987ad5dba03253ad5bf3121130697b2ac281a890ce06728",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "522a4ed78ea29963b91d13ee6f237afce14204c161c91fa55862cda00ea2d0a4",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "4060ae612e7245a34639dbecabd4734a08876cefbf6e425e92ecece2411502ad",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "e0d82e6a08679e5621fab1bad1826ccef0897466358c5a64761552fd6e55ed19",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/device_selection.py",
+      "line_sha256": "113b81ddbbe66a12d18c0a0b2498e33da34978360d61e30c6d5783297f606a62",
+      "reason": "Matches localized vendor device names when type metadata is absent or incomplete; these are incoming matching keywords, not UI labels."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/lock_manager.py",
+      "line_sha256": "5bdbc3e2e29744921950d55377510df05da82f72204f97ea2237bb6ba4edea23",
+      "reason": "Classifies incoming vendor notification text as loitering or visitor events. Translating these input keywords would break classification."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/lock_manager.py",
+      "line_sha256": "328195a72b4ad52cc1c1e6c45b8ff0db6d77d16e569297561db97ef3e4aa7e8e",
+      "reason": "Classifies incoming vendor notification text as loitering or visitor events. Translating these input keywords would break classification."
+    },
+    {
+      "path": "custom_components/orvibo_smart_control/selection.py",
+      "line_sha256": "8d671faaa8b7802173f7856f77d9dc128903150207a2edff8acc297e9a8166a9",
+      "reason": "Accepts full-width comma and semicolon separators in existing user-supplied device-name filters."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "c71f2ab793ac5df0a5eb58a00100629478ca219c28ffcf39251aaf7a1602cf82",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "a36fb5533a0040da4d868083c381b4527d771385fd9a10ca9a954a93e1284a7f",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "01489c62afd88476a6df293af328c11f7d225f82343945e8e5685dd9c891670e",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "b6ba77d38ed7776e497f9cc8928288e07e1b35d5722011fa58a08ef19a9bd1aa",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "7364b5b428019ae60532bf247770d0140fce4b5cd803ebfc40d4e69791ccb58b",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "a35a601dbf8e1f9c99671385372b6e5a4858b3277ad33e291067710b23c490b5",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/fixtures/lock_v5eyes_samples.jsonl",
+      "line_sha256": "d4f1ac5cb89e2040b920e975d6fd6469514b34c2ef8d18e628be36d4eb0299ba",
+      "reason": "Verbatim redacted vendor packet fixture; preserve localized message text and punctuation to test real packet parsing and event classification."
+    },
+    {
+      "path": "tests/orvibo_probe.py",
+      "line_sha256": "acf3a19712ef03a798b1ac8aeb23c4b38a6edfd02be17c0c6081d5c1fef14619",
+      "reason": "Finds door locks whose vendor-provided names contain the localized lock keyword."
+    },
+    {
+      "path": "tests/test_camera_metadata.py",
+      "line_sha256": "998fc10fbb46428b5f867d3b5aea03ea6ed9c75a9d86293070721d1ddfea2093",
+      "reason": "Exercises camera-type precedence when the incoming device name contains the vendor light keyword."
+    },
+    {
+      "path": "tests/test_device_selection_groups.py",
+      "line_sha256": "dbd57f53337abf59928b879d5a0dd45b0239ffb4ade8ca4fe02f8a2dbca9ba31",
+      "reason": "Exercises substring-based category inference for an incoming localized vendor name without type metadata."
+    },
+    {
+      "path": "tests/test_lock_manager.py",
+      "line_sha256": "1f034213ba486ae827cfbec5c564273285a3cb9153b72321261a2f5d1a582560",
+      "reason": "Verifies notification classification against exact vendor-language event text."
+    }
+  ]
+}

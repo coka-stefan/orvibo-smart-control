@@ -57,7 +57,7 @@ class DeviceInventory:
         devices = self.client.parse_device_status_list(status_data)
         if not devices:
             _LOGGER.warning(
-                "readtable 未解析到设备，回退到 getDeviceDesc 构建设备列表..."
+                "readtable returned no parsed devices; falling back to getDeviceDesc to build the device list..."
             )
             description = await self.client.fetch_device_desc(last_update_time=0)
             if description:
@@ -68,11 +68,11 @@ class DeviceInventory:
                     devices = self.client.parse_device_status_list(
                         {"device": described, "deviceStatus": {}}
                     )
-                    _LOGGER.info("getDeviceDesc 回退解析到 %s 个设备", len(devices))
+                    _LOGGER.info("getDeviceDesc fallback parsed %s devices", len(devices))
 
         if not devices:
             _LOGGER.warning(
-                "getDeviceDesc 未构建到设备，回退到 queryHomepageData..."
+                "getDeviceDesc built no devices; falling back to queryHomepageData..."
             )
             homepage = await self.client.fetch_homepage_data()
             if isinstance(homepage, dict):
@@ -84,7 +84,7 @@ class DeviceInventory:
                         {"device": homepage_devices, "deviceStatus": {}}
                     )
                     _LOGGER.info(
-                        "queryHomepageData 回退解析到 %s 个设备", len(devices)
+                        "queryHomepageData fallback parsed %s devices", len(devices)
                     )
 
         return status_data, devices
@@ -95,7 +95,7 @@ class DeviceInventory:
             device_id = device["device_id"]
             category = classify_device(device)
             _LOGGER.info(
-                "设备分类: deviceId=%s, name=%s, deviceType=%s, category=%s",
+                "Device classification: deviceId=%s, name=%s, deviceType=%s, category=%s",
                 device_id,
                 device.get("device_name", ""),
                 device.get("device_type_raw", ""),
@@ -103,7 +103,7 @@ class DeviceInventory:
             )
             if is_hidden_category(category):
                 _LOGGER.debug(
-                    "[过滤] 跳过隐藏类别设备: %s category=%s",
+                    "[Filter] Skipping hidden-category device: %s category=%s",
                     device_id,
                     category.name,
                 )
@@ -143,7 +143,7 @@ class DeviceInventory:
             elif category == DeviceCategory.VENTILATION_SYSTEM:
                 state.update(
                     {
-                        "fan_speed": device.get("fan_speed", "停"),
+                        "fan_speed": device.get("fan_speed", 'Off'),
                         "temperature": device.get("temperature"),
                     }
                 )
@@ -198,9 +198,9 @@ class DeviceInventory:
                     self._battery_state(device),
                     StateSource.CLOUD,
                 )
-                # 门锁为 cloud_only：周期云端快照需覆盖门磁/锁状态字段，
-                # 仅靠 SSL 推送维护会在推送丢失/重启后残留旧值。
-                # StateStore guard 保证 30s 内新的 SSL 值不被覆盖。
+                # Locks are cloud-only, so periodic cloud snapshots must include door contact and lock state fields.
+                # Relying only on SSL pushes can leave stale values after a missed push or restart.
+                # The StateStore guard prevents fresh SSL values from being overwritten for 30 seconds.
                 lock_state: dict[str, Any] = {}
                 parser = get_state_parser(category)
                 if parser is not None:

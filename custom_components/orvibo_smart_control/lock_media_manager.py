@@ -48,10 +48,10 @@ def _download_bytes(url: str, timeout: int = 30) -> Optional[bytes]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read()
     except urllib.error.HTTPError as error:
-        _LOGGER.warning("截图下载失败 HTTP %s", error.code)
+        _LOGGER.warning("Snapshot download failed: HTTP %s", error.code)
         return None
     except Exception as error:  # noqa: BLE001
-        _LOGGER.warning("截图下载失败: %s", type(error).__name__)
+        _LOGGER.warning("Snapshot download failed: %s", type(error).__name__)
         return None
 
 
@@ -161,7 +161,7 @@ class LockMediaManager:
         if not self._stopped:
             self._create_task(self._restore_snapshot(device_id, camera))
         _LOGGER.debug(
-            "门锁截图实体已注册 device=%s",
+            "Lock snapshot entity registered: device=%s",
             fingerprint(device_id, self._redaction_salt),
         )
 
@@ -185,7 +185,7 @@ class LockMediaManager:
                 )
                 await camera.async_set_image(image)
         except OSError as error:
-            _LOGGER.warning("门锁截图恢复失败: %s", type(error).__name__)
+            _LOGGER.warning("Failed to restore lock snapshot: %s", type(error).__name__)
 
     async def _update_snapshot(
         self,
@@ -226,17 +226,17 @@ class LockMediaManager:
                     if url:
                         image = await self.hass.async_add_executor_job(_download_bytes, url)
                 except Exception as error:  # noqa: BLE001 - retry transient media failures
-                    _LOGGER.debug("截图下载尝试失败: %s", type(error).__name__)
+                    _LOGGER.debug("Snapshot download attempt failed: %s", type(error).__name__)
                 if image:
                     break
                 _LOGGER.debug(
-                    "截图下载重试 %s/4 device=%s",
+                    "Retrying snapshot download %s/4: device=%s",
                     attempt + 1,
                     fingerprint(device_id, self._redaction_salt),
                 )
             if not image:
                 _LOGGER.warning(
-                    "门锁截图下载为空 device=%s",
+                    "Lock snapshot download was empty: device=%s",
                     fingerprint(device_id, self._redaction_salt),
                 )
                 return
@@ -264,7 +264,7 @@ class LockMediaManager:
                         await camera.async_set_image(image)
         except Exception:  # noqa: BLE001
             _LOGGER.warning(
-                "门锁截图更新失败 device=%s",
+                "Failed to update lock snapshot: device=%s",
                 fingerprint(device_id, self._redaction_salt),
             )
             return
@@ -306,7 +306,7 @@ class LockMediaManager:
             )
         except Exception as error:  # noqa: BLE001
             _LOGGER.warning(
-                "录像归档失败 device=%s kind=%s: %s",
+                "Video archive failed: device=%s kind=%s: %s",
                 fingerprint(device_id, self._redaction_salt),
                 kind,
                 error,
@@ -314,7 +314,7 @@ class LockMediaManager:
             return
         if result and result.get("mp4_file") and Path(result["mp4_file"]).exists():
             _LOGGER.info(
-                "录像已归档 device=%s -> %s",
+                "Video archived: device=%s -> %s",
                 fingerprint(device_id, self._redaction_salt),
                 result["mp4_file"],
             )
@@ -325,21 +325,21 @@ class LockMediaManager:
         archiver = self.archiver
         cos = self.cos
         if archiver is None or cos is None:
-            return {"error": "录像归档未就绪"}
+            return {"error": 'Video archive is not ready'}
         device = self.devices.get(device_id)
         if device is None or classify_device(device) != DeviceCategory.DOOR_LOCK:
-            return {"error": "设备不存在或不是门锁"}
+            return {"error": 'Device not found or is not a door lock'}
         object_key = normalize_event_object_key(object_key) or ""
         if not object_key:
-            return {"error": "无效的事件录像对象键"}
+            return {"error": 'Invalid event video object key'}
         device_uid = device_uid or device.get("uid", "")
         url = await cos.signed_url(device_id, device_uid, object_key)
         if not url:
-            return {"error": "无法获取 COS 凭证或签名 URL"}
+            return {"error": 'Could not obtain media credentials or signed URL'}
         result = await self.hass.async_add_executor_job(
             archiver.archive, device_id, object_key, url
         )
-        return result or {"error": "录像下载失败"}
+        return result or {"error": 'Video download failed'}
 
     async def list_events(
         self, device_id: str = "", limit: int = 100, media_type: str | None = None,
@@ -365,7 +365,7 @@ class LockMediaManager:
                 await cos.get_credentials(device_id, device.get("uid", ""))
             except Exception as error:  # noqa: BLE001
                 _LOGGER.warning(
-                    "门锁媒体凭证预热失败 device=%s: %s",
+                    "Failed to prefetch lock media credentials: device=%s: %s",
                     fingerprint(device_id, self._redaction_salt),
                     error,
                 )
@@ -392,9 +392,9 @@ class LockMediaManager:
                             self.snapshot_limit,
                         )
                 if removed:
-                    _LOGGER.info("历史清理完成，删除 %s 个过期文件", removed)
+                    _LOGGER.info("History cleanup complete; deleted %s expired files", removed)
             except Exception:  # noqa: BLE001
-                _LOGGER.warning("历史清理异常", exc_info=True)
+                _LOGGER.warning("History cleanup error", exc_info=True)
 
         def schedule(_now=None) -> None:
             if not self._stopped:

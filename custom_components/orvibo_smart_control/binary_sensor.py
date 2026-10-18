@@ -1,9 +1,9 @@
-"""Orvibo 二元传感器平台。
+"""Orvibo binary sensor platform.
 
-支持设备类别：
-- MOTION_SENSOR (deviceType=26) 人体传感器
-- DOOR_WINDOW_SENSOR (deviceType=46) 门窗传感器
-- EMERGENCY_BUTTON (deviceType=56) 紧急按钮
+Supported device categories:
+- MOTION_SENSOR (deviceType=26) motion sensor
+- DOOR_WINDOW_SENSOR (deviceType=46) door/window sensor
+- EMERGENCY_BUTTON (deviceType=56) emergency button
 """
 import logging
 from typing import Optional
@@ -59,14 +59,14 @@ async def async_setup_entry(
 
 
 class OrviboMotionSensor(CoordinatorEntity, BinarySensorEntity):
-    """人体传感器（deviceType=26）。"""
+    """Motion sensor (deviceType=26)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_motion_{self._device_id}"
-        self._attr_name = "人体检测"
+        self._attr_name = 'Motion'
         self._attr_device_class = BinarySensorDeviceClass.MOTION
         self._attr_icon = "mdi:motion-sensor"
 
@@ -87,14 +87,14 @@ class OrviboMotionSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboDoorWindowSensor(CoordinatorEntity, BinarySensorEntity):
-    """门窗传感器（deviceType=46）。"""
+    """Door/window sensor (deviceType=46)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_door_{self._device_id}"
-        self._attr_name = "门磁状态"
+        self._attr_name = 'Door'
         self._attr_device_class = BinarySensorDeviceClass.DOOR
         self._attr_icon = "mdi:door-open"
 
@@ -115,14 +115,14 @@ class OrviboDoorWindowSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboDoorLockDoorSensor(CoordinatorEntity, BinarySensorEntity):
-    """智能门锁 - 门磁状态（deviceType=522）。"""
+    """Smart lock door contact state (deviceType=522)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_door_lock_door_{self._device_id}"
-        self._attr_name = "门磁状态"
+        self._attr_name = 'Door'
         self._attr_device_class = BinarySensorDeviceClass.DOOR
         self._attr_icon = "mdi:door-open"
 
@@ -143,14 +143,14 @@ class OrviboDoorLockDoorSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboSmokeSensor(CoordinatorEntity, BinarySensorEntity):
-    """烟雾传感器（deviceType=27）。"""
+    """Smoke sensor (deviceType=27)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_smoke_{self._device_id}"
-        self._attr_name = "烟雾检测"
+        self._attr_name = 'Smoke'
         self._attr_device_class = BinarySensorDeviceClass.SMOKE
         self._attr_icon = "mdi:smoke-detector"
 
@@ -171,14 +171,14 @@ class OrviboSmokeSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboEmergencyButton(CoordinatorEntity, BinarySensorEntity):
-    """紧急按钮（deviceType=56）。"""
+    """Emergency button (deviceType=56)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_emergency_{self._device_id}"
-        self._attr_name = "紧急按钮"
+        self._attr_name = 'Emergency button'
         self._attr_device_class = BinarySensorDeviceClass.PROBLEM
         self._attr_icon = "mdi:alert-octagon"
 
@@ -199,14 +199,14 @@ class OrviboEmergencyButton(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboWaterLeakSensor(CoordinatorEntity, BinarySensorEntity):
-    """水浸探测器（deviceType=54）。"""
+    """Water leak detector (deviceType=54)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_water_leak_{self._device_id}"
-        self._attr_name = "水浸"
+        self._attr_name = 'Water leak'
         self._attr_device_class = BinarySensorDeviceClass.MOISTURE
         self._attr_icon = "mdi:water"
 
@@ -227,14 +227,14 @@ class OrviboWaterLeakSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboGasSensor(CoordinatorEntity, BinarySensorEntity):
-    """可燃气体探测器（deviceType=25）。"""
+    """Combustible gas detector (deviceType=25)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_gas_{self._device_id}"
-        self._attr_name = "燃气检测"
+        self._attr_name = 'Gas'
         self._attr_device_class = BinarySensorDeviceClass.GAS
         self._attr_icon = "mdi:gas-cylinder"
 
@@ -255,14 +255,14 @@ class OrviboGasSensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class OrviboDoorLockDoorbellSensor(CoordinatorEntity, BinarySensorEntity):
-    """智能门锁 - 门铃事件（deviceType=522）。"""
+    """Smart lock doorbell event (deviceType=522)."""
 
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator)
         self._device = device
         self._device_id = device.get("device_id", "")
         self._attr_unique_id = f"orvibo_smart_control_door_lock_doorbell_{self._device_id}"
-        self._attr_name = "门铃"
+        self._attr_name = 'Doorbell'
         self._attr_device_class = BinarySensorDeviceClass.OCCUPANCY
         self._attr_icon = "mdi:bell-ring"
 

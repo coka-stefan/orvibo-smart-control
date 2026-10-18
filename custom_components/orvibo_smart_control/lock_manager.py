@@ -253,9 +253,11 @@ class LockEventManager:
     def snapshot_kind(text: str) -> str:
         """Classify message snapshots for history-card grouping."""
 
-        if "逗留" in text:
+        # Keep the vendor's Chinese terms for raw incoming messages; also accept translated text.
+        normalized = text.casefold()
+        if "逗留" in text or "loitering" in normalized:
             return "loiter"
-        if "来访" in text or "访客" in text:
+        if "来访" in text or "访客" in text or "visit" in normalized or "visitor" in normalized:
             return "visit"
         return "message"
 

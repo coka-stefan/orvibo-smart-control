@@ -106,10 +106,10 @@ class AvailabilityNotifier:
 
     async def _send(self, device_id: str, online: bool) -> None:
         device = self.devices.get(device_id) or {}
-        name = str(device.get("device_name") or "ORVIBO 设备")
-        state_text = "上线" if online else "离线"
-        title = f"ORVIBO 设备{state_text}"
-        message = f"{name} 已{state_text}"
+        name = str(device.get("device_name") or 'ORVIBO device')
+        state_text = 'online' if online else 'offline'
+        title = f'ORVIBO device{state_text}'
+        message = f'{name} is {state_text}'
 
         if self.notify_service and "." in self.notify_service:
             domain, service = self.notify_service.split(".", 1)
@@ -158,7 +158,7 @@ class IntegrationUpdateChecker:
                 raise
             except Exception as error:  # noqa: BLE001
                 _LOGGER.debug(
-                    "ORVIBO Smart Control 更新检查失败: %s",
+                    "ORVIBO Smart Control update check failed: %s",
                     type(error).__name__,
                 )
             await asyncio.sleep(self.interval_seconds)
@@ -192,10 +192,9 @@ class IntegrationUpdateChecker:
             "persistent_notification",
             "create",
             {
-                "title": "ORVIBO Smart Control 有可用更新",
+                "title": 'ORVIBO Smart Control update available',
                 "message": (
-                    f"已安装 v{self.current_version}，最新稳定版本为 "
-                    f"{latest}。请通过 HACS 或项目发布页更新。"
+                    f'Installed v{self.current_version}; latest version: {latest}. Update through Marketplace or the project releases page.'
                 ),
                 "notification_id": f"{DOMAIN}_update_available",
             },
