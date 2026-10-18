@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.6b18] - 2026-10-18
+
+### Fixed
+
+- Keep the areas you set in Home Assistant. ORVIBO rooms are now mapped to
+  areas only for devices without an area, so renamed, merged, or reassigned
+  areas are no longer recreated from the ORVIBO room names (and devices moved
+  back) on every restart or reload.
+
 ## [0.2.6b17] - 2026-10-18
 
 ### Fixed

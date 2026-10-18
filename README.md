@@ -1,7 +1,7 @@
 # ORVIBO Smart Control
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.2.6b17-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.2.6b18-2f6f4e.svg)](custom_components/orvibo_smart_control/manifest.json)
 
 ORVIBO Smart Control is an independent custom integration for Home Assistant. It combines direct MixPad gateway LAN access and the ORVIBO cloud protocol in one device, state, and control path: actions that can be completed over LAN are preferred locally, while devices that cannot be controlled locally and failed requests are handled by the cloud.
 
@@ -55,7 +55,7 @@ For implementation details and failure boundaries, see [Runtime Architecture](FU
 ### Live camera and NVR video
 
 `0.2.6b5` creates `camera` entities for matching Meari XTS/p2p=2 cameras and online NVR channels.
-Update to `v0.2.6b17` in HACS and restart Home Assistant, then open the NVR device page and select a camera entity such as “Channel 1” or “Channel 3.” You can also add the entity to a picture glance card and set `camera_view: live`.
+Update to `v0.2.6b18` in HACS and restart Home Assistant, then open the NVR device page and select a camera entity such as “Channel 1” or “Channel 3.” You can also add the entity to a picture glance card and set `camera_view: live`.
 HAOS includes FFmpeg; no separate video service is needed. The first connection needs authorization and device setup and may take tens of seconds. If the first thumbnail request times out, open it again to reuse the connection being established.
 
 A real HEVC keyframe was received on the user's channel 1; local synthetic HEVC-to-H.264 transcoding and decoding tests passed. The user confirmed that live channel 1 is viewable; channel 3 becomes viewable after waiting for it to load. The “ORVIBO Recording Playback” dashboard card searches hard-drive or SD/TF card clips by the date on the device and plays them. `0.2.6b8` added an “SD Card Playback” entity for matching Meari XTS/p2p=2 cameras such as the Jumu 2K Smart Camera S1; after updating, make sure the device is selected in the integration.
@@ -158,7 +158,11 @@ See the [0.2.6b16 release notes](docs/releases/0.2.6b16.md).
 
 `0.2.6b17` fixes the MixPad LAN connection for accounts whose gateway rejects the login email or phone number (LAN login `status=9`). The integration now retries with the account's cloud user ID and keeps using whichever identity the gateway accepts, so state pushes and control go over LAN instead of falling back to the cloud. Separate LAN credentials, when configured, are used as before.
 Update to **v0.2.6b17** in HACS and **restart Home Assistant**.
-See the [release notes](docs/releases/0.2.6b17.md).
+See the [0.2.6b17 release notes](docs/releases/0.2.6b17.md).
+
+`0.2.6b18` stops the integration from undoing your area changes. ORVIBO rooms are still mapped to Home Assistant areas, but only for devices that have no area yet; devices you moved, and areas you renamed or merged, are left alone instead of being recreated from the ORVIBO room names on every restart or reload. Area mappings set in the integration options still apply.
+Update to **v0.2.6b18** in HACS and **restart Home Assistant**.
+See the [release notes](docs/releases/0.2.6b18.md).
 
 `0.2.6b12` added the `battery_power` field for older locks with five dry-cell batteries, covering `deviceType=300`, `subDeviceType=400`. The user's inventory and six live-push replays all reported 60%. The integration continues to support flat and nested fields for dry cells and lithium-battery managers, preferring valid manager data. It shows only sources with valid readings; entries without a value are hidden and restored when a valid reading arrives, preserving user-hidden settings.
 Partial pushes without battery data do not clear the latest valid reading; 0% is valid. The main lock, door contact, and deadbolt are parsed independently, so “not deadbolted” does not overwrite an engaged main lock. Restart Home Assistant after updating; the actual entity display still needs device confirmation.
