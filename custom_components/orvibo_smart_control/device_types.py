@@ -50,6 +50,7 @@ class DeviceCategory(Enum):
     FLOOR_HEATING = "floor_heating"                          # deviceType=300, subType=481
     LEGACY_FLOOR_HEATING = "legacy_floor_heating"            # deviceType=112, orb_floorheat
     DREAM_CURTAIN = "dream_curtain"                          # deviceType=506, subType=408
+    RELAY_CURTAIN = "relay_curtain"                          # deviceType=42, subType=-2, multifunction controller
     OTHER = "other"
 
 
@@ -282,6 +283,12 @@ _CATEGORY_INFO: Dict[DeviceCategory, CategoryInfo] = {
         description='deviceType=506, subType=408; curtain position and slat angle',
         capabilities=("position", "stop", "angle"),
     ),
+    DeviceCategory.RELAY_CURTAIN: CategoryInfo(
+        category=DeviceCategory.RELAY_CURTAIN,
+        label="Relay curtain controller",
+        description='deviceType=42, subType=-2; open/close/stop keys without position feedback',
+        capabilities=("open", "close", "stop"),
+    ),
     DeviceCategory.OTHER: CategoryInfo(
         category=DeviceCategory.OTHER,
         label="Other device",
@@ -405,6 +412,7 @@ HARDWARE_VERIFIED_CATEGORIES = frozenset({
     DeviceCategory.FLOOR_HEATING,
     DeviceCategory.LEGACY_FLOOR_HEATING,
     DeviceCategory.DREAM_CURTAIN,
+    DeviceCategory.RELAY_CURTAIN,
 })
 
 
@@ -532,6 +540,8 @@ def classify_device(device: Dict[str, Any]) -> DeviceCategory:
         )
     if device_type_raw == 506 and sub_type == 408:
         return DeviceCategory.DREAM_CURTAIN
+    if device_type_raw == 42 and sub_type == -2:
+        return DeviceCategory.RELAY_CURTAIN
 
     if device_type_raw is not None and device_type_raw in _DEVICE_TYPE_MAP:
         # Use the fast move protocol for deviceType=38 and subDeviceType=6.

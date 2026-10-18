@@ -114,6 +114,7 @@ _CATEGORY_PLATFORMS: Dict[DeviceCategory, FrozenSet[str]] = {
     DeviceCategory.ZIGBEE_ROLLING_SHUTTER: frozenset({PLATFORM_COVER}),
     DeviceCategory.LEGACY_CURTAIN: frozenset({PLATFORM_COVER}),
     DeviceCategory.DREAM_CURTAIN: frozenset({PLATFORM_COVER}),
+    DeviceCategory.RELAY_CURTAIN: frozenset({PLATFORM_COVER}),
     DeviceCategory.FAN_COIL_AC: frozenset({PLATFORM_CLIMATE}),
     DeviceCategory.FLOOR_HEATING: frozenset({PLATFORM_CLIMATE}),
     DeviceCategory.LEGACY_FLOOR_HEATING: frozenset({PLATFORM_CLIMATE}),

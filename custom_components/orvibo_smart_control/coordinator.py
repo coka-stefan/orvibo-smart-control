@@ -824,6 +824,9 @@ class OrviboSmartControlCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def async_dream_curtain_action(self, device_id: str, action: str) -> bool:
         return await self.control.dream_curtain_action(device_id, action)
 
+    async def async_relay_curtain_action(self, device_id: str, action: str) -> bool:
+        return await self.control.relay_curtain_action(device_id, action)
+
     async def async_set_dream_curtain_angle(self, device_id: str, angle: int) -> bool:
         return await self.control.set_dream_curtain_angle(device_id, angle)
 

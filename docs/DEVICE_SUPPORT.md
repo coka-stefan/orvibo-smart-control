@@ -53,8 +53,9 @@ The Home Assistant device page includes a “Transport Path” diagnostic entity
 | Zigbee curtain `34` | `cover` | Open, close, position, stop | LAN preferred |
 | Tubular motor `35/-2` | `cover` | Open, close, position, stop | LAN preferred |
 | Dream Curtain `506/408` | `cover` | Open/close, position, stop, blade angle | Cloud control |
+| Multifunction relay controller `42/-2` | `cover` | Open, close, stop (no position feedback) | Cloud control |
 
-Dream Curtain blade angle can be adjusted only when fully closed; before setting the open/close position, the integration confirms that the blades have returned to the middle. High-voltage motor mode `37` is not yet supported.
+Dream Curtain blade angle can be adjusted only when fully closed; before setting the open/close position, the integration confirms that the blades have returned to the middle. The `42/-2` relay controller reports no position, so its cover has an assumed state. Open and close follow the controller's learned keys, so a direction swapped in the ORVIBO app is honored in Home Assistant. High-voltage motor mode `37` is not yet supported.
 
 ## HVAC and fresh air
 

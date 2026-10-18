@@ -81,6 +81,7 @@ _RAW_TYPE_GROUPS: dict[int, tuple[str, str]] = {
     35: ("curtains", 'Curtains'),
     36: ("climate", 'Heating and cooling'),
     38: ("lights", 'Lights'),
+    42: ("curtains", 'Curtains'),
     43: ("lights", 'Lights'),
     46: ("sensors", 'Sensors'),
     52: ("clothes_horse", 'Clothes dryers'),

@@ -64,6 +64,7 @@ class OrviboDevice:
     camera_type: int | None = None  # CameraInfo.type, distinct from Device.deviceType
     room_id: str = ""
     status: Mapping[str, Any] = field(default_factory=dict)
+    key_orders: Mapping[str, str] = field(default_factory=dict)  # deviceIr keyName -> order
 
 
 def password_hash(password: str) -> str:
@@ -382,6 +383,17 @@ def parse_readtable_devices(
         if device_id:
             property_rows.setdefault(device_id, []).append(row)
 
+    # Learned keys map the app's button labels to the order each one sends.
+    key_orders: dict[str, dict[str, str]] = {}
+    for row in _table_rows(data.get("deviceIr"), "deviceIrId"):
+        if row.get("delFlag") in (1, "1"):
+            continue
+        device_id = _first_text(row, ("deviceId", "deviceID"))
+        key_name = _first_text(row, ("keyName",)).strip().lower()
+        order = _first_text(row, ("order", "command")).strip()
+        if device_id and key_name and order:
+            key_orders.setdefault(device_id, {})[key_name] = order
+
     devices: dict[str, OrviboDevice] = {}
     for item in _table_rows(data.get("device"), "deviceId"):
         if item.get("delFlag") in (1, "1"):
@@ -471,6 +483,7 @@ def parse_readtable_devices(
             properties=properties,
             room_id=room_id,
             status=copy.deepcopy(status),
+            key_orders=key_orders.get(device_id, {}),
         )
 
     return tuple(sorted(devices.values(), key=lambda d: d.uid))
@@ -697,6 +710,7 @@ def device_to_dict(device: OrviboDevice) -> dict[str, Any]:
         "class_name": device.class_name,
         "device_flag": device.device_flag,
         "status": copy.deepcopy(dict(device.status)),
+        "key_orders": dict(device.key_orders),
         "value1": device.value1,
         "value2": device.value2,
         "value3": device.value3,
@@ -718,7 +732,7 @@ def _infer_ha_device_type(device: OrviboDevice) -> str:
         25: "sensor", 26: "sensor", 27: "sensor", 56: "sensor",
         54: "sensor", 501: "light", 502: "light",
         503: "light", 516: "fan", 522: "sensor",
-        506: "cover",
+        506: "cover", 42: "cover",
         22: "sensor", 23: "sensor",
         81: "climate",
     }
@@ -748,6 +762,8 @@ def _infer_ha_device_type(device: OrviboDevice) -> str:
         return "climate" if sub == 481 else "sensor" if sub == 491 else "unknown"
     if dt == 506:
         return "cover" if sub == 408 else "unknown"
+    if dt == 42:
+        return "cover" if sub == -2 else "unknown"
     if dt == 501:
         return "light" if sub in (426, 429) else "unknown"
     if dt == 502:

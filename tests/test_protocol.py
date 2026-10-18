@@ -157,6 +157,33 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(devices[0].value3, 250)
         self.assertEqual(devices[0].value4, 0)
 
+    def test_parse_readtable_devices_maps_learned_keys(self) -> None:
+        """deviceIr rows expose which order each app button sends."""
+        devices = protocol.parse_readtable_devices(
+            {
+                "code": 0,
+                "data": {
+                    "device": [
+                        {"deviceId": "blind", "deviceType": 42, "subDeviceType": -2},
+                    ],
+                    "deviceIr": [
+                        {"deviceIrId": "k1", "deviceId": "blind", "keyName": "Close", "order": "open"},
+                        {"deviceIrId": "k2", "deviceId": "blind", "keyName": "Open", "order": "close"},
+                        {"deviceIrId": "k3", "deviceId": "blind", "keyName": "Stop", "order": "stop"},
+                        {"deviceIrId": "k4", "deviceId": "blind", "keyName": "Old", "order": "x", "delFlag": 1},
+                    ],
+                },
+            }
+        )
+
+        self.assertEqual(
+            dict(devices[0].key_orders),
+            {"close": "open", "open": "close", "stop": "stop"},
+        )
+        as_dict = protocol.device_to_dict(devices[0])
+        self.assertEqual(as_dict["device_type"], "cover")
+        self.assertEqual(as_dict["key_orders"]["open"], "close")
+
     def test_extract_devices_handles_nested_and_duplicate_devices(self) -> None:
         devices = protocol.extract_devices(
             [

@@ -140,6 +140,43 @@ class ControlExecutorTests(unittest.TestCase):
         )
         self.assertEqual(states["device"]["target_temperature"], 25)
 
+    def test_relay_curtain_follows_learned_key_orders(self) -> None:
+        # Captured from a type-42 controller whose app keys swap open and close.
+        executor, ssl, states, updates = self.make_executor({
+            "device_type_raw": 42,
+            "sub_device_type": -2,
+            "uid": "uid",
+            "key_orders": {"open": "close", "close": "open", "stop": "stop"},
+        })
+
+        for action in ("open", "close", "stop"):
+            self.assertTrue(asyncio.run(executor.relay_curtain_action("device", action)))
+
+        self.assertEqual(
+            [call[1] for call in ssl.calls],
+            [("device", "uid", "close"), ("device", "uid", "open"), ("device", "uid", "stop")],
+        )
+        self.assertEqual(states["device"]["cover_action"], "stop")
+        self.assertEqual(len(updates), 3)
+
+    def test_relay_curtain_defaults_to_direct_orders_and_rejects_others(self) -> None:
+        executor, ssl, _, _ = self.make_executor(
+            {"device_type_raw": 42, "sub_device_type": -2, "uid": "uid"}
+        )
+
+        self.assertTrue(asyncio.run(executor.relay_curtain_action("device", "open")))
+        self.assertFalse(asyncio.run(executor.relay_curtain_action("device", "toggle")))
+
+        self.assertEqual(ssl.calls, [("cover", ("device", "uid", "open"), {})])
+
+    def test_relay_curtain_action_requires_relay_category(self) -> None:
+        executor, ssl, _, _ = self.make_executor(
+            {"device_type_raw": 34, "uid": "uid"}
+        )
+
+        self.assertFalse(asyncio.run(executor.relay_curtain_action("device", "open")))
+        self.assertEqual(ssl.calls, [])
+
     def test_coordinator_uid_route_preserves_device_prefix(self) -> None:
         class Target:
             def __init__(self):

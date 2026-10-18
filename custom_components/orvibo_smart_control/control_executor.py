@@ -349,6 +349,34 @@ class ControlExecutor:
         )
         return result
 
+    async def relay_curtain_action(self, device_id: str, action: str) -> bool:
+        """Send open/close/stop to a relay curtain controller without position feedback.
+
+        The app's learned keys (deviceIr) may swap open and close to match the
+        motor wiring, so the HA action follows the order the same app button sends.
+        """
+        device = self._controllable_device(device_id, 'Relay curtain')
+        if device is None or classify_device(device) != DeviceCategory.RELAY_CURTAIN:
+            return False
+        if action not in ("open", "close", "stop"):
+            return False
+        key_orders = device.get("key_orders") or {}
+        order = key_orders.get(action, action)
+        if order not in ("open", "close", "stop"):
+            _LOGGER.warning("Unsupported relay curtain order %r for %s: %s", order, action, device_id)
+            return False
+        result, _scope = await self._send_selected(
+            device_id,
+            "send_control_cover",
+            device_id,
+            device.get("uid", ""),
+            order,
+        )
+        if result:
+            self.apply_optimistic(device_id, {"cover_action": action})
+            self._on_updated()
+        return result
+
     async def set_dream_curtain_angle(self, device_id: str, angle: int) -> bool:
         device = self._controllable_device(device_id, 'Sheer-curtain angle')
         if device is None or classify_device(device) != DeviceCategory.DREAM_CURTAIN:

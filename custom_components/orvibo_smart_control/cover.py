@@ -54,6 +54,17 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
         self._category = classify_device(device)
         if self._category == DeviceCategory.DREAM_CURTAIN:
             self._attr_supported_features = self._attr_supported_features | CoverEntityFeature.SET_TILT_POSITION
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            # The relay controller reports no position, so HA keeps both directions enabled.
+            self._attr_supported_features = (
+                CoverEntityFeature.OPEN
+                | CoverEntityFeature.CLOSE
+                | CoverEntityFeature.STOP
+            )
+            self._attr_assumed_state = True
+            self._attr_device_class = CoverDeviceClass.SHADE
+            self._attr_icon = "mdi:roller-shade"
+            return
         # Check whether this is a roller blind (type=35) and use the SHUTTER icon
         device_type_raw = device.get("device_type_raw", 0)
         if device_type_raw == 35:
@@ -63,12 +74,16 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
             self._attr_device_class = CoverDeviceClass.CURTAIN
 
     @property
-    def current_cover_position(self) -> int:
+    def current_cover_position(self) -> Optional[int]:
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            return None
         state = self.coordinator.get_device_state(self._device_id)
         return state.get("position", 0) if state else 0
 
     @property
-    def is_closed(self) -> bool:
+    def is_closed(self) -> Optional[bool]:
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            return None
         position = self.current_cover_position
         return position == 0
 
@@ -88,19 +103,26 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
         }
 
     async def async_open_cover(self, **kwargs) -> None:
-        if self._category == DeviceCategory.DREAM_CURTAIN:
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            await self.coordinator.async_relay_curtain_action(self._device_id, "open")
+        elif self._category == DeviceCategory.DREAM_CURTAIN:
             await self.coordinator.async_dream_curtain_action(self._device_id, "open")
         else:
             await self.coordinator.async_set_cover_position(self._device_id, 100)
 
     async def async_close_cover(self, **kwargs) -> None:
-        if self._category == DeviceCategory.DREAM_CURTAIN:
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            await self.coordinator.async_relay_curtain_action(self._device_id, "close")
+        elif self._category == DeviceCategory.DREAM_CURTAIN:
             await self.coordinator.async_dream_curtain_action(self._device_id, "close")
         else:
             await self.coordinator.async_set_cover_position(self._device_id, 0)
 
     async def async_stop_cover(self, **kwargs) -> None:
-        await self.coordinator.async_stop_cover(self._device_id)
+        if self._category == DeviceCategory.RELAY_CURTAIN:
+            await self.coordinator.async_relay_curtain_action(self._device_id, "stop")
+        else:
+            await self.coordinator.async_stop_cover(self._device_id)
 
     async def async_set_cover_position(self, **kwargs) -> None:
         position = kwargs.get("position", 0)

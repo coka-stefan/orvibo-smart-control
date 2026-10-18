@@ -58,6 +58,20 @@ class DeviceProfileTests(unittest.TestCase):
         self.assertTrue(profile.hardware_verified)
         self.assertFalse(profile.registration_only)
 
+    def test_relay_curtain_controller_is_controllable_cover(self) -> None:
+        device = {
+            "device_type_raw": 42,
+            "sub_device_type": -2,
+            "model": "396483ce8b3f4e0d8e9d79079a35a420",
+        }
+        profile = self.module.get_device_profile(device)
+        self.assertEqual(profile.category, self.module.DeviceCategory.RELAY_CURTAIN)
+        self.assertFalse(profile.registration_only)
+        other_subtype = self.module.get_device_profile(
+            {"device_type_raw": 42, "sub_device_type": 5}
+        )
+        self.assertTrue(other_subtype.registration_only)
+
     def test_non_controllable_records_are_registration_only(self) -> None:
         for device in (
             {"device_type_raw": 10086, "sub_device_type": -2},

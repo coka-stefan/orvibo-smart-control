@@ -601,12 +601,13 @@ class HomemateJsonData:
 
     @classmethod
     def ssl_control_cover(cls, username: str, device_id: str, device_uid: str, position: int, stop_value2: int = 0):
-        """Control a curtain (position: 0-100, or the string 'stop' to stop)."""
+        """Control a curtain (position: 0-100, or the order 'open'/'close'/'stop')."""
         serial = generate_serial()
         uniSerial = generate_serial(use_time=True)
-        if isinstance(position, str) and position == "stop":
-            order = "stop"
-            value1 = 0
+        if isinstance(position, str) and position in ("open", "close", "stop"):
+            # Relay controllers have no position; app scenes send open with value1=100.
+            order = position
+            value1 = 100 if position == "open" else 0
         else:
             order = "open"
             value1 = int(position)

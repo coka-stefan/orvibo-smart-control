@@ -609,6 +609,8 @@ class HttpsClient:
             return DEVICE_TYPE_CLIMATE if sub_device_type == 481 else DEVICE_TYPE_SENSOR if sub_device_type == 491 else None
         if device_type_raw == 506:
             return DEVICE_TYPE_COVER if sub_device_type == 408 else None
+        if device_type_raw == 42:
+            return DEVICE_TYPE_COVER if sub_device_type == -2 else None
         if device_type_raw == 501:
             return DEVICE_TYPE_LIGHT if sub_device_type in (426, 429) else None
         if device_type_raw == 502:
