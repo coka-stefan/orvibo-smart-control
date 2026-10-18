@@ -44,7 +44,8 @@ class OrviboVentilationFan(CoordinatorEntity, FanEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"{DOMAIN}_fan_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
         self._attr_icon = "mdi:air-filter"
 
         self._attr_supported_features = (
@@ -60,7 +61,7 @@ class OrviboVentilationFan(CoordinatorEntity, FanEntity):
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
-            "name": self._attr_name,
+            "name": device.get("device_name", self._device_id),
             "model": device.get("model", ""),
             "manufacturer": MANUFACTURER,
         }

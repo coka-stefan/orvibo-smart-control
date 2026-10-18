@@ -47,7 +47,8 @@ class OrviboSwitch(CoordinatorEntity, SwitchEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_switch_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
 
     @property
     def is_on(self) -> bool:

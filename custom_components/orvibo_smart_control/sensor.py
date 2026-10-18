@@ -92,7 +92,8 @@ class OrviboSensorBase(CoordinatorEntity, SensorEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_sensor_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Subclasses set a feature name or a translation key. Setting _attr_name
+        # here (even to None) would override the translated entity name.
 
     @property
     def available(self) -> bool:
@@ -135,7 +136,6 @@ class OrviboTransportPathSensor(OrviboSensorBase):
         self._attr_unique_id = (
             f"orvibo_smart_control_transport_path_{self._device_id}"
         )
-        self._attr_name = None
 
     @property
     def available(self) -> bool:
@@ -187,7 +187,6 @@ class OrviboCameraSdkSensor(OrviboSensorBase):
     def __init__(self, coordinator: OrviboSmartControlCoordinator, device: dict):
         super().__init__(coordinator, device)
         self._attr_unique_id = f"orvibo_smart_control_camera_sdk_{self._device_id}"
-        self._attr_name = None
 
     @property
     def available(self) -> bool:

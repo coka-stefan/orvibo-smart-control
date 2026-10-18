@@ -44,7 +44,9 @@ class OrviboLight(CoordinatorEntity, LightEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_light_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
+        device_name = device.get("device_name", self._device_id)
 
         ui_model = device.get("ui_model", "")
         device_type_raw = device.get("device_type_raw")
@@ -62,7 +64,7 @@ class OrviboLight(CoordinatorEntity, LightEntity):
         
         sub_device_type = device.get("sub_device_type")
         status = device.get("status", {})
-        _LOGGER.info("Initializing light: name=%s, device_type_raw=%s (type=%s), class_id=%s (type=%s), sub_device_type=%s, status=%s, device=%s", self._attr_name, device_type_raw, type(device_type_raw), class_id, type(class_id), sub_device_type, status, device)
+        _LOGGER.info("Initializing light: name=%s, device_type_raw=%s (type=%s), class_id=%s (type=%s), sub_device_type=%s, status=%s, device=%s", device_name, device_type_raw, type(device_type_raw), class_id, type(class_id), sub_device_type, status, device)
         
         # Identify a dimmable light from sub_device_type=-2 and value2 (brightness) in status
         if device_type_raw is None and sub_device_type == -2 and isinstance(status, dict):
@@ -79,7 +81,7 @@ class OrviboLight(CoordinatorEntity, LightEntity):
         if category == DeviceCategory.FAST_MOVE_DIM_COLOR_LIGHT:
             self._brightness_is_percent = False
 
-        _LOGGER.info("Light: %s, device_id=%s, ui_model=%s, deviceType=%s (type=%s), classId=%s (type=%s), model=%s", self._attr_name, self._device_id, ui_model, device_type_raw, type(device_type_raw), class_id, type(class_id), model)
+        _LOGGER.info("Light: %s, device_id=%s, ui_model=%s, deviceType=%s (type=%s), classId=%s (type=%s), model=%s", device_name, self._device_id, ui_model, device_type_raw, type(device_type_raw), class_id, type(class_id), model)
 
         is_dimmable = False
 
@@ -132,7 +134,7 @@ class OrviboLight(CoordinatorEntity, LightEntity):
             self._attr_color_mode = ColorMode.ONOFF
             _LOGGER.info("Set ONOFF mode")
 
-        _LOGGER.info("Created light entity: %s, supported_modes=%s, is_dimmable=%s, brightness=%s, color_temp=%s", self._attr_name, self._attr_supported_color_modes, is_dimmable, device.get("brightness"), device.get("color_temp"))
+        _LOGGER.info("Created light entity: %s, supported_modes=%s, is_dimmable=%s, brightness=%s, color_temp=%s", device_name, self._attr_supported_color_modes, is_dimmable, device.get("brightness"), device.get("color_temp"))
 
     @property
     def is_on(self) -> bool:

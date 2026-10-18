@@ -86,7 +86,8 @@ class OrviboFanCoilAC(CoordinatorEntity, ClimateEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_climate_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
 
     @property
     def available(self) -> bool:
@@ -184,7 +185,8 @@ class OrviboFloorHeating(CoordinatorEntity, ClimateEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_floor_heating_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
 
     @property
     def available(self) -> bool:

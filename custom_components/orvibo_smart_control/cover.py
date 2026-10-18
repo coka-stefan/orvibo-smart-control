@@ -50,7 +50,8 @@ class OrviboCover(CoordinatorEntity, CoverEntity):
         self._device = device
         self._device_id = device["device_id"]
         self._attr_unique_id = f"orvibo_smart_control_cover_{self._device_id}"
-        self._attr_name = device.get("device_name", self._device_id)
+        # Primary entity: has_entity_name with name None shows only the device name.
+        self._attr_name = None
         self._category = classify_device(device)
         if self._category == DeviceCategory.DREAM_CURTAIN:
             self._attr_supported_features = self._attr_supported_features | CoverEntityFeature.SET_TILT_POSITION
